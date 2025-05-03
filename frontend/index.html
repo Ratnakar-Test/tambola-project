@@ -43,7 +43,7 @@
         </div>
       </div>
 
-      <!-- HEADER (Only shows after joined) -->
+      <!-- HEADER -->
       <header x-show="joined" class="flex items-center justify-between p-4 bg-white shadow">
         <div class="flex items-center">
           <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
@@ -61,13 +61,12 @@
         <!-- CALLED NUMBERS & LAST CALLED -->
         <section class="mb-4">
           <h2 class="text-lg font-semibold mb-1">📣 Called Numbers</h2>
-          <div class="flex flex-wrap gap-2 mb-2">
-            <template x-for="(num, idx) in called" :key="num">
-              <div :class="idx === called.length - 1 ? 'badge badge-warning text-black' : 'badge badge-outline'" x-text="num"></div>
-            </template>
-            <template x-if="called.length===0">
-              <span class="text-gray-500">No numbers called yet</span>
-            </template>
+          <div class="overflow-x-auto mb-2">
+            <div class="flex space-x-2">
+              <template x-for="(num, idx) in called" :key="num">
+                <div :class="idx === called.length - 1 ? 'badge badge-warning text-black' : 'badge badge-outline'" x-text="num"></div>
+              </template>
+            </div>
           </div>
           <div class="font-medium">Last Called: <span x-text="called[called.length-1] || 'N/A'"></span></div>
         </section>
@@ -87,7 +86,7 @@
         <section>
           <h2 class="text-lg font-semibold mb-2">🎟 Your Tickets</h2>
           <template x-for="ticket in tickets" :key="ticket.id">
-            <div class="bg-white rounded shadow p-4 mb-4">
+            <div class="bg-white rounded-lg shadow p-4 mb-4 border-2 border-gray-300">
               <div class="grid grid-cols-9 gap-[2px]">
                 <template x-for="(row, rIdx) in ticket.layout" :key="rIdx">
                   <template x-for="(cell, cIdx) in row" :key="cIdx">
@@ -111,7 +110,7 @@
         <button class="btn btn-secondary btn-sm" @click="showClaimModal = true">Claim Prize</button>
         <label class="flex items-center gap-2">
           <span class="text-sm">Auto-Mark:</span>
-          <input type="checkbox" class="toggle toggle-sm toggle-primary" x-model="autoMark" @change="autoChanged()" />
+          <input type="checkbox" class="toggle toggle-sm toggle-primary" x-model="autoMark" @change="autoChanged" />
         </label>
       </footer>
 
