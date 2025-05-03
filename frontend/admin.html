@@ -3,7 +3,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- BLOCK 1: HEAD (Imports & Metadata) -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Tambola Admin Dashboard</title>
@@ -13,12 +12,11 @@
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <!-- Alpine.js for reactivity -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <!-- Socket.IO client -->
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- Socket.IO client from your backend -->
+  <script src="https://tambola-backend.onrender.com/socket.io/socket.io.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen">
 
-  <!-- x-data Alpine component -->
   <div x-data="adminDashboard()" x-init="init()" class="relative">
 
     <!-- BLOCK 2: SETUP SCREEN -->
@@ -45,7 +43,6 @@
     <div x-show="connected" class="drawer">
       <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle" />
 
-      <!-- DRAWER CONTENT -->
       <div class="drawer-content flex flex-col">
 
         <!-- HEADER -->
@@ -57,7 +54,9 @@
                     d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </label>
-          <h1 class="text-2xl font-semibold flex-1">Room: <span x-text="roomId" class="font-mono"></span></h1>
+          <h1 class="text-2xl font-semibold flex-1">
+            Room: <span x-text="roomId" class="font-mono"></span>
+          </h1>
           <button @click="callNumber()"
                   class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">
             Call Number
@@ -153,7 +152,6 @@
           <section x-show="currentTab==='QR Code'" class="mt-6">
             <h2 class="text-xl font-semibold mb-2">Room QR Code</h2>
             <div class="bg-white p-8 rounded-lg shadow-inner flex items-center justify-center">
-              <!-- Placeholder for QR code image -->
               <span class="text-gray-500">QR CODE</span>
             </div>
           </section>
@@ -245,7 +243,6 @@
   <script>
     function adminDashboard() {
       return {
-        // ----- STATE -----
         connected: false,
         roomId: '',
         adminName: '',
@@ -265,12 +262,18 @@
         ],
         mode: 'Manual',
         interval: 3,
+        autoInterval: null,
 
-        // ----- INITIALIZER -----
         init() {
-          this.socket = io();
+          this.socket = io('https://tambola-backend.onrender.com');
 
-          // Server → Client events
+          // CONNECTION-ERROR HANDLER START
+          this.socket.on('connect_error', err => {
+            console.error('Socket.IO connection error:', err);
+            this.errorMsg = 'Unable to connect to game server.';
+          });
+          // CONNECTION-ERROR HANDLER END
+
           this.socket.on('room-created', data => {
             this.roomId = data.roomId;
             this.connected = true;
@@ -284,9 +287,6 @@
           this.socket.on('ticket-requested', data => {
             this.ticketRequests.push({ requestId: data.requestId, playerName: data.playerName });
           });
-          this.socket.on('ticket-updated', data => {
-            // no-op for admin
-          });
           this.socket.on('claim-submitted', data => {
             this.prizeClaims.push({ claimId: data.claimId, playerName: data.playerName, claimType: data.claimType });
           });
@@ -295,13 +295,11 @@
           });
         },
 
-        // ----- ACTIONS -----
         createRoom() {
           this.errorMsg = '';
           if (!this.adminName) return this.errorMsg = 'Enter your name';
           this.socket.emit('create-room',
-            { adminName: this.adminName, maxTicketsPerPlayer: this.maxTickets },
-            res => {
+            { adminName: this.adminName, maxTicketsPerPlayer: this.maxTickets }, res => {
               if (!res.success) this.errorMsg = res.error;
             }
           );
@@ -310,12 +308,14 @@
           this.errorMsg = '';
           if (!this.adminName || !this.roomId) return this.errorMsg = 'Name & Room ID required';
           this.socket.emit('join-room',
-            { roomId: this.roomId, playerName: this.adminName },
-            res => {
+            { roomId: this.roomId, playerName: this.adminName }, res => {
               if (res.success) this.connected = true;
               else this.errorMsg = res.error;
             }
           );
+        },
+        sendRoomUpdate() {
+          // placeholder if needed
         },
         callNumber() {
           this.socket.emit('call-number', { roomId: this.roomId }, res => {
@@ -339,11 +339,9 @@
           this.prizeClaims = this.prizeClaims.filter(c => c.claimId !== id);
         },
         toggleNumber(n) {
-          // manual highlight
           if (this.called.includes(n)) this.called = this.called.filter(x => x !== n);
           else this.called.push(n);
         },
-
         start() {
           if (this.mode === 'Auto') {
             this.autoInterval = setInterval(() => this.callNumber(), this.interval * 1000);
