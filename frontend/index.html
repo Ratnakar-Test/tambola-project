@@ -1,131 +1,124 @@
 <!DOCTYPE html>
-<html lang="en" x-data="playerDashboard()" x-init="init()">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Tambola Player</title>
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.18/dist/full.css" rel="stylesheet" />
+  <title>Tambola Player Dashboard</title>
+
+  <!-- DaisyUI + Tailwind -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@3.8.2/dist/full.css" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <script src="app.js"></script>
 </head>
+<body x-data="playerDashboard()" x-init="init()" class="bg-gray-100 min-h-screen">
+  <!-- DRAWER LAYOUT -->
+  <div class="drawer">
+    <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle" />
+    <div class="drawer-content flex flex-col">
 
-<body class="bg-base-200 min-h-screen">
+      <!-- HEADER -->
+      <header class="flex items-center justify-between p-4 bg-white shadow">
+        <div class="flex items-center">
+          <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </label>
+          <h1 class="text-xl font-bold">Tambola Player</h1>
+        </div>
+        <div x-show="!joined" class="flex gap-2">
+          <input x-model="playerName" placeholder="Your Name" class="input input-bordered input-sm w-32" />
+          <input x-model="roomId" placeholder="Room ID" class="input input-bordered input-sm w-28" />
+          <button class="btn btn-primary btn-sm" @click="joinGame">Join</button>
+        </div>
+      </header>
 
-<!-- 🔵 Join Section -->
-<div class="max-w-md mx-auto p-6" x-show="!joined">
-  <h1 class="text-3xl font-bold text-center mb-4">🎟️ Join Tambola</h1>
+      <!-- MAIN CONTENT -->
+      <main class="flex-1 p-4 overflow-auto" x-show="joined">
+        <!-- CALLED NUMBERS -->
+        <section class="mb-4">
+          <h2 class="text-lg font-semibold mb-1">📣 Called Numbers</h2>
+          <div class="flex flex-wrap gap-2">
+            <template x-for="(num, idx) in called" :key="num">
+              <div :class="idx === called.length - 1 ? 'badge badge-warning text-black' : 'badge badge-outline'" x-text="num"></div>
+            </template>
+          </div>
+        </section>
 
-  <div class="form-control mb-3">
-    <label class="label">Room ID</label>
-    <input type="text" class="input input-bordered" x-model="roomId" placeholder="Enter Room ID" />
-  </div>
-  <div class="form-control mb-3">
-    <label class="label">Your Name</label>
-    <input type="text" class="input input-bordered" x-model="playerName" placeholder="Enter your name" />
-  </div>
-  <button class="btn btn-primary w-full" @click="join()">Join Game</button>
+        <!-- TICKET DISPLAY -->
+        <section>
+          <h2 class="text-lg font-semibold mb-2">🎟 Your Tickets</h2>
+          <template x-for="ticket in tickets" :key="ticket.id">
+            <div class="bg-white rounded shadow p-4 mb-4">
+              <div class="grid grid-cols-9 gap-1">
+                <template x-for="(row, r) in ticket" :key="r">
+                  <template x-for="(cell, c) in row" :key="c">
+                    <div class="border text-center h-10 flex items-center justify-center rounded"
+                      :class="cell && isMarked(cell) ? 'bg-blue-600 text-white' : 'bg-gray-100'"
+                      x-text="cell || ''">
+                    </div>
+                  </template>
+                </template>
+              </div>
+            </div>
+          </template>
+        </section>
+      </main>
 
-  <p class="text-red-500 text-sm mt-3" x-text="roomErrorMessage"></p>
-</div>
-
-<!-- 🟢 Game UI -->
-<div x-show="joined" class="p-4">
-
-  <!-- 🍔 Hamburger Menu -->
-  <div class="drawer drawer-end z-40">
-    <input id="player-drawer" type="checkbox" class="drawer-toggle">
-    <div class="drawer-content flex justify-between items-center mb-3">
-      <h2 class="text-2xl font-semibold">Welcome, <span x-text="playerName"></span></h2>
-      <label for="player-drawer" class="btn btn-ghost drawer-button">☰</label>
+      <!-- BOTTOM NAV -->
+      <footer x-show="joined" class="fixed bottom-0 left-0 right-0 bg-white border-t shadow p-2 flex justify-around items-center">
+        <button class="btn btn-primary btn-sm" @click="showAddModal = true">Add Ticket</button>
+        <button class="btn btn-secondary btn-sm" @click="showClaimModal = true">Claim Prize</button>
+        <label class="flex items-center gap-2">
+          <span class="text-sm">Auto</span>
+          <input type="checkbox" class="toggle toggle-sm toggle-primary" x-model="autoMark" @change="autoChanged" />
+        </label>
+      </footer>
     </div>
-    <div class="drawer-side">
-      <label for="player-drawer" class="drawer-overlay"></label>
-      <aside class="menu p-4 w-64 bg-base-100 text-base-content">
-        <h3 class="text-lg font-bold mb-4">Menu</h3>
+
+    <!-- SIDEBAR MENU -->
+    <div class="drawer-side z-40">
+      <label for="sidebar-toggle" class="drawer-overlay"></label>
+      <aside class="w-64 bg-blue-800 text-white p-6">
+        <h2 class="text-lg font-semibold mb-2">Player Menu</h2>
         <ul class="space-y-2">
-          <li><a>How to Play</a></li>
-          <li><a>Rules</a></li>
+          <li><a class="block py-1 px-2 hover:bg-blue-600 rounded">Dashboard</a></li>
+          <li><a class="block py-1 px-2 hover:bg-blue-600 rounded">How to Play</a></li>
+          <li><a class="block py-1 px-2 hover:bg-blue-600 rounded">About</a></li>
         </ul>
       </aside>
     </div>
   </div>
 
-  <!-- 🔢 Called Numbers -->
-  <div class="mb-4">
-    <h3 class="font-semibold mb-2">Called Numbers:</h3>
-    <div class="flex flex-wrap gap-2">
-      <template x-for="n in called" :key="n">
-        <span class="badge badge-neutral" :class="n === latest ? 'badge-primary' : ''" x-text="n"></span>
-      </template>
-    </div>
-  </div>
-
-  <!-- 🎟️ Ticket Grid -->
-  <div class="grid gap-6">
-    <template x-for="ticket in tickets" :key="ticket.id">
-      <div class="bg-white shadow rounded p-4">
-        <h4 class="font-semibold mb-2">Ticket #<span x-text="ticket.id"></span></h4>
-        <div class="grid grid-cols-9 gap-1">
-          <template x-for="(cell, idx) in ticket.layout.flat()" :key="idx">
-            <div class="border p-2 text-center"
-                 :class="cell && isMarked(ticket, cell) ? 'bg-primary text-white font-bold' : 'bg-base-100'" x-text="cell || ''"
-                 @click="cell && toggleMark(ticket.id, cell)">
-            </div>
-          </template>
-        </div>
+  <!-- ADD TICKET MODAL -->
+  <div x-show="showAddModal" class="modal modal-open">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg">Request New Ticket</h3>
+      <p class="py-2">You can request a new ticket (Max: 5)</p>
+      <div class="modal-action">
+        <button class="btn" @click="showAddModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="requestTicket">Confirm</button>
       </div>
-    </template>
-  </div>
-
-  <!-- ⚙️ Bottom Bar -->
-  <div class="btm-nav z-50">
-    <button @click="requestTicket()" class="active">
-      ➕ Add Ticket
-    </button>
-    <button @click="showClaimModal = true">
-      🎯 Claim
-    </button>
-    <label>
-      <input type="checkbox" class="toggle toggle-sm toggle-primary" x-model="autoMark" @change="autoChanged()" />
-      <span class="ml-2">Auto</span>
-    </label>
-  </div>
-</div>
-
-<!-- ✅ Add Ticket Modal -->
-<div class="modal modal-open" x-show="showAddModal">
-  <div class="modal-box">
-    <h3 class="font-bold text-lg">Ticket Request Sent</h3>
-    <p>Waiting admin approval...</p>
-  </div>
-</div>
-
-<!-- ✅ Claim Modal -->
-<div class="modal" x-show="showClaimModal">
-  <div class="modal-box">
-    <h3 class="font-bold text-lg mb-3">Claim a Prize</h3>
-    <div class="space-y-2">
-      <template x-for="prize in prizeTypes" :key="prize">
-        <button class="btn btn-block" :class="selectedPrize === prize ? 'btn-primary' : 'btn-outline'" @click="selectedPrize = prize" x-text="prize"></button>
-      </template>
-    </div>
-    <div class="mt-4 flex justify-end">
-      <button class="btn btn-success" @click="claimPrize()">Submit</button>
     </div>
   </div>
-</div>
 
-<!-- ✅ AutoMark Modal -->
-<div class="modal modal-open" x-show="showAutoInfo">
-  <div class="modal-box">
-    <h3 class="font-bold text-lg" x-text="autoMark ? 'Auto Mark Enabled' : 'Manual Marking Mode'"></h3>
-    <p class="text-sm mt-2">
-      <span x-text="autoMark ? 'Numbers will be auto-marked.' : 'You must click to mark called numbers.'"></span>
-    </p>
+  <!-- CLAIM PRIZE MODAL -->
+  <div x-show="showClaimModal" class="modal modal-open">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg">Claim Prize</h3>
+      <div class="space-y-2 my-2">
+        <template x-for="type in prizeTypes" :key="type">
+          <button class="btn btn-block" :class="selectedPrize===type ? 'btn-primary' : 'btn-outline'"
+            @click="selectedPrize = type" x-text="type"></button>
+        </template>
+      </div>
+      <div class="modal-action">
+        <button class="btn" @click="showClaimModal = false">Cancel</button>
+        <button class="btn btn-success" @click="submitClaim">Submit</button>
+      </div>
+    </div>
   </div>
-</div>
-
-<script src="app.js"></script>
 </body>
 </html>

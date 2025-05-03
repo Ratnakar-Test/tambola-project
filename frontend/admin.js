@@ -1,38 +1,45 @@
-// ✅ admin.js (Alpine.js powered Tambola Admin UI with modular DaisyUI controls)
-const socket = io('https://tambola-backend.onrender.com', {
-  transports: ['websocket', 'polling']
+// ✅ admin.js for Tambola Admin Panel (Alpine.js + DaisyUI)
+const socket = io("https://tambola-backend.onrender.com", {
+  transports: ["websocket"]
 });
 
 function adminDashboard() {
   return {
-    roomId: '',
+    roomId: "",
+    currentTab: "Numbers",
     called: [],
     players: [],
     ticketRequests: [],
     prizeClaims: [],
     winners: [],
-    mode: 'manual',
-    interval: 3000,
     rules: [],
-    limits: {
-      'Full House': 1,
-      'Top Line': 1,
-      'Middle Line': 1,
-      'Bottom Line': 1,
-      'Corners': 1
-    },
+    limits: {},
+    mode: "manual",
+    interval: 3000,
     showMenu: false,
 
-    // ✅ Admin connects to room
-    connect() {
-      if (!this.roomId) return alert('Enter Room ID');
-      socket.emit('admin-connect', this.roomId);
-      this.showMenu = true;
+    init() {
+      // Listen for events
+      socket.on("update-players", players => this.players = players);
+      socket.on("update-ticket-requests", list => this.ticketRequests = list);
+      socket.on("update-claims", claims => this.prizeClaims = claims);
+      socket.on("game-summary", winners => this.winners = winners);
+      socket.on("number-called", num => {
+        if (!this.called.includes(num)) this.called.push(num);
+      });
     },
 
-    // ✅ Game controls
+    connect() {
+      if (!this.roomId) return alert("Enter Room ID");
+      socket.emit("admin-connect", this.roomId);
+      this.called = [];
+      this.showMenu = true;
+      this.generateQRCode();
+    },
+
     startGame() {
-      socket.emit('admin-start', {
+      if (this.rules.length === 0) return alert("Select at least one rule");
+      socket.emit("admin-start", {
         roomId: this.roomId,
         mode: this.mode,
         interval: this.interval,
@@ -41,43 +48,53 @@ function adminDashboard() {
       });
       this.called = [];
     },
-    pauseGame() { socket.emit('admin-pause', this.roomId); },
-    resumeGame() { socket.emit('admin-resume', this.roomId); },
-    stopGame() { socket.emit('admin-stop', this.roomId); },
-    callNext() { socket.emit('admin-call-next', this.roomId); },
 
-    // ✅ Approve/reject claims & tickets
-    acceptClaim(playerId, claimType) {
-      socket.emit('admin-accept-claim', { roomId: this.roomId, playerId, claimType });
+    pauseGame() {
+      socket.emit("admin-pause", this.roomId);
     },
-    rejectClaim(playerId, claimType) {
-      socket.emit('admin-reject-claim', { roomId: this.roomId, playerId, claimType });
+
+    resumeGame() {
+      socket.emit("admin-resume", this.roomId);
     },
+
+    stopGame() {
+      socket.emit("admin-stop", this.roomId);
+    },
+
+    callNext() {
+      socket.emit("admin-call-next", this.roomId);
+    },
+
+    isCalled(n) {
+      return this.called.includes(n);
+    },
+
     approveTicket(playerId) {
-      socket.emit('admin-approve-ticket', { roomId: this.roomId, playerId });
+      socket.emit("admin-approve-ticket", { roomId: this.roomId, playerId });
     },
 
-    // ✅ Incoming data from server
-    init() {
-      socket.on('number-called', num => {
-        this.called.push(num);
-      });
-      socket.on('update-players', list => this.players = list);
-      socket.on('update-ticket-requests', list => this.ticketRequests = list);
-      socket.on('update-claims', list => this.prizeClaims = list);
-      socket.on('game-summary', list => this.winners = list);
+    acceptClaim(playerId, claimType) {
+      socket.emit("admin-accept-claim", { roomId: this.roomId, playerId, claimType });
     },
 
-    // ✅ UI logic for called number coloring
-    isCalled(n) { return this.called.includes(n); },
+    rejectClaim(playerId, claimType) {
+      socket.emit("admin-reject-claim", { roomId: this.roomId, playerId, claimType });
+    },
 
-    // ✅ Rules toggle logic
     toggleRule(rule) {
       if (this.rules.includes(rule)) {
         this.rules = this.rules.filter(r => r !== rule);
+        delete this.limits[rule];
       } else {
         this.rules.push(rule);
+        this.limits[rule] = 1;
       }
+    },
+
+    generateQRCode() {
+      const canvas = document.getElementById("qrcode");
+      if (!canvas) return;
+      new QRious({ element: canvas, value: `https://mytambola.netlify.app/index.html?room=${this.roomId}`, size: 200 });
     }
-  };
+  }
 }
