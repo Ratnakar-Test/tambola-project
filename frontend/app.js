@@ -1,167 +1,127 @@
-// ✅ app.js — Alpine.js Tambola Player Logic (DaisyUI + Socket.IO integrated)
+// Folder: tambola-project/frontend
+// File: app.js
 
-const socket = io('https://tambola-backend.onrender.com', {
-  transports: ['websocket', 'polling']
+// ========== Setup Socket.IO Connection ==========
+const socket = io(); // Assumes <script src="/socket.io/socket.io.js"></script> in index.html
+
+// ========== Global State ==========
+let roomId = '';
+let playerName = '';
+let autoMarkEnabled = false;
+
+// ========== BLOCK 1: Join Room Function ==========
+/**
+ * Prompt user for room ID and name, then join.
+ */
+function joinRoom() {
+  // TODO: Replace prompts with UI form inputs
+  roomId = prompt('Enter Room ID:');
+  playerName = prompt('Enter Your Name:');
+
+  socket.emit('join-room', { roomId, playerName }, (res) => {
+    if (res.success) {
+      initializeUI();
+    } else {
+      alert(`Join failed: ${res.error}`);
+    }
+  });
+}
+
+// ========== BLOCK 2: UI Initialization ==========
+/**
+ * Show game interface after successful join.
+ */
+function initializeUI() {
+  document.getElementById('join-screen').style.display = 'none';
+  document.getElementById('game-screen').style.display = 'block';
+  // TODO: Render initial tickets & called numbers
+}
+
+// ========== BLOCK 3: Socket Event Handlers ==========
+// New number called
+socket.on('number-called', (data) => {
+  // data: { roomId, number, calledNumbers }
+  renderCalledNumber(data.number);
+  if (autoMarkEnabled) autoMarkTickets(data.number);
 });
 
-function playerDashboard() {
-  return {
-    // 🌐 Game state
-    roomId: '',
-    playerName: '',
-    tickets: [],
-    called: [],
-    autoMark: false,
-    joined: false,
+// Ticket update for this player
+socket.on('ticket-updated', (data) => {
+  // data: { roomId, playerName, tickets: [ [..], ... ] }
+  renderTickets(data.tickets);
+});
 
-    // 📦 UI States
-    showMenu: false,
-    showAddModal: false,
-    showClaimModal: false,
-    showAutoInfo: false,
-    showRoomError: false,
-    roomErrorMessage: '',
-    showBoogie: false,
+// Ticket request response
+socket.on('ticket-request-response', (data) => {
+  // data: { roomId, requestId, approved, tickets?, error? }
+  if (data.approved) {
+    alert('Your ticket request was approved!');
+    renderTickets(data.tickets);
+  } else {
+    alert(`Ticket request denied: ${data.error}`);
+  }
+});
 
-    // 🎯 Claim types
-    selectedPrize: null,
-    prizeTypes: ['Full House', 'Top Line', 'Middle Line', 'Bottom Line', 'Corners'],
+// Claim update (approved/denied)
+socket.on('claim-updated', (data) => {
+  // data: { roomId, claimId, approved, playerName, claimType }
+  alert(`Your claim (${data.claimType}) was ${data.approved ? 'approved' : 'denied'}.`);
+  // TODO: Update 'My Claims' section
+});
 
-    // 🚀 Lifecycle
-    init() {
-      const urlParams = new URLSearchParams(window.location.search);
-      this.roomId = urlParams.get('room') || '';
-      if (this.roomId) this.showMenu = true;
-
-      socket.on('number-called', (n) => {
-        // Immutable update so Alpine will re-render the full list
-        this.called = [...this.called, n];
-      });
-
-      socket.on('ticket-assigned', (layouts, pending = []) => {
-        // layouts: array of 3x9 arrays from backend
-        this.tickets = layouts.map((layout, i) => ({ id: i + 1, layout, marks: [] }));
-        this.initLayouts();       // enforce 5 numbers per row
-        this.joined = true;
-        this.showMenu = true;
-      });
-
-      socket.on('claim-result', ({ status, claimType, reason }) => {
-        this.roomErrorMessage = status === 'accepted'
-          ? `✅ Claim for ${claimType} accepted!`
-          : `❌ Claim rejected: ${reason}`;
-        this.showRoomError = true;
-      });
-
-      socket.on('room-error', (msg) => {
-        this.roomErrorMessage = msg;
-        this.showRoomError = true;
-      });
-    },
-
-    // 🎮 Join game
-    joinGame() {
-      if (!this.roomId || !this.playerName) {
-        this.roomErrorMessage = 'Please enter both Name and Room ID';
-        this.showRoomError = true;
-        return;
-      }
-      socket.emit('join-room', {
-        roomId: this.roomId,
-        playerName: this.playerName
-      });
-      // joined = true is set when 'ticket-assigned' arrives
-    },
-
-    // 🎟 Enforce exactly 5 numbers per row in a 3×9 layout
-    initLayouts() {
-      this.tickets.forEach(ticket => {
-        // Flatten out all numbers (should be 15)
-        const nums = ticket.layout.flat().filter(n => n);
-        ticket.layout = [];
-        for (let r = 0; r < 3; r++) {
-          const row = Array(9).fill(null);
-          // Take next 5 numbers
-          const picks = nums.splice(0, 5);
-          // Randomly place them in 9 cols
-          const indices = Array.from({ length: 9 }, (_, i) => i);
-          picks.forEach(num => {
-            const idx = indices.splice(Math.floor(Math.random() * indices.length), 1)[0];
-            row[idx] = num;
-          });
-          ticket.layout.push(row);
-        }
-      });
-    },
-
-    // ✅ Check mark state
-    isMarked(tid, num) {
-      if (this.autoMark) return this.called.includes(num);
-      const t = this.tickets.find(t => t.id === tid);
-      return t?.marks?.includes(num);
-    },
-
-    // ✏️ Toggle a manual mark
-    toggleMark(tid, num) {
-      if (this.autoMark) return;
-      const t = this.tickets.find(t => t.id === tid);
-      if (!t) return;
-      const idx = t.marks.indexOf(num);
-      if (idx > -1) t.marks.splice(idx, 1);
-      else t.marks.push(num);
-    },
-
-    // 🎯 Handle clicks on cells (with Boogie logic)
-    markNumber(tid, num) {
-      if (this.autoMark) return;
-      // Wrong if number hasn't been called
-      if (!this.called.includes(num)) {
-        this.showBoogie = true;
-      } else {
-        this.toggleMark(tid, num);
-      }
-    },
-
-    // ➕ Request a new ticket
-    requestTicket() {
-      socket.emit('request-ticket', {
-        roomId: this.roomId,
-        playerName: this.playerName
-      });
-      this.showAddModal = false;
-      this.roomErrorMessage = '📨 Ticket request sent to admin';
-      this.showRoomError = true;
-    },
-
-    // 🏆 Submit a prize claim
-    submitClaim() {
-      if (!this.selectedPrize) {
-        this.roomErrorMessage = 'Select a prize to claim';
-        this.showRoomError = true;
-        return;
-      }
-      const ticket = this.tickets[0]?.layout || [];
-      socket.emit('claim-prize', {
-        roomId: this.roomId,
-        playerName: this.playerName,
-        claimType: this.selectedPrize,
-        ticket
-      });
-      this.showClaimModal = false;
-    },
-
-    // 🌟 Auto-mark toggle info
-    autoChanged() {
-      this.showAutoInfo = true;
-      setTimeout(() => this.showAutoInfo = false, 2000);
-    },
-
-    // ❌ Close dialogs
-    closeBoogie() {
-      this.showBoogie = false;
-    },
-    closeRoomError() {
-      this.showRoomError = false;
+// ========== BLOCK 4: Player Actions ==========
+/**
+ * Request an additional ticket.
+ */
+function requestTicket() {
+  socket.emit('request-ticket', { roomId, playerName }, (res) => {
+    if (res.success) {
+      alert('Ticket request sent for approval.');
+    } else {
+      alert(`Request failed: ${res.error}`);
     }
-  };
+  });
 }
+
+/**
+ * Submit a prize claim.
+ * @param {string} claimType - e.g., 'topLine', 'twoLines', 'fullHouse'
+ * @param {number[]} numbers - Claimed numbers
+ */
+function submitClaim(claimType, numbers) {
+  socket.emit('submit-claim', { roomId, playerName, claimType, numbers }, (res) => {
+    if (res.success) {
+      alert('Claim submitted for verification.');
+    } else {
+      alert(`Claim failed: ${res.error}`);
+    }
+  });
+}
+
+/**
+ * Toggle auto-marking on/off.
+ */
+function toggleAutoMark() {
+  autoMarkEnabled = !autoMarkEnabled;
+  socket.emit('toggle-auto-mark', { roomId, playerName, autoMark: autoMarkEnabled });
+  // TODO: Update UI toggle state
+}
+
+// ========== BLOCK 5: Rendering Helpers ==========
+function renderCalledNumber(number) {
+  // TODO: Highlight number in 'Called Numbers' list
+}
+
+function renderTickets(tickets) {
+  // TODO: Render ticket grids for the player
+}
+
+function autoMarkTickets(number) {
+  // TODO: Automatically mark number on tickets if present
+}
+
+// ========== Expose Functions to HTML ==========
+window.joinRoom = joinRoom;
+window.requestTicket = requestTicket;
+window.submitClaim = submitClaim;
+window.toggleAutoMark = toggleAutoMark;
