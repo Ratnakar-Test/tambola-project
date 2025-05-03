@@ -1,27 +1,36 @@
-// ✅ Player-side Tambola Logic using Alpine.js + Socket.IO
+// ✅ app.js (Player Page Logic with Alpine.js & DaisyUI)
 const socket = io('https://tambola-backend.onrender.com', {
   transports: ['websocket', 'polling']
 });
 
 function playerDashboard() {
   return {
-    // 🔹 Reactive State
-    playerName: '',
+    // 🎮 Game State
+    joined: false,
     roomId: '',
-    tickets: [],
-    pendingTickets: [],
-    calledNumbers: [],
-    latestCall: null,
-    autoMark: true,
-    selectedPrize: null,
-    prizeTypes: ['Full House', 'Top Line', 'Middle Line', 'Bottom Line', 'Corners'],
-    showAddTicketModal: false,
-    showClaimPrizeModal: false,
+    playerName: '',
+    roomErrorMessage: '',
 
-    // 🔹 Join Room Logic
-    joinRoom() {
-      if (!this.playerName || !this.roomId) {
-        alert('Please enter Room ID and Player Name.');
+    // 🎟️ Tickets
+    tickets: [],
+    pending: [],
+    prizeTypes: ['Full House', 'Top Line', 'Middle Line', 'Bottom Line', 'Corners'],
+    selectedPrize: null,
+
+    // 🔢 Number Calls
+    called: [],
+    latest: null,
+    autoMark: true,
+
+    // 🧠 Modals & UI Flags
+    showAddModal: false,
+    showClaimModal: false,
+    showAutoInfo: false,
+
+    // ✅ Join Room
+    join() {
+      if (!this.roomId || !this.playerName) {
+        this.roomErrorMessage = 'Please enter Room ID and Name';
         return;
       }
       socket.emit('join-room', {
@@ -30,64 +39,60 @@ function playerDashboard() {
       });
     },
 
-    // 🔹 Request Additional Ticket
+    // ✅ Handle Ticket Assignment
+    handleTicketAssigned(tickets, pending = []) {
+      this.joined = true;
+      this.tickets = tickets.map((t, i) => ({ id: i + 1, layout: t, marks: [] }));
+      this.pending = pending;
+      if (this.autoMark) this.markCalled();
+    },
+
+    // ✅ Add Ticket Request
     requestTicket() {
       socket.emit('request-ticket', {
         roomId: this.roomId,
         playerName: this.playerName
       });
-      this.showAddTicketModal = false;
+      this.showAddModal = true;
+      setTimeout(() => this.showAddModal = false, 2500);
     },
 
-    // 🔹 Claim a Prize
-    submitClaim() {
-      if (!this.selectedPrize) return alert('Select a prize type first.');
+    // ✅ Claim Prize
+    claimPrize() {
+      if (!this.selectedPrize) return alert('Select a prize to claim');
       this.tickets.forEach(ticket => {
         socket.emit('claim-prize', {
           roomId: this.roomId,
           playerName: this.playerName,
           claimType: this.selectedPrize,
-          ticket: ticket.layout
+          ticket
         });
       });
-      this.showClaimPrizeModal = false;
+      this.showClaimModal = false;
     },
 
-    // 🔹 Check if number is marked
-    isMarked(ticket, num) {
-      return this.autoMark
-        ? this.calledNumbers.includes(num)
-        : (ticket.marks || []).includes(num);
-    },
-
-    // 🔹 Mark or Unmark cell manually
-    toggleMark(ticket, num) {
-      if (this.autoMark || !num) return;
-      ticket.marks = ticket.marks || [];
-      if (ticket.marks.includes(num)) {
-        ticket.marks = ticket.marks.filter(n => n !== num);
-      } else {
-        ticket.marks.push(num);
+    // ✅ Manual Marking Toggle
+    toggleMark(tid, num) {
+      if (!this.autoMark) {
+        const ticket = this.tickets.find(t => t.id === tid);
+        ticket.marks = ticket.marks || [];
+        if (ticket.marks.includes(num)) {
+          ticket.marks = ticket.marks.filter(n => n !== num);
+        } else {
+          ticket.marks.push(num);
+        }
       }
     },
 
-    // 🔹 Mark all called numbers (auto)
-    markCalled() {
-      this.tickets.forEach(ticket => {
-        ticket.marks = [];
-        ticket.layout.flat().forEach(num => {
-          if (num && this.calledNumbers.includes(num)) {
-            ticket.marks.push(num);
-          }
-        });
-      });
+    isMarked(ticket, num) {
+      return this.autoMark ? this.called.includes(num) : (ticket.marks || []).includes(num);
     },
 
-    // 🔹 Confetti 🎉
+    // ✅ Confetti
     fireConfetti() {
       const duration = 1000;
       const animationEnd = Date.now() + duration;
-      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 1000 };
       const interval = setInterval(() => {
         if (Date.now() > animationEnd) return clearInterval(interval);
         confetti(Object.assign({}, defaults, {
@@ -97,28 +102,39 @@ function playerDashboard() {
       }, 200);
     },
 
-    // 🔹 Init Alpine: Setup Socket Listeners
+    autoChanged() {
+      this.showAutoInfo = true;
+      setTimeout(() => this.showAutoInfo = false, 2000);
+    },
+
+    // ✅ Called number logic
+    markCalled() {
+      this.tickets.forEach(ticket => {
+        ticket.marks = [];
+        ticket.layout.flat().forEach(n => {
+          if (n && this.called.includes(n)) ticket.marks.push(n);
+        });
+      });
+    },
+
+    // ✅ Setup Socket Events
     init() {
-      socket.on('room-error', (msg) => {
-        alert(msg || 'Room does not exist.');
+      socket.on('room-error', msg => {
+        this.roomErrorMessage = msg || 'Room error';
+        this.joined = false;
       });
 
-      socket.on('ticket-assigned', (tickets, pending = []) => {
-        this.tickets = tickets.map((t, i) => ({ id: i + 1, layout: t, marks: [] }));
-        this.pendingTickets = pending;
-        if (this.autoMark) this.markCalled();
-      });
+      socket.on('ticket-assigned', this.handleTicketAssigned.bind(this));
 
-      socket.on('number-called', (num) => {
-        this.calledNumbers.push(num);
-        this.latestCall = num;
+      socket.on('number-called', num => {
+        this.latest = num;
+        this.called.push(num);
         if (this.autoMark) this.markCalled();
         if (document.querySelector(`.cell-${num}`)) this.fireConfetti();
       });
 
       socket.on('claim-result', ({ status, claimType, reason }) => {
-        const message = `${claimType}: ${status === 'accepted' ? '✅ Accepted' : '❌ Rejected'} ${reason || ''}`;
-        alert(message);
+        alert(`${claimType}: ${status === 'accepted' ? '✅ Accepted' : '❌ Rejected'}${reason ? ' - ' + reason : ''}`);
         if (status === 'accepted') this.fireConfetti();
       });
     }
