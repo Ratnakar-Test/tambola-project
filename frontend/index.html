@@ -13,24 +13,27 @@
   <script src="app.js"></script>
 </head>
 <body x-data="playerDashboard()" x-init="init()" class="bg-gray-100 min-h-screen">
-  <!-- DRAWER LAYOUT -->
+
   <div class="drawer">
     <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle" />
     <div class="drawer-content flex flex-col">
 
-      <!-- HERO JOIN SCREEN (before joining) -->
-      <section x-show="!joined" class="hero min-h-screen bg-base-200">
-        <div class="hero-content text-center flex flex-col">
-          <h1 class="text-4xl font-bold mb-6">🎉 Welcome to Your Tambola Game</h1>
-          <div class="flex flex-col gap-4 w-full max-w-xs">
-            <input x-model="roomId" placeholder="Enter Room ID" class="input input-bordered input-lg" />
-            <input x-model="playerName" placeholder="Enter Your Name" class="input input-bordered input-lg" />
-            <button class="btn btn-primary btn-lg" @click="joinGame">Join Game</button>
+      <!-- HERO JOIN SECTION -->
+      <div x-show="!joined" class="flex flex-col items-center justify-center min-h-screen px-4 text-center">
+        <div class="hero bg-base-200 rounded-lg p-6 shadow-lg w-full max-w-md">
+          <div class="hero-content flex-col">
+            <h1 class="text-3xl font-bold mb-2">🎉 Welcome to Your Tambola Game</h1>
+            <p class="text-sm mb-4">Join a room to begin playing</p>
+            <div class="form-control w-full">
+              <input x-model="roomId" type="text" placeholder="Enter Room ID" class="input input-bordered w-full mb-2" />
+              <input x-model="playerName" type="text" placeholder="Enter Your Name" class="input input-bordered w-full mb-4" />
+              <button class="btn btn-primary w-full" @click="joinGame">Join Game</button>
+            </div>
           </div>
         </div>
-      </section>
+      </div>
 
-      <!-- HEADER (Only shows after joined) -->
+      <!-- HEADER -->
       <header x-show="joined" class="flex items-center justify-between p-4 bg-white shadow">
         <div class="flex items-center">
           <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
@@ -42,7 +45,7 @@
         </div>
       </header>
 
-      <!-- MAIN CONTENT -->
+      <!-- MAIN GAME CONTENT -->
       <main class="flex-1 p-4 overflow-auto" x-show="joined">
         <!-- CALLED NUMBERS -->
         <section class="mb-4">
@@ -54,17 +57,17 @@
           </div>
         </section>
 
-        <!-- TICKET DISPLAY -->
+        <!-- TICKETS GRID -->
         <section>
           <h2 class="text-lg font-semibold mb-2">🎟 Your Tickets</h2>
           <template x-for="ticket in tickets" :key="ticket.id">
             <div class="bg-white rounded shadow p-4 mb-4">
-              <div class="grid grid-cols-9 gap-1">
-                <template x-for="(row, r) in ticket" :key="r">
-                  <template x-for="(cell, c) in row" :key="c">
-                    <div class="border text-center h-10 flex items-center justify-center rounded"
-                      :class="cell && isMarked(cell) ? 'bg-blue-600 text-white' : 'bg-gray-100'"
-                      x-text="cell || ''">
+              <div class="grid grid-cols-9 gap-[2px]">
+                <template x-for="(row, rIdx) in ticket.layout" :key="rIdx">
+                  <template x-for="(cell, cIdx) in row" :key="cIdx">
+                    <div class="border h-10 w-full flex items-center justify-center rounded-sm text-sm"
+                         :class="cell && isMarked(ticket.id, cell) ? 'bg-blue-600 text-white' : 'bg-gray-100'"
+                         x-text="cell || ''">
                     </div>
                   </template>
                 </template>
@@ -75,7 +78,7 @@
       </main>
 
       <!-- BOTTOM NAV -->
-      <footer x-show="joined" class="fixed bottom-0 left-0 right-0 bg-white border-t shadow p-2 flex justify-around items-center">
+      <footer x-show="joined" class="fixed bottom-0 left-0 right-0 bg-white border-t shadow p-2 flex justify-around items-center z-50">
         <button class="btn btn-primary btn-sm" @click="showAddModal = true">Add Ticket</button>
         <button class="btn btn-secondary btn-sm" @click="showClaimModal = true">Claim Prize</button>
         <label class="flex items-center gap-2">
@@ -86,7 +89,7 @@
     </div>
 
     <!-- SIDEBAR MENU -->
-    <div class="drawer-side z-40">
+    <div class="drawer-side z-40" x-show="joined">
       <label for="sidebar-toggle" class="drawer-overlay"></label>
       <aside class="w-64 bg-blue-800 text-white p-6">
         <h2 class="text-lg font-semibold mb-2">Player Menu</h2>
@@ -127,5 +130,6 @@
       </div>
     </div>
   </div>
+
 </body>
 </html>
