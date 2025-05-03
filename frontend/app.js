@@ -10,13 +10,16 @@ function playerDashboard() {
     tickets: [],
     called: [],
     autoMark: false,
-    joined: false, // ✅ NEW: controls visibility of join UI
+    joined: false,                // controls visibility of join UI
 
     // 📦 UI States
     showMenu: false,
     showAddModal: false,
     showClaimModal: false,
     showAutoInfo: false,
+    showRoomError: false,         // room validation dialog
+    roomErrorMessage: '',
+    showBoogie: false,            // wrong mark dialog
 
     // 🎯 Claim types
     selectedPrize: null,
@@ -36,39 +39,48 @@ function playerDashboard() {
         this.tickets = tickets.map((layout, i) => ({ id: i + 1, layout, marks: [] }));
         this.initLayouts();
         this.showMenu = true;
+        this.joined = true;
       });
 
       socket.on('claim-result', ({ status, claimType, reason }) => {
-        if (status === 'accepted') alert(`✅ Claim for ${claimType} accepted!`);
-        else alert(`❌ Claim rejected: ${reason}`);
+        this.roomErrorMessage = status === 'accepted'
+          ? `✅ Claim for ${claimType} accepted!`
+          : `❌ Claim rejected: ${reason}`;
+        this.showRoomError = true;
       });
 
-      socket.on('room-error', (msg) => alert(msg));
+      socket.on('room-error', (msg) => {
+        this.roomErrorMessage = msg;
+        this.showRoomError = true;
+      });
     },
 
     // 🎮 Join game
     joinGame() {
-      if (!this.roomId || !this.playerName) return alert('Enter name and Room ID');
+      if (!this.roomId || !this.playerName) {
+        this.roomErrorMessage = 'Please enter both name and Room ID';
+        this.showRoomError = true;
+        return;
+      }
       socket.emit('join-room', { roomId: this.roomId, playerName: this.playerName });
-      this.joined = true; // ✅ Show game UI after successful join
+      // joined = true will be set on 'ticket-assigned' event
     },
 
-    // 🎟 Ticket grid prep (no reshaping)
+    // 🎟 Ticket grid prep (layout already 3×9)
     initLayouts() {
       this.tickets.forEach((ticket, i) => {
-        const nums = ticket.layout.flat().filter(n => n);
         this.tickets[i].marks = [];
-        // Already 3x9 layout from backend
       });
     },
 
-    // ✅ Toggle mark for number
+    // ✅ Is number marked?
     isMarked(tid, num) {
       if (this.autoMark) return this.called.includes(num);
       const t = this.tickets.find(t => t.id === tid);
       return t?.marks?.includes(num);
     },
 
+    // ✏️ Toggle mark manually
     toggleMark(tid, num) {
       if (this.autoMark) return;
       const t = this.tickets.find(t => t.id === tid);
@@ -78,16 +90,31 @@ function playerDashboard() {
       else t.marks.push(num);
     },
 
+    // 📍 Mark number action (with Boogie logic)
+    markNumber(tid, num) {
+      if (this.autoMark) return;
+      if (!this.called.includes(num)) {
+        this.showBoogie = true;
+      } else {
+        this.toggleMark(tid, num);
+      }
+    },
+
     // ➕ Ticket request
     requestTicket() {
       socket.emit('request-ticket', { roomId: this.roomId, playerName: this.playerName });
       this.showAddModal = false;
-      alert('📨 Request sent to admin for a new ticket');
+      this.roomErrorMessage = '📨 Request sent to admin for a new ticket';
+      this.showRoomError = true;
     },
 
     // 🏆 Submit prize claim
     submitClaim() {
-      if (!this.selectedPrize) return alert('Select a prize to claim');
+      if (!this.selectedPrize) {
+        this.roomErrorMessage = 'Select a prize to claim';
+        this.showRoomError = true;
+        return;
+      }
       const ticket = this.tickets[0]?.layout || [];
       socket.emit('claim-prize', {
         roomId: this.roomId,
@@ -102,6 +129,16 @@ function playerDashboard() {
     autoChanged() {
       this.showAutoInfo = true;
       setTimeout(() => this.showAutoInfo = false, 2000);
+    },
+
+    // ❌ Close Boogie modal
+    closeBoogie() {
+      this.showBoogie = false;
+    },
+
+    // ❌ Close Room Error modal
+    closeRoomError() {
+      this.showRoomError = false;
     }
   };
 }
