@@ -1,0 +1,73 @@
+<!-- File: tambola-project/frontend/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tambola Player</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 p-6">
+
+  <!-- BLOCK 1: Join Screen -->
+  <div id="join-screen" class="flex flex-col items-center justify-center min-h-screen">
+    <h1 class="text-4xl font-bold mb-6">Tambola Game</h1>
+    <input id="room-id-input" type="text" placeholder="Room ID" class="mb-4 p-2 border rounded w-64" />
+    <input id="player-name-input" type="text" placeholder="Your Name" class="mb-6 p-2 border rounded w-64" />
+    <button onclick="joinRoom()" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Join Game</button>
+  </div>
+
+  <!-- BLOCK 2: Game Screen -->
+  <div id="game-screen" class="hidden">
+    <!-- SECTION: Called Numbers -->
+    <div class="mb-6">
+      <h2 class="text-2xl font-semibold mb-2">Called Numbers</h2>
+      <div id="called-numbers" class="flex flex-wrap gap-2"></div>
+    </div>
+
+    <!-- SECTION: Tickets -->
+    <div class="mb-6">
+      <h2 class="text-2xl font-semibold mb-2">Your Tickets</h2>
+      <div id="tickets-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+    </div>
+
+    <!-- BLOCK 3: Player Actions -->
+    <div class="flex items-center space-x-4 mb-6">
+      <button onclick="requestTicket()" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Request Ticket</button>
+      <label class="flex items-center space-x-2">
+        <input type="checkbox" onchange="toggleAutoMark()" class="form-checkbox" />
+        <span>Auto-Mark</span>
+      </label>
+    </div>
+
+    <!-- SECTION: Claim Prize -->
+    <div id="claim-section" class="mb-6">
+      <h2 class="text-2xl font-semibold mb-2">Claim Prize</h2>
+      <div class="flex flex-col md:flex-row items-start md:items-center space-y-4 md:space-y-0 md:space-x-4">
+        <select id="claim-type" class="p-2 border rounded">
+          <option value="topLine">Top Line</option>
+          <option value="twoLines">Two Lines</option>
+          <option value="fullHouse">Full House</option>
+        </select>
+        <input id="claim-numbers" type="text" placeholder="Numbers (comma-separated)" class="p-2 border rounded w-full md:w-64" />
+        <button onclick="
+          submitClaim(
+            document.getElementById('claim-type').value,
+            document.getElementById('claim-numbers').value.split(',').map(n => +n)
+          )"
+          class="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600">
+          Submit Claim
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alpine.js (optional) -->
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <!-- Socket.IO client -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- App logic -->
+  <script src="app.js"></script>
+</body>
+</html>

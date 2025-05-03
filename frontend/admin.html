@@ -1,0 +1,75 @@
+<!-- File: tambola-project/frontend/admin.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tambola Admin</title>
+  <!-- Tailwind CSS & DaisyUI -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { plugins: [window.daisyui] }
+  </script>
+</head>
+<body class="bg-gray-100 text-gray-800 p-6">
+
+  <!-- BLOCK 1: Setup Screen -->
+  <div id="setup-screen" class="flex flex-col items-center justify-center min-h-screen space-y-4">
+    <h1 class="text-4xl font-bold">Tambola Admin</h1>
+    <input id="admin-name-input" type="text" placeholder="Admin Name" class="p-2 border rounded w-64" />
+    <input id="max-tickets-input" type="number" placeholder="Max Tickets per Player (5)" class="p-2 border rounded w-64" />
+    <input id="room-id-input" type="text" placeholder="Room ID to Join" class="p-2 border rounded w-64" />
+    <div class="space-x-4">
+      <button onclick="createRoom()" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Create Room</button>
+      <button onclick="joinRoom()" class="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700">Join Room</button>
+    </div>
+  </div>
+
+  <!-- BLOCK 2: Admin Screen -->
+  <div id="admin-screen" class="hidden">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-2xl font-semibold">Room: <span id="room-id-display" class="font-mono"></span></h2>
+      <button onclick="callNumber()" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">Call Number</button>
+    </div>
+
+    <!-- SECTION: Number Grid -->
+    <div class="mb-6">
+      <h3 class="text-xl font-semibold mb-2">Number Grid</h3>
+      <div id="number-grid" class="grid grid-cols-10 gap-2">
+        <!-- JS will populate cells with ids num-1 … num-90 -->
+        <script>
+          for (let i = 1; i <= 90; i++) {
+            document.write(`<div id="num-${i}" class="h-10 flex items-center justify-center border">${i}</div>`);
+          }
+        </script>
+      </div>
+    </div>
+
+    <!-- SECTION: Players List -->
+    <div class="mb-6">
+      <h3 class="text-xl font-semibold mb-2">Players</h3>
+      <ul id="players-list" class="list-disc list-inside"></ul>
+    </div>
+
+    <!-- SECTION: Ticket Requests -->
+    <div class="mb-6">
+      <h3 class="text-xl font-semibold mb-2">Ticket Requests</h3>
+      <div id="ticket-requests" class="space-y-2"></div>
+    </div>
+
+    <!-- SECTION: Claim Requests -->
+    <div class="mb-6">
+      <h3 class="text-xl font-semibold mb-2">Prize Claims</h3>
+      <div id="claim-requests" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Alpine.js (optional) -->
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <!-- Socket.IO client -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- Admin logic -->
+  <script src="admin.js"></script>
+</body>
+</html>
