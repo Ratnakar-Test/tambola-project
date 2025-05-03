@@ -1,33 +1,41 @@
 <!-- File: tambola-project/frontend/admin.html -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <!-- BLOCK 1: HEAD (Imports & Metadata) -->
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Tambola Admin Dashboard</title>
+  <!-- DaisyUI (includes Tailwind) -->
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet"/>
+  <!-- Tailwind “browser” build -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <!-- Alpine.js for reactivity -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- Socket.IO client from backend -->
   <script src="https://tambola-backend.onrender.com/socket.io/socket.io.js"></script>
 </head>
 <body class="bg-base-200">
 
   <div x-data="adminDashboard()" x-init="init()" class="relative">
 
-    <!-- Setup Screen -->
+    <!-- BLOCK 2: SETUP SCREEN -->
     <div x-show="!connected" class="hero min-h-screen bg-base-200">
       <div class="hero-content text-center">
         <div class="max-w-md">
           <h1 class="text-5xl font-bold mb-6">Tambola Admin</h1>
-          <input x-model="adminName" type="text" placeholder="Your Name"
+          <input x-model="adminName" type="text" placeholder="Your Name" 
                  class="input input-bordered w-full mb-4"/>
-          <input x-model.number="maxTickets" type="number" min="1"
-                 placeholder="Max Tickets per Player" class="input input-bordered w-full mb-6"/>
+          <input x-model.number="maxTickets" type="number" min="1" placeholder="Max Tickets per Player" 
+                 class="input input-bordered w-full mb-6"/>
           <div class="space-x-4">
             <button @click="createRoom()" class="btn btn-primary">Create Room</button>
             <button @click="joinRoom()"   class="btn btn-secondary">Join Room</button>
           </div>
           <div x-show="errorMsg" class="alert alert-error shadow-lg mt-6">
-            <div><span x-text="errorMsg"></span>
+            <div>
+              <span x-text="errorMsg"></span>
               <button @click="errorMsg=''" class="btn btn-sm btn-ghost ml-4">OK</button>
             </div>
           </div>
@@ -35,12 +43,12 @@
       </div>
     </div>
 
-    <!-- Main Drawer UI -->
+    <!-- BLOCK 3: DRAWER LAYOUT (Main UI) -->
     <div x-show="connected" class="drawer">
       <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle"/>
       <div class="drawer-content flex flex-col">
 
-        <!-- Header -->
+        <!-- HEADER -->
         <header class="flex items-center p-4 bg-white shadow">
           <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
@@ -55,24 +63,26 @@
           <button @click="callNumber()" class="btn btn-primary">Call Number</button>
         </header>
 
-        <!-- Content -->
+        <!-- MAIN CONTENT -->
         <main class="p-4 pb-24 overflow-auto">
 
-          <!-- Numbers -->
+          <!-- SECTION: Numbers Grid -->
           <section x-show="currentTab==='Numbers'">
             <h2 class="text-xl font-semibold mb-2">Number Grid</h2>
             <div class="grid grid-cols-10 gap-2 p-2 bg-white rounded-lg shadow-inner">
               <template x-for="n in 90" :key="n">
                 <div @click="toggleNumber(n)"
-                     class="p-2 border rounded cursor-pointer"
-                     :class="called.includes(n)? 'bg-primary text-white':'hover:bg-base-200'">
+                     class="p-2 border rounded cursor-pointer transition-colors"
+                     :class="called.includes(n) 
+                       ? 'bg-primary text-white' 
+                       : 'hover:bg-base-200'">
                   <span x-text="n"></span>
                 </div>
               </template>
             </div>
           </section>
 
-          <!-- Players -->
+          <!-- SECTION: Players List -->
           <section x-show="currentTab==='Players'" class="mt-6 bg-white p-4 rounded-lg shadow-inner">
             <h2 class="text-xl font-semibold mb-2">Players</h2>
             <ul class="list-disc list-inside">
@@ -80,7 +90,7 @@
             </ul>
           </section>
 
-          <!-- Ticket Requests -->
+          <!-- SECTION: Ticket Requests -->
           <section x-show="currentTab==='Ticket Requests'" class="mt-6 bg-white p-4 rounded-lg shadow-inner">
             <h2 class="text-xl font-semibold mb-2">Ticket Requests</h2>
             <template x-for="req in ticketRequests" :key="req.requestId">
@@ -94,7 +104,7 @@
             </template>
           </section>
 
-          <!-- Prize Claims -->
+          <!-- SECTION: Prize Claims -->
           <section x-show="currentTab==='Prize Claims'" class="mt-6 bg-white p-4 rounded-lg shadow-inner">
             <h2 class="text-xl font-semibold mb-2">Prize Claims</h2>
             <template x-for="c in prizeClaims" :key="c.claimId">
@@ -108,44 +118,99 @@
             </template>
           </section>
 
-          <!-- Winners & Rules omitted for brevity; unchanged -->
+          <!-- SECTION: Winners -->
+          <section x-show="currentTab==='Winners'" class="mt-6 bg-white p-4 rounded-lg shadow-inner">
+            <h2 class="text-xl font-semibold mb-2">Winners</h2>
+            <ul class="list-disc list-inside">
+              <template x-for="w in winners" :key="w.claimId">
+                <li x-text="w.playerName + ' → ' + w.claimType"></li>
+              </template>
+            </ul>
+          </section>
+
+          <!-- SECTION: Winning Rules -->
+          <section x-show="currentTab==='Rules'" class="mt-6 bg-white p-4 rounded-lg shadow-inner">
+            <h2 class="text-xl font-semibold mb-2">Winning Rules</h2>
+            <form class="space-y-3">
+              <template x-for="r in ruleTypes" :key="r.key">
+                <div class="flex items-center">
+                  <input type="checkbox" class="toggle toggle-primary mr-2" x-model="r.enabled"/>
+                  <span class="flex-1" x-text="r.label"></span>
+                  <input type="number" class="input input-bordered w-20 ml-2" min="1" x-model.number="r.max"/>
+                </div>
+              </template>
+            </form>
+          </section>
+
+          <!-- SECTION: QR Code -->
+          <section x-show="currentTab==='QR Code'" class="mt-6 bg-white p-4 rounded-lg shadow-inner">
+            <h2 class="text-xl font-semibold mb-2">Room QR Code</h2>
+            <div class="p-8 bg-gray-100 rounded-lg flex items-center justify-center">
+              <span class="text-gray-500">QR CODE</span>
+            </div>
+          </section>
 
         </main>
 
-        <!-- Bottom Nav -->
-        <nav class="fixed bottom-0 w-full bg-white border-t p-2 flex justify-around">
+        <!-- BLOCK 4: BOTTOM NAVIGATION -->
+        <nav class="fixed bottom-0 w-full bg-white border-t p-2 flex justify-around items-center z-50">
           <button @click="start()" class="btn btn-primary">Start</button>
           <button @click="pause()" class="btn btn-warning">Pause</button>
           <button @click="stop()" class="btn btn-error">Stop</button>
-          <!-- Mode/Interval controls unchanged -->
+          <select class="select select-bordered w-24" x-model="mode">
+            <option>Manual</option><option>Auto</option>
+          </select>
+          <select class="select select-bordered w-24" x-model.number="interval">
+            <option>3</option><option>5</option><option>7</option>
+          </select>
         </nav>
 
       </div>
 
-      <!-- Sidebar -->
+      <!-- BLOCK 5: SIDEBAR -->
       <div class="drawer-side">
         <label for="sidebar-toggle" class="drawer-overlay"></label>
         <aside class="p-6 w-64 bg-base-300 text-base-content rounded-r-lg">
           <ul class="space-y-2">
-            <li><a href="#" @click.prevent="currentTab='Numbers'; $refs.sidebarToggle.checked=false"
-                   :class="currentTab==='Numbers'?'font-bold':''">Numbers</a></li>
-            <li><a href="#" @click.prevent="currentTab='Players'; $refs.sidebarToggle.checked=false"
-                   :class="currentTab==='Players'?'font-bold':''">Players</a></li>
-            <li><a href="#" @click.prevent="currentTab='Ticket Requests'; $refs.sidebarToggle.checked=false"
-                   :class="currentTab==='Ticket Requests'?'font-bold':''">Ticket Requests</a></li>
-            <li><a href="#" @click.prevent="currentTab='Prize Claims'; $refs.sidebarToggle.checked=false"
-                   :class="currentTab==='Prize Claims'?'font-bold':''">Prize Claims</a></li>
-            <!-- Others omitted -->
+            <li>
+              <a href="#" @click.prevent="currentTab='Numbers'; $refs.sidebarToggle.checked=false"
+                 :class="currentTab==='Numbers'?'font-bold':''">Numbers</a>
+            </li>
+            <li>
+              <a href="#" @click.prevent="currentTab='Players'; $refs.sidebarToggle.checked=false"
+                 :class="currentTab==='Players'?'font-bold':''">Players</a>
+            </li>
+            <li>
+              <a href="#" @click.prevent="currentTab='Ticket Requests'; $refs.sidebarToggle.checked=false"
+                 :class="currentTab==='Ticket Requests'?'font-bold':''">Ticket Requests</a>
+            </li>
+            <li>
+              <a href="#" @click.prevent="currentTab='Prize Claims'; $refs.sidebarToggle.checked=false"
+                 :class="currentTab==='Prize Claims'?'font-bold':''">Prize Claims</a>
+            </li>
+            <li>
+              <a href="#" @click.prevent="currentTab='Winners'; $refs.sidebarToggle.checked=false"
+                 :class="currentTab==='Winners'?'font-bold':''">Winners</a>
+            </li>
+            <li>
+              <a href="#" @click.prevent="currentTab='Rules'; $refs.sidebarToggle.checked=false"
+                 :class="currentTab==='Rules'?'font-bold':''">Rules</a>
+            </li>
+            <li>
+              <a href="#" @click.prevent="currentTab='QR Code'; $refs.sidebarToggle.checked=false"
+                 :class="currentTab==='QR Code'?'font-bold':''">QR Code</a>
+            </li>
           </ul>
         </aside>
       </div>
     </div>
   </div>
 
-  <!-- BLOCK 7: Alpine Component Script -->
+  <!-- BLOCK 6: Alpine Component Script -->
   <script>
     function adminDashboard() {
       return {
+        // State
         connected: false,
         roomId: '',
         adminName: '',
@@ -157,38 +222,138 @@
         ticketRequests: [],
         prizeClaims: [],
         winners: [],
-        socket: null,
+        ruleTypes: [
+          { key:'topLine',   label:'Top Line',   enabled:true, max:1 },
+          { key:'twoLines',  label:'Two Lines',  enabled:true, max:1 },
+          { key:'fullHouse', label:'Full House', enabled:true, max:1 }
+        ],
+        mode:'Manual',
+        interval:3,
+        autoInterval:null,
+        socket:null,
 
         init() {
           this.socket = io('https://tambola-backend.onrender.com');
-          this.socket.on('connect_error', () => this.errorMsg='Cannot reach server');
 
-          this.socket.on('room-created', data => {
-            this.roomId = data.roomId; this.connected=true;
+          // CONNECTION-ERROR HANDLER
+          this.socket.on('connect_error', err => {
+            console.error('Socket error', err);
+            this.errorMsg = 'Cannot reach server';
           });
-          this.socket.on('player-joined', data => this.players=data.players);
-          this.socket.on('number-called', data => this.called=data.calledNumbers);
+
+          // Events
+          this.socket.on('room-created', data => {
+            this.roomId = data.roomId;
+            this.connected = true;
+          });
+          this.socket.on('player-joined', data => {
+            this.players = data.players;
+          });
+          this.socket.on('number-called', data => {
+            this.called = data.calledNumbers;
+          });
           this.socket.on('ticket-requested', data => {
-            this.ticketRequests.push({requestId:data.requestId, playerName:data.playerName});
+            this.ticketRequests.push({ requestId:data.requestId, playerName:data.playerName });
           });
           this.socket.on('claim-submitted', data => {
-            this.prizeClaims.push({claimId:data.claimId, playerName:data.playerName, claimType:data.claimType});
+            this.prizeClaims.push({ claimId:data.claimId, playerName:data.playerName, claimType:data.claimType });
+          });
+          this.socket.on('claim-updated', data => {
+            this.winners.push({ playerName:data.playerName, claimType:data.claimType, claimId:data.claimId });
           });
         },
 
-        createRoom() { /* unchanged */ },
-        joinRoom()   { /* unchanged */ },
-        callNumber() { /* unchanged */ },
-        approveRequest(id){ /* unchanged */ },
-        rejectRequest(id){ /* unchanged */ },
-        approveClaim(id){ /* unchanged */ },
-        rejectClaim(id){ /* unchanged */ },
-        toggleNumber(n){ /* unchanged */ },
-        start(){ /* unchanged */ },
-        pause(){ /* unchanged */ },
-        stop(){ /* unchanged */ }
+        createRoom() {
+          this.errorMsg = '';
+          if (!this.adminName) {
+            this.errorMsg = 'Enter your name';
+            return;
+          }
+          this.socket.emit('create-room',
+            { adminName:this.adminName, maxTicketsPerPlayer:this.maxTickets },
+            res => {
+              if (!res.success) {
+                this.errorMsg = res.error;
+              } else {
+                this.roomId = res.roomId;
+                this.connected = true;
+              }
+            }
+          );
+        },
+
+        joinRoom() {
+          this.errorMsg = '';
+          if (!this.adminName || !this.roomId) {
+            this.errorMsg = 'Name & Room ID required';
+            return;
+          }
+          this.socket.emit('join-room',
+            { roomId:this.roomId, playerName:this.adminName },
+            res => {
+              if (res.success) this.connected = true;
+              else this.errorMsg = res.error;
+            }
+          );
+        },
+
+        callNumber() {
+          this.socket.emit('call-number', { roomId:this.roomId }, res => {
+            if (!res.success) alert(res.error);
+          });
+        },
+
+        approveRequest(id) {
+          this.socket.emit('approve-ticket',
+            { roomId:this.roomId, requestId:id, approved:true }
+          );
+          this.ticketRequests = this.ticketRequests.filter(r => r.requestId!==id);
+        },
+
+        rejectRequest(id) {
+          this.socket.emit('approve-ticket',
+            { roomId:this.roomId, requestId:id, approved:false }
+          );
+          this.ticketRequests = this.ticketRequests.filter(r => r.requestId!==id);
+        },
+
+        approveClaim(id) {
+          this.socket.emit('verify-claim',
+            { roomId:this.roomId, claimId:id, approved:true }
+          );
+          this.prizeClaims = this.prizeClaims.filter(c => c.claimId!==id);
+        },
+
+        rejectClaim(id) {
+          this.socket.emit('verify-claim',
+            { roomId:this.roomId, claimId:id, approved:false }
+          );
+          this.prizeClaims = this.prizeClaims.filter(c => c.claimId!==id);
+        },
+
+        toggleNumber(n) {
+          if (this.called.includes(n)) this.called = this.called.filter(x=>x!==n);
+          else this.called.push(n);
+        },
+
+        start() {
+          if (this.mode==='Auto') {
+            this.autoInterval = setInterval(()=>this.callNumber(), this.interval*1000);
+          } else this.callNumber();
+        },
+
+        pause() {
+          clearInterval(this.autoInterval);
+        },
+
+        stop() {
+          clearInterval(this.autoInterval);
+          this.called = [];
+          this.winners = [];
+        }
       }
     }
   </script>
+
 </body>
 </html>
