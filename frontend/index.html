@@ -1,121 +1,140 @@
 <!DOCTYPE html>
-<html lang="en" x-data="playerDashboard()" x-init="init()">
+<html lang="en" x-data="playerDashboard()" x-init="init()" class="bg-base-200">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Tambola Player</title>
-
-  <!-- Tailwind + DaisyUI -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/daisyui"></script>
-
-  <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-
-  <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-
-  <!-- Socket.io -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@3.8.3/dist/full.css" rel="stylesheet" />
 </head>
-<body class="bg-gray-50 text-gray-800 min-h-screen">
+<body class="min-h-screen flex flex-col">
 
-  <!-- 🔹 Join Section -->
-  <div class="max-w-md mx-auto mt-10 p-6 bg-white rounded-xl shadow" x-show="!tickets.length">
-    <h2 class="text-xl font-bold mb-4">Join Tambola Room</h2>
-    <input type="text" placeholder="Your Name" class="input input-bordered w-full mb-3" x-model="playerName">
-    <input type="text" placeholder="Room ID" class="input input-bordered w-full mb-3" x-model="roomId">
-    <button class="btn btn-primary w-full" @click="joinRoom()">Join</button>
+  <!-- Navbar -->
+  <div class="navbar bg-primary text-white shadow">
+    <div class="flex-1">
+      <button class="btn btn-ghost btn-square" @click="$refs.drawer.classList.toggle('hidden')">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+      <span class="ml-2 font-bold text-xl">Tambola</span>
+    </div>
   </div>
 
-  <!-- 🔹 Game Section -->
-  <div class="max-w-6xl mx-auto mt-6" x-show="tickets.length">
+  <!-- Sidebar Drawer -->
+  <div x-ref="drawer" class="fixed left-0 top-0 h-full w-64 bg-base-100 shadow-lg p-4 hidden z-40">
+    <h2 class="text-lg font-bold mb-4">Menu</h2>
+    <ul class="menu">
+      <li><a>Dashboard</a></li>
+      <li><a>Rules</a></li>
+      <li><a>About</a></li>
+    </ul>
+  </div>
 
-    <div class="flex justify-between items-center px-4 mb-4">
-      <h2 class="text-lg font-semibold">👤 Welcome, <span x-text="playerName"></span></h2>
-      <span class="badge badge-primary text-lg" x-show="latestCall" x-text="'Latest: ' + latestCall"></span>
+  <!-- Login Section -->
+  <div class="p-4" x-show="tickets.length === 0">
+    <div class="card bg-white p-6 shadow-md max-w-sm mx-auto">
+      <h2 class="text-xl font-semibold mb-4 text-center">Join Game</h2>
+      <input type="text" class="input input-bordered w-full mb-3" placeholder="Enter Room ID" x-model="roomId" />
+      <input type="text" class="input input-bordered w-full mb-3" placeholder="Enter Your Name" x-model="playerName" />
+      <button class="btn btn-primary w-full" @click="join()">Join Game</button>
+    </div>
+  </div>
+
+  <!-- Game Section -->
+  <div class="flex-1 p-4 overflow-y-auto" x-show="tickets.length > 0">
+
+    <!-- Called Numbers -->
+    <div class="mb-4">
+      <h2 class="text-lg font-bold">Called Numbers</h2>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <template x-for="num in called" :key="num">
+          <div :class="{
+            'badge badge-primary': num !== latest,
+            'badge badge-accent': num === latest
+          }" x-text="num"></div>
+        </template>
+        <template x-if="called.length === 0">
+          <span class="text-gray-400">No numbers called yet</span>
+        </template>
+      </div>
     </div>
 
-    <!-- 🎟️ Tickets -->
-    <div class="grid gap-4 px-4 overflow-x-auto">
+    <!-- Tickets -->
+    <div class="grid gap-6">
       <template x-for="ticket in tickets" :key="ticket.id">
-        <div class="bg-white p-4 rounded-xl shadow w-full">
-          <h3 class="font-medium mb-2">Ticket #<span x-text="ticket.id"></span></h3>
+        <div class="bg-white p-4 rounded-lg shadow-md">
+          <h3 class="font-bold mb-2">Ticket #<span x-text="ticket.id"></span></h3>
           <div class="grid grid-cols-9 gap-1">
-            <template x-for="(cell, idx) in ticket.layout.flat()" :key="idx">
-              <div class="h-10 flex items-center justify-center border rounded font-semibold cursor-pointer"
-                   :class="{
-                     'bg-blue-500 text-white': isMarked(ticket, cell),
-                     'bg-gray-100': !cell
-                   }"
-                   @click="toggleMark(ticket, cell)"
-                   x-text="cell || ''">
+            <template x-for="(cell, index) in ticket.layout.flat()" :key="index">
+              <div
+                class="border border-gray-300 h-10 w-full flex items-center justify-center text-sm font-semibold rounded cursor-pointer"
+                :class="cell && isMarked(ticket, cell) ? 'bg-primary text-white' : 'bg-white'"
+                x-text="cell || ''"
+                @click="cell && toggleMark(ticket.id, cell)">
               </div>
             </template>
           </div>
         </div>
       </template>
-
-      <!-- ⏳ Pending Tickets -->
-      <template x-for="(p, i) in pendingTickets" :key="'pending-' + i">
-        <div class="bg-white p-4 rounded-xl shadow w-full text-center text-gray-500">
-          ⏳ Waiting for admin approval for Ticket <span x-text="tickets.length + i + 1"></span>
-        </div>
-      </template>
-    </div>
-
-    <!-- 📍 Bottom Bar -->
-    <div class="fixed bottom-0 left-0 w-full bg-white border-t shadow-lg p-3 flex justify-between items-center z-50">
-      <button class="btn btn-outline btn-sm" @click="showAddTicketModal = true" :disabled="tickets.length + pendingTickets.length >= 5">
-        ➕ Add Ticket
-      </button>
-      <label class="flex items-center gap-2 text-sm">
-        <span>Auto Mark</span>
-        <input type="checkbox" class="toggle toggle-sm toggle-primary" x-model="autoMark">
-      </label>
-      <button class="btn btn-success btn-sm" @click="showClaimPrizeModal = true">
-        🎯 Claim Prize
-      </button>
     </div>
   </div>
 
-  <!-- 🧾 Modal: Add Ticket -->
-  <dialog class="modal" :class="{ 'modal-open': showAddTicketModal }">
-    <div class="modal-box">
-      <h3 class="font-bold text-lg text-center">Request New Ticket</h3>
-      <p class="py-4 text-center text-sm">A request will be sent to the admin for approval.</p>
-      <div class="modal-action justify-end">
-        <form method="dialog">
-          <button class="btn" @click="requestTicket()">Confirm</button>
-          <button class="btn btn-ghost ml-2" @click="showAddTicketModal = false">Cancel</button>
-        </form>
-      </div>
-    </div>
-  </dialog>
+  <!-- Bottom Navbar -->
+  <div class="btm-nav bg-white border-t p-2 shadow-xl z-50">
+    <button class="btn btn-primary w-full" @click="requestTicket()">➕ Add Ticket</button>
+    <button class="btn btn-secondary w-full" @click="showClaimModal = true">🎯 Claim Prize</button>
+    <label class="flex items-center justify-center gap-2 w-full">
+      <span>Auto Mark</span>
+      <input type="checkbox" class="toggle toggle-primary" x-model="autoMark" @change="autoChanged()" />
+    </label>
+  </div>
 
-  <!-- 🏆 Modal: Claim Prize -->
-  <dialog class="modal" :class="{ 'modal-open': showClaimPrizeModal }">
+  <!-- Modals -->
+
+  <!-- Add Ticket Modal -->
+  <div class="modal modal-open" x-show="showAddModal">
+    <div class="modal-box text-center">
+      <h3 class="font-bold text-lg">Request Sent to Admin</h3>
+      <p class="py-4 text-gray-500">Waiting for admin approval...</p>
+    </div>
+  </div>
+
+  <!-- Claim Prize Modal -->
+  <div class="modal modal-open" x-show="showClaimModal">
     <div class="modal-box">
-      <h3 class="font-bold text-lg mb-2 text-center">Select Prize to Claim</h3>
+      <h3 class="font-bold text-lg mb-4">Select a Prize to Claim</h3>
       <div class="space-y-2">
-        <template x-for="type in prizeTypes" :key="type">
-          <button class="btn btn-block"
-                  :class="{ 'btn-primary': selectedPrize === type }"
-                  @click="selectedPrize = type"
-                  x-text="type">
+        <template x-for="prize in prizeTypes" :key="prize">
+          <button
+            class="btn btn-outline btn-block"
+            :class="{ 'btn-primary': selectedPrize === prize }"
+            @click="selectedPrize = prize"
+            x-text="prize">
           </button>
         </template>
       </div>
-      <div class="modal-action justify-end mt-4">
-        <form method="dialog">
-          <button class="btn btn-success" @click="submitClaim()">Submit</button>
-          <button class="btn btn-ghost ml-2" @click="showClaimPrizeModal = false">Cancel</button>
-        </form>
+      <div class="modal-action">
+        <button class="btn btn-success" @click="claimPrize()">Submit</button>
+        <button class="btn" @click="showClaimModal = false">Cancel</button>
       </div>
     </div>
-  </dialog>
+  </div>
 
-  <!-- Logic -->
-  <script src="app.js"></script>
+  <!-- AutoMark Info Modal -->
+  <div class="modal modal-open" x-show="showAutoInfo">
+    <div class="modal-box text-center">
+      <h3 class="font-bold text-lg" x-text="autoMark ? 'Auto Mark Enabled' : 'Auto Mark Disabled'"></h3>
+      <p class="text-gray-500">
+        <span x-show="autoMark">Numbers will be auto-marked.</span>
+        <span x-show="!autoMark">You must click to mark numbers manually.</span>
+      </p>
+    </div>
+  </div>
+
 </body>
 </html>
