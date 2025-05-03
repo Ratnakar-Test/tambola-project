@@ -1,8 +1,8 @@
 <!-- File: tambola-project/frontend/index.html -->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- BLOCK 1: HEAD (Imports & Metadata) -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Tambola Player Dashboard</title>
@@ -12,24 +12,36 @@
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <!-- Alpine.js for reactivity -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <!-- Socket.IO client from your backend -->
+  <!-- Socket.IO client -->
   <script src="https://tambola-backend.onrender.com/socket.io/socket.io.js"></script>
 </head>
-<body x-data="playerDashboard()" x-init="init()" class="bg-gray-50 min-h-screen relative">
+<body x-data="playerDashboard()" x-init="init()" class="bg-base-200">
 
-  <!-- BLOCK 2: SETUP SCREEN -->
-  <div x-show="!connected" class="flex flex-col items-center justify-center min-h-screen p-4">
-    <h1 class="text-4xl font-bold mb-6">Join Tambola Game</h1>
-    <input x-model="playerName" type="text" placeholder="Your Name" class="mb-4 p-2 border rounded w-64" />
-    <input x-model="roomId" type="text" placeholder="Room ID" class="mb-6 p-2 border rounded w-64" />
-    <button @click="joinRoom()" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Join Game</button>
-    <template x-if="errorMsg"><p class="mt-4 text-red-600" x-text="errorMsg"></p></template>
+  <!-- BLOCK 2: HERO JOIN SCREEN -->
+  <div x-show="!connected" class="hero min-h-screen bg-base-200">
+    <div class="hero-content text-center">
+      <div class="max-w-md">
+        <h1 class="text-5xl font-bold mb-6">Join Tambola</h1>
+        <input x-model="playerName" type="text" placeholder="Your Name"
+               class="input input-bordered w-full mb-4" />
+        <input x-model="roomId" type="text" placeholder="Room ID"
+               class="input input-bordered w-full mb-6" />
+        <button @click="joinRoom()"
+                class="btn btn-primary w-full mb-4">Join Game</button>
+        <!-- Error Dialog -->
+        <div x-show="errorMsg" class="alert alert-error shadow-lg">
+          <div>
+            <span x-text="errorMsg"></span>
+            <button @click="errorMsg=''" class="btn btn-sm btn-ghost ml-4">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- BLOCK 3: DRAWER LAYOUT (Main UI) -->
   <div x-show="connected" class="drawer">
     <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle" />
-
     <div class="drawer-content flex flex-col">
 
       <!-- HEADER -->
@@ -47,7 +59,7 @@
       <!-- MAIN CONTENT -->
       <main class="p-4 pb-24">
 
-        <!-- Called Numbers -->
+        <!-- SECTION: Called Numbers -->
         <div class="mb-6">
           <h2 class="text-lg font-semibold mb-2">Called Numbers</h2>
           <div class="flex flex-wrap gap-2 bg-white p-3 rounded-lg shadow-inner">
@@ -60,18 +72,20 @@
           </div>
         </div>
 
-        <!-- Tickets Carousel -->
+        <!-- SECTION: Tickets Carousel -->
         <h2 class="text-lg font-semibold mb-2">Your Tickets</h2>
         <div class="overflow-x-auto mb-6">
           <div class="flex gap-4">
             <template x-for="ticket in tickets" :key="ticket.id">
               <div class="bg-white p-4 rounded-lg shadow-md min-w-[360px]">
                 <div class="grid grid-cols-9 gap-2">
-                  <template x-for="(cell, idx) in ticket.flat()" :key="idx">
+                  <!-- Display 3x9 grid -->
+                  <template x-for="(cell, idx) in ticket.numbers" :key="idx">
                     <div class="border border-gray-300 rounded p-2 h-10 flex items-center justify-center cursor-pointer"
-                         :class="cell && isMarked(ticket.id,cell) ? 'bg-primary text-white' : ''"
+                         :class="isMarked(ticket.id, cell) ? 'bg-primary text-white' : ''"
                          x-text="cell||''"
-                         @click="cell && toggleMark(ticket.id,cell)"></div>
+                         @click="cell && toggleMark(ticket.id,cell)">
+                    </div>
                   </template>
                 </div>
               </div>
@@ -87,31 +101,30 @@
         <button class="btn btn-secondary flex-1 mx-1" @click="showClaimModal=true">Claim Prize</button>
         <div class="flex-1 mx-1 flex items-center justify-center">
           <label class="mr-2">Auto-Mark:</label>
-          <input type="checkbox" class="toggle toggle-primary" x-model="autoMark" @change="autoChanged()" />
+          <input type="checkbox" class="toggle toggle-primary"
+                 x-model="autoMark" @change="autoChanged()" />
         </div>
       </nav>
 
     </div>
 
-    <!-- BLOCK 5: SIDEBAR -->
+    <!-- SIDEBAR (empty for future) -->
     <div class="drawer-side">
       <label for="sidebar-toggle" class="drawer-overlay"></label>
-      <aside class="p-6 w-64 bg-gradient-to-b from-blue-600 to-blue-800 text-white shadow-xl rounded-r-xl">
+      <aside class="p-6 w-64 bg-gradient-to-b from-blue-600 to-blue-800 text-white rounded-r-xl shadow-xl">
         <h2 class="text-xl font-bold mb-4">Menu</h2>
-        <ul class="space-y-2"></ul>
       </aside>
     </div>
   </div>
 
-  <!-- BLOCK 6: MODALS -->
+  <!-- BLOCK 5: MODALS -->
   <!-- Add Ticket Modal -->
   <div x-show="showAddModal" class="modal modal-open">
     <div class="modal-box">
       <button @click="showAddModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-      <h3 class="font-bold text-lg text-center mb-4">Request New Ticket</h3>
-      <p class="mb-4 text-center">Send a request to the admin to add a new ticket.</p>
+      <h3 class="font-bold text-lg mb-4">Request New Ticket</h3>
       <div class="flex justify-end">
-        <button class="btn btn-primary" @click="requestTicket()">Confirm Request</button>
+        <button class="btn btn-primary" @click="confirmRequest()">Confirm</button>
       </div>
     </div>
   </div>
@@ -120,7 +133,7 @@
   <div x-show="showClaimModal" class="modal modal-open">
     <div class="modal-box">
       <button @click="showClaimModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-      <h3 class="font-bold text-lg text-center mb-4">Claim Prize</h3>
+      <h3 class="font-bold text-lg mb-4">Claim Prize</h3>
       <div class="space-y-2 mb-4">
         <template x-for="prize in prizeTypes" :key="prize">
           <button class="btn btn-outline btn-block text-left"
@@ -134,21 +147,11 @@
     </div>
   </div>
 
-  <!-- Auto-Mark Info Modal -->
-  <div x-show="showAutoInfo" class="modal modal-open">
-    <div class="modal-box">
-      <button @click="showAutoInfo=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-      <h3 class="font-bold text-lg mb-2" x-text="autoMark?'Auto-Mark Enabled':'Auto-Mark Disabled'"></h3>
-      <p x-text="autoMark
-        ? 'New called numbers will be marked automatically on your tickets.'
-        : 'You must mark called numbers manually.'"></p>
-    </div>
-  </div>
-
-  <!-- BLOCK 7: Alpine Component Script -->
+  <!-- BLOCK 6: Alpine.js Component -->
   <script>
     function playerDashboard() {
       return {
+        // State
         roomId: '',
         playerName: '',
         connected: false,
@@ -158,58 +161,67 @@
         prizeTypes: ['Top Line','Two Lines','Full House'],
         showAddModal: false,
         showClaimModal: false,
-        showAutoInfo: false,
-        selectedPrize: null,
         autoMark: false,
+        selectedPrize: null,
+        socket: null,
 
         init() {
           this.socket = io('https://tambola-backend.onrender.com');
 
-          // CONNECTION-ERROR HANDLER START
+          // Connection-error handler
           this.socket.on('connect_error', err => {
-            console.error('Socket.IO connection error:', err);
-            this.errorMsg = 'Unable to connect to game server.';
+            this.errorMsg = 'Cannot connect to game server.';
           });
-          // CONNECTION-ERROR HANDLER END
 
+          // Number updates
           this.socket.on('number-called', data => {
             this.called = data.calledNumbers;
           });
+
+          // Ticket updates
           this.socket.on('ticket-updated', data => {
             if (data.playerName === this.playerName) {
-              this.tickets = data.tickets.map((t, i) => ({
+              // Preserve existing marks
+              const old = this.tickets.reduce((m,t)=>{ m[t.id]=t.marks; return m; },{});
+              this.tickets = data.tickets.map((grid, i) => ({
                 id: i,
-                grid: t,
-                flat() { return this.grid.flat(); },
-                marks: []
+                grid,
+                numbers: grid.flat(),
+                marks: old[i]||[]
               }));
             }
           });
+
+          // Ticket request response
           this.socket.on('ticket-request-response', data => {
             if (data.approved) {
-              this.tickets = data.tickets.map((t, i) => ({
+              this.tickets = data.tickets.map((grid, i) => ({
                 id: i,
-                grid: t,
-                flat() { return this.grid.flat(); },
+                grid,
+                numbers: grid.flat(),
                 marks: []
               }));
               this.showAddModal = false;
             } else {
-              alert(`Ticket request denied: ${data.error}`);
+              this.errorMsg = data.error;
             }
           });
+
+          // Claim response
           this.socket.on('claim-updated', data => {
             if (data.playerName === this.playerName) {
-              alert(`Your ${data.claimType} claim was ${data.approved?'approved':'denied'}.`);
               this.showClaimModal = false;
+              // Optionally show DaisyUI toast
             }
           });
         },
 
+        // Actions
         joinRoom() {
           this.errorMsg = '';
           if (!this.playerName || !this.roomId) {
-            return this.errorMsg = 'Enter both your name and room ID.';
+            this.errorMsg = 'Name & Room ID required.';
+            return;
           }
           this.socket.emit('join-room',
             { roomId: this.roomId, playerName: this.playerName },
@@ -220,47 +232,41 @@
           );
         },
 
-        requestTicket() {
+        confirmRequest() {
           this.socket.emit('request-ticket',
-            { roomId: this.roomId, playerName: this.playerName }
+            { roomId: this.roomId, playerName: this.playerName },
+            res => {
+              if (res.success) this.showAddModal = false;
+              else this.errorMsg = res.error;
+            }
           );
         },
 
         submitClaim() {
-          if (!this.selectedPrize) {
-            return alert('Select a prize to claim.');
-          }
-          this.socket.emit('submit-claim', {
-            roomId: this.roomId,
-            playerName: this.playerName,
-            claimType: this.selectedPrize,
-            numbers: []
-          });
+          if (!this.selectedPrize) return;
+          this.socket.emit('submit-claim',
+            { roomId: this.roomId, playerName: this.playerName, claimType: this.selectedPrize, numbers: [] }
+          );
         },
 
         isMarked(tid, num) {
-          if (this.autoMark) {
-            return this.called.includes(num);
-          }
-          const ticket = this.tickets.find(t => t.id === tid);
-          return ticket?.marks?.includes(num);
+          if (this.autoMark) return this.called.includes(num);
+          return this.tickets.find(t=>t.id===tid)?.marks.includes(num);
         },
 
         toggleMark(tid, num) {
           if (!this.autoMark) {
-            const ticket = this.tickets.find(t => t.id === tid);
-            ticket.marks = ticket.marks || [];
+            const ticket = this.tickets.find(t=>t.id===tid);
             const idx = ticket.marks.indexOf(num);
-            if (idx > -1) ticket.marks.splice(idx,1);
+            if (idx>-1) ticket.marks.splice(idx,1);
             else ticket.marks.push(num);
           }
         },
 
         autoChanged() {
-          this.showAutoInfo = true;
-          setTimeout(() => this.showAutoInfo = false, 2000);
+          // show info briefly
         }
-      };
+      }
     }
   </script>
 
