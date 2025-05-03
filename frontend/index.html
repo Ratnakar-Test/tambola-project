@@ -13,13 +13,12 @@
   <script src="app.js"></script>
 </head>
 <body x-data="playerDashboard()" x-init="init()" class="bg-gray-100 min-h-screen">
-
   <div class="drawer">
     <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle" />
     <div class="drawer-content flex flex-col">
 
       <!-- HERO JOIN SECTION -->
-      <div x-show="!joined" class="flex flex-col items-center justify-center min-h-screen px-4 text-center">
+      <section x-show="!joined" class="flex items-center justify-center min-h-screen px-4 text-center">
         <div class="hero bg-base-200 rounded-lg p-6 shadow-lg w-full max-w-md">
           <div class="hero-content flex-col">
             <h1 class="text-3xl font-bold mb-2">🎉 Welcome to Your Tambola Game</h1>
@@ -31,9 +30,20 @@
             </div>
           </div>
         </div>
+      </section>
+
+      <!-- ROOM ERROR MODAL -->
+      <div x-show="showRoomError" class="modal modal-open">
+        <div class="modal-box">
+          <h3 class="font-bold text-red-500">❌ Error</h3>
+          <p x-text="roomErrorMessage"></p>
+          <div class="modal-action">
+            <button class="btn" @click="showRoomError=false">OK</button>
+          </div>
+        </div>
       </div>
 
-      <!-- HEADER -->
+      <!-- HEADER (Only shows after joined) -->
       <header x-show="joined" class="flex items-center justify-between p-4 bg-white shadow">
         <div class="flex items-center">
           <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
@@ -45,19 +55,35 @@
         </div>
       </header>
 
-      <!-- MAIN GAME CONTENT -->
+      <!-- MAIN CONTENT -->
       <main class="flex-1 p-4 overflow-auto" x-show="joined">
-        <!-- CALLED NUMBERS -->
+
+        <!-- CALLED NUMBERS & LAST CALLED -->
         <section class="mb-4">
           <h2 class="text-lg font-semibold mb-1">📣 Called Numbers</h2>
-          <div class="flex flex-wrap gap-2">
+          <div class="flex flex-wrap gap-2 mb-2">
             <template x-for="(num, idx) in called" :key="num">
               <div :class="idx === called.length - 1 ? 'badge badge-warning text-black' : 'badge badge-outline'" x-text="num"></div>
             </template>
+            <template x-if="called.length===0">
+              <span class="text-gray-500">No numbers called yet</span>
+            </template>
           </div>
+          <div class="font-medium">Last Called: <span x-text="called[called.length-1] || 'N/A'"></span></div>
         </section>
 
-        <!-- TICKETS GRID -->
+        <!-- BOOGIE MODAL (Wrong Mark) -->
+        <div x-show="showBoogie" class="modal modal-open">
+          <div class="modal-box">
+            <h3 class="font-bold text-red-500">Boogie!</h3>
+            <p>You marked a wrong number!</p>
+            <div class="modal-action">
+              <button class="btn btn-secondary" @click="showBoogie=false">OK</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TICKETS GRID (3×9, 5 numbers per row) -->
         <section>
           <h2 class="text-lg font-semibold mb-2">🎟 Your Tickets</h2>
           <template x-for="ticket in tickets" :key="ticket.id">
@@ -67,6 +93,7 @@
                   <template x-for="(cell, cIdx) in row" :key="cIdx">
                     <div class="border h-10 w-full flex items-center justify-center rounded-sm text-sm"
                          :class="cell && isMarked(ticket.id, cell) ? 'bg-blue-600 text-white' : 'bg-gray-100'"
+                         @click="!autoMark && cell && !called.includes(cell) && (showBoogie=true)"
                          x-text="cell || ''">
                     </div>
                   </template>
@@ -75,6 +102,7 @@
             </div>
           </template>
         </section>
+
       </main>
 
       <!-- BOTTOM NAV -->
@@ -82,21 +110,24 @@
         <button class="btn btn-primary btn-sm" @click="showAddModal = true">Add Ticket</button>
         <button class="btn btn-secondary btn-sm" @click="showClaimModal = true">Claim Prize</button>
         <label class="flex items-center gap-2">
-          <span class="text-sm">Auto</span>
-          <input type="checkbox" class="toggle toggle-sm toggle-primary" x-model="autoMark" @change="autoChanged" />
+          <span class="text-sm">Auto-Mark:</span>
+          <input type="checkbox" class="toggle toggle-sm toggle-primary" x-model="autoMark" @change="autoChanged()" />
         </label>
       </footer>
+
     </div>
 
     <!-- SIDEBAR MENU -->
     <div class="drawer-side z-40" x-show="joined">
       <label for="sidebar-toggle" class="drawer-overlay"></label>
-      <aside class="w-64 bg-blue-800 text-white p-6">
+      <aside class="w-64 bg-blue-800 text-white p-6 space-y-3">
         <h2 class="text-lg font-semibold mb-2">Player Menu</h2>
-        <ul class="space-y-2">
+        <ul class="space-y-2 text-sm">
           <li><a class="block py-1 px-2 hover:bg-blue-600 rounded">Dashboard</a></li>
           <li><a class="block py-1 px-2 hover:bg-blue-600 rounded">How to Play</a></li>
-          <li><a class="block py-1 px-2 hover:bg-blue-600 rounded">About</a></li>
+          <li><a class="block py-1 px-2 hover:bg-blue-600 rounded">Prize History</a></li>
+          <li><a class="block py-1 px-2 hover:bg-blue-600 rounded">Leaderboard</a></li>
+          <li><a class="block py-1 px-2 hover:bg-blue-600 rounded">Support</a></li>
         </ul>
       </aside>
     </div>
