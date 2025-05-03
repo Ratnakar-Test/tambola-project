@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" x-data="adminDashboard()" x-init="init()">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tambola Admin</title>
+
+  <!-- Tailwind + DaisyUI -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/daisyui"></script>
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- QR Generator -->
+  <script src="https://cdn.jsdelivr.net/npm/qrious/dist/qrious.min.js"></script>
+
+  <!-- Socket.io -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen p-4">
+
+  <!-- 🔐 Room Connect -->
+  <div class="max-w-xl mx-auto bg-white rounded-xl shadow p-6" x-show="!connected">
+    <h2 class="text-xl font-bold mb-4">Tambola Admin Panel</h2>
+    <input type="text" class="input input-bordered w-full mb-3" placeholder="Enter Room ID" x-model="roomId" />
+    <button class="btn btn-primary w-full" @click="connect()">🔗 Connect</button>
+  </div>
+
+  <!-- 🧩 Game Dashboard -->
+  <div class="max-w-7xl mx-auto" x-show="connected">
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+      <!-- 🎮 Controls -->
+      <div class="col-span-1 bg-white rounded-xl shadow p-4">
+        <h3 class="text-lg font-bold mb-3">🎮 Game Controls</h3>
+
+        <label class="label">Mode</label>
+        <select class="select select-bordered w-full mb-2" x-model="mode">
+          <option value="auto">Auto</option>
+          <option value="manual">Manual</option>
+        </select>
+
+        <label class="label">Interval (ms)</label>
+        <select class="select select-bordered w-full mb-4" x-model="interval">
+          <option value="2000">2000</option>
+          <option value="3000">3000</option>
+          <option value="5000">5000</option>
+        </select>
+
+        <h4 class="font-semibold mb-2">🏆 Winning Rules</h4>
+        <template x-for="prize in prizeTypes" :key="prize">
+          <div class="flex items-center gap-2 mb-2">
+            <input type="checkbox" class="checkbox checkbox-sm" :id="'rule-' + prize" :value="prize" x-model="selectedRules">
+            <label :for="'rule-' + prize" class="flex-1" x-text="prize"></label>
+            <input type="number" class="input input-sm input-bordered w-16 text-center" placeholder="1"
+                   x-model.number="limits[prize]" />
+          </div>
+        </template>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button class="btn btn-success btn-sm" @click="startGame()">Start</button>
+          <button class="btn btn-info btn-sm" @click="callNext()">Next</button>
+          <button class="btn btn-warning btn-sm" @click="pauseGame()">Pause</button>
+          <button class="btn btn-accent btn-sm" @click="resumeGame()">Resume</button>
+          <button class="btn btn-error btn-sm" @click="stopGame()">Stop</button>
+        </div>
+      </div>
+
+      <!-- 🔢 Number Grid + QR -->
+      <div class="col-span-1 bg-white rounded-xl shadow p-4">
+        <h3 class="text-lg font-bold mb-3">🔢 Called Numbers</h3>
+        <div class="grid grid-cols-10 gap-1 text-center text-sm">
+          <template x-for="n in 90" :key="n">
+            <div :class="calledNumbers.includes(n) ? 'bg-blue-600 text-white' : 'bg-gray-100'"
+                 class="rounded py-2 font-bold">
+              <span x-text="n"></span>
+            </div>
+          </template>
+        </div>
+
+        <div class="mt-6 text-center">
+          <h4 class="font-semibold mb-2">📱 Player Join QR</h4>
+          <canvas id="qrcode" class="mx-auto"></canvas>
+        </div>
+      </div>
+
+      <!-- 📋 Activity -->
+      <div class="col-span-1 space-y-4">
+        <!-- 👥 Players -->
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="text-lg font-bold mb-2">👥 Players</h3>
+          <ul class="list-disc list-inside text-sm">
+            <template x-for="p in players" :key="p.id">
+              <li x-text="p.name"></li>
+            </template>
+          </ul>
+        </div>
+
+        <!-- 📩 Requests -->
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="text-lg font-bold mb-2">📩 Ticket Requests</h3>
+          <template x-if="ticketRequests.length === 0">
+            <p class="text-sm text-gray-400">No pending requests.</p>
+          </template>
+          <template x-for="r in ticketRequests" :key="r.playerId">
+            <div class="flex justify-between items-center mb-1 text-sm">
+              <span x-text="`Ticket ${r.ticketNo} from ${r.playerName}`"></span>
+              <button class="btn btn-xs btn-success" @click="approveTicket(r.playerId)">Approve</button>
+            </div>
+          </template>
+        </div>
+
+        <!-- 🎯 Claims -->
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="text-lg font-bold mb-2">🎯 Claims</h3>
+          <template x-for="c in claims" :key="c.playerId + c.claimType">
+            <div class="flex justify-between items-center mb-1 text-sm">
+              <span x-text="`${c.claimType} by ${c.playerName}`"></span>
+              <div class="space-x-1">
+                <button class="btn btn-xs btn-success" @click="acceptClaim(c.playerId, c.claimType)">✓</button>
+                <button class="btn btn-xs btn-error" @click="rejectClaim(c.playerId, c.claimType)">✕</button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- 🏆 Winners -->
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="text-lg font-bold mb-2">🏆 Winners</h3>
+          <ul class="list-disc list-inside text-sm text-green-600">
+            <template x-for="w in winners" :key="w.playerId + w.claimType">
+              <li x-text="`${w.playerName} won ${w.claimType}`"></li>
+            </template>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bind Logic -->
+  <script src="admin.js"></script>
+</body>
+</html>
