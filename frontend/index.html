@@ -18,25 +18,29 @@
     <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle" />
     <div class="drawer-content flex flex-col">
 
-     <!-- HEADER -->
-<header class="flex items-center justify-between p-4 bg-white shadow">
-  <div class="flex items-center">
-    <template x-if="joined">
-      <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </label>
-    </template>
-    <h1 class="text-xl font-bold">Tambola Player</h1>
-  </div>
-  <div x-show="!joined" class="flex gap-2">
-    <input x-model="playerName" placeholder="Your Name" class="input input-bordered input-sm w-32" />
-    <input x-model="roomId" placeholder="Room ID" class="input input-bordered input-sm w-28" />
-    <button class="btn btn-primary btn-sm" @click="joinGame">Join</button>
-  </div>
-</header>
+      <!-- HERO JOIN SCREEN (before joining) -->
+      <section x-show="!joined" class="hero min-h-screen bg-base-200">
+        <div class="hero-content text-center flex flex-col">
+          <h1 class="text-4xl font-bold mb-6">🎉 Welcome to Your Tambola Game</h1>
+          <div class="flex flex-col gap-4 w-full max-w-xs">
+            <input x-model="roomId" placeholder="Enter Room ID" class="input input-bordered input-lg" />
+            <input x-model="playerName" placeholder="Enter Your Name" class="input input-bordered input-lg" />
+            <button class="btn btn-primary btn-lg" @click="joinGame">Join Game</button>
+          </div>
+        </div>
+      </section>
 
+      <!-- HEADER (Only shows after joined) -->
+      <header x-show="joined" class="flex items-center justify-between p-4 bg-white shadow">
+        <div class="flex items-center">
+          <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </label>
+          <h1 class="text-xl font-bold">Tambola Player</h1>
+        </div>
+      </header>
 
       <!-- MAIN CONTENT -->
       <main class="flex-1 p-4 overflow-auto" x-show="joined">
