@@ -4,141 +4,178 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tambola Admin</title>
-
-  <!-- Tailwind + DaisyUI -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/daisyui"></script>
-
-  <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-
-  <!-- QR Generator -->
-  <script src="https://cdn.jsdelivr.net/npm/qrious/dist/qrious.min.js"></script>
-
-  <!-- Socket.io -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="admin.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrious"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@3.7.4/dist/full.css" rel="stylesheet" />
 </head>
-<body class="bg-gray-50 text-gray-800 min-h-screen p-4">
 
-  <!-- 🔐 Room Connect -->
-  <div class="max-w-xl mx-auto bg-white rounded-xl shadow p-6" x-show="!connected">
-    <h2 class="text-xl font-bold mb-4">Tambola Admin Panel</h2>
-    <input type="text" class="input input-bordered w-full mb-3" placeholder="Enter Room ID" x-model="roomId" />
-    <button class="btn btn-primary w-full" @click="connect()">🔗 Connect</button>
-  </div>
+<body class="bg-gray-50">
 
-  <!-- 🧩 Game Dashboard -->
-  <div class="max-w-7xl mx-auto" x-show="connected">
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-      <!-- 🎮 Controls -->
-      <div class="col-span-1 bg-white rounded-xl shadow p-4">
-        <h3 class="text-lg font-bold mb-3">🎮 Game Controls</h3>
-
-        <label class="label">Mode</label>
-        <select class="select select-bordered w-full mb-2" x-model="mode">
-          <option value="auto">Auto</option>
-          <option value="manual">Manual</option>
-        </select>
-
-        <label class="label">Interval (ms)</label>
-        <select class="select select-bordered w-full mb-4" x-model="interval">
-          <option value="2000">2000</option>
-          <option value="3000">3000</option>
-          <option value="5000">5000</option>
-        </select>
-
-        <h4 class="font-semibold mb-2">🏆 Winning Rules</h4>
-        <template x-for="prize in prizeTypes" :key="prize">
-          <div class="flex items-center gap-2 mb-2">
-            <input type="checkbox" class="checkbox checkbox-sm" :id="'rule-' + prize" :value="prize" x-model="selectedRules">
-            <label :for="'rule-' + prize" class="flex-1" x-text="prize"></label>
-            <input type="number" class="input input-sm input-bordered w-16 text-center" placeholder="1"
-                   x-model.number="limits[prize]" />
-          </div>
-        </template>
-
-        <div class="mt-4 flex flex-wrap gap-2">
-          <button class="btn btn-success btn-sm" @click="startGame()">Start</button>
-          <button class="btn btn-info btn-sm" @click="callNext()">Next</button>
-          <button class="btn btn-warning btn-sm" @click="pauseGame()">Pause</button>
-          <button class="btn btn-accent btn-sm" @click="resumeGame()">Resume</button>
-          <button class="btn btn-error btn-sm" @click="stopGame()">Stop</button>
-        </div>
-      </div>
-
-      <!-- 🔢 Number Grid + QR -->
-      <div class="col-span-1 bg-white rounded-xl shadow p-4">
-        <h3 class="text-lg font-bold mb-3">🔢 Called Numbers</h3>
-        <div class="grid grid-cols-10 gap-1 text-center text-sm">
-          <template x-for="n in 90" :key="n">
-            <div :class="calledNumbers.includes(n) ? 'bg-blue-600 text-white' : 'bg-gray-100'"
-                 class="rounded py-2 font-bold">
-              <span x-text="n"></span>
-            </div>
-          </template>
-        </div>
-
-        <div class="mt-6 text-center">
-          <h4 class="font-semibold mb-2">📱 Player Join QR</h4>
-          <canvas id="qrcode" class="mx-auto"></canvas>
-        </div>
-      </div>
-
-      <!-- 📋 Activity -->
-      <div class="col-span-1 space-y-4">
-        <!-- 👥 Players -->
-        <div class="bg-white rounded-xl shadow p-4">
-          <h3 class="text-lg font-bold mb-2">👥 Players</h3>
-          <ul class="list-disc list-inside text-sm">
-            <template x-for="p in players" :key="p.id">
-              <li x-text="p.name"></li>
-            </template>
-          </ul>
-        </div>
-
-        <!-- 📩 Requests -->
-        <div class="bg-white rounded-xl shadow p-4">
-          <h3 class="text-lg font-bold mb-2">📩 Ticket Requests</h3>
-          <template x-if="ticketRequests.length === 0">
-            <p class="text-sm text-gray-400">No pending requests.</p>
-          </template>
-          <template x-for="r in ticketRequests" :key="r.playerId">
-            <div class="flex justify-between items-center mb-1 text-sm">
-              <span x-text="`Ticket ${r.ticketNo} from ${r.playerName}`"></span>
-              <button class="btn btn-xs btn-success" @click="approveTicket(r.playerId)">Approve</button>
-            </div>
-          </template>
-        </div>
-
-        <!-- 🎯 Claims -->
-        <div class="bg-white rounded-xl shadow p-4">
-          <h3 class="text-lg font-bold mb-2">🎯 Claims</h3>
-          <template x-for="c in claims" :key="c.playerId + c.claimType">
-            <div class="flex justify-between items-center mb-1 text-sm">
-              <span x-text="`${c.claimType} by ${c.playerName}`"></span>
-              <div class="space-x-1">
-                <button class="btn btn-xs btn-success" @click="acceptClaim(c.playerId, c.claimType)">✓</button>
-                <button class="btn btn-xs btn-error" @click="rejectClaim(c.playerId, c.claimType)">✕</button>
-              </div>
-            </div>
-          </template>
-        </div>
-
-        <!-- 🏆 Winners -->
-        <div class="bg-white rounded-xl shadow p-4">
-          <h3 class="text-lg font-bold mb-2">🏆 Winners</h3>
-          <ul class="list-disc list-inside text-sm text-green-600">
-            <template x-for="w in winners" :key="w.playerId + w.claimType">
-              <li x-text="`${w.playerName} won ${w.claimType}`"></li>
-            </template>
-          </ul>
-        </div>
-      </div>
+  <!-- Navbar -->
+  <div class="navbar bg-white shadow sticky top-0 z-10">
+    <div class="flex-none">
+      <button class="btn btn-square btn-ghost" @click="showMenu = !showMenu">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+             stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+             d="M4 6h16M4 12h16M4 18h16" /></svg>
+      </button>
+    </div>
+    <div class="flex-1">
+      <a class="btn btn-ghost text-xl">Tambola Admin</a>
     </div>
   </div>
 
-  <!-- Bind Logic -->
-  <script src="admin.js"></script>
+  <!-- Sidebar -->
+  <div class="drawer-side fixed top-0 left-0 z-40" x-show="showMenu" @click.outside="showMenu = false">
+    <aside class="menu w-64 p-4 bg-base-200 min-h-screen">
+      <div class="form-control mb-4">
+        <label class="label">Room ID</label>
+        <input type="text" class="input input-bordered" x-model="roomId" placeholder="Enter Room ID" />
+        <button class="btn btn-primary mt-2" @click="connect()">Connect</button>
+      </div>
+      <ul class="menu">
+        <li><a @click="callNext()">📣 Call Next Number</a></li>
+        <li><a @click="pauseGame()">⏸️ Pause</a></li>
+        <li><a @click="resumeGame()">▶️ Resume</a></li>
+        <li><a @click="stopGame()">⛔ Stop</a></li>
+      </ul>
+    </aside>
+  </div>
+
+  <!-- Main -->
+  <main class="p-4 max-w-6xl mx-auto space-y-6">
+
+    <!-- Called Numbers -->
+    <div>
+      <h2 class="text-xl font-bold mb-2">Called Numbers</h2>
+      <div class="grid grid-cols-10 gap-2">
+        <template x-for="i in 90" :key="i">
+          <div x-text="i"
+               :class="isCalled(i) ? 'bg-green-500 text-white' : 'bg-white'"
+               class="text-center p-2 border rounded font-bold">
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Players -->
+    <div>
+      <h2 class="text-lg font-semibold">Players</h2>
+      <ul class="space-y-1">
+        <template x-for="p in players" :key="p.id">
+          <li class="p-2 bg-base-100 rounded shadow-sm">
+            👤 <span x-text="p.name"></span>
+          </li>
+        </template>
+      </ul>
+    </div>
+
+    <!-- Ticket Requests -->
+    <div>
+      <h2 class="text-lg font-semibold mb-2">Ticket Requests</h2>
+      <div class="overflow-x-auto">
+        <table class="table w-full bg-white rounded shadow">
+          <thead>
+            <tr><th>Player</th><th>Ticket No</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <template x-for="req in ticketRequests" :key="req.playerId + req.ticketNo">
+              <tr>
+                <td x-text="req.playerName"></td>
+                <td x-text="req.ticketNo"></td>
+                <td>
+                  <button class="btn btn-xs btn-success" @click="approveTicket(req.playerId)">Approve</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Prize Claims -->
+    <div>
+      <h2 class="text-lg font-semibold mb-2">Prize Claims</h2>
+      <div class="overflow-x-auto">
+        <table class="table w-full bg-white rounded shadow">
+          <thead>
+            <tr><th>Player</th><th>Prize</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <template x-for="claim in prizeClaims" :key="claim.playerId + claim.claimType">
+              <tr>
+                <td x-text="claim.playerName"></td>
+                <td x-text="claim.claimType"></td>
+                <td>
+                  <button class="btn btn-xs btn-success mr-1" @click="acceptClaim(claim.playerId, claim.claimType)">Accept</button>
+                  <button class="btn btn-xs btn-error" @click="rejectClaim(claim.playerId, claim.claimType)">Reject</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Winners -->
+    <div>
+      <h2 class="text-lg font-semibold mb-2">🏆 Winners</h2>
+      <ul class="list-disc ml-6">
+        <template x-for="w in winners" :key="w.playerId + w.claimType">
+          <li><strong x-text="w.playerName"></strong> won <em x-text="w.claimType"></em></li>
+        </template>
+      </ul>
+    </div>
+
+    <!-- Game Rules -->
+    <div>
+      <h2 class="text-lg font-semibold mb-2">Winning Rules</h2>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <template x-for="rule in ['Full House', 'Top Line', 'Middle Line', 'Bottom Line', 'Corners']" :key="rule">
+          <div class="form-control">
+            <label class="label cursor-pointer">
+              <input type="checkbox" class="checkbox checkbox-primary"
+                     :checked="rules.includes(rule)" @change="toggleRule(rule)" />
+              <span class="label-text ml-2" x-text="rule"></span>
+            </label>
+            <input type="number" min="1" class="input input-bordered mt-1"
+                   :placeholder="'Max for ' + rule"
+                   x-model="limits[rule]" />
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Game Settings -->
+    <div class="grid grid-cols-2 gap-4 mt-6">
+      <div>
+        <label class="label">Mode</label>
+        <select class="select select-bordered w-full" x-model="mode">
+          <option value="manual">Manual</option>
+          <option value="auto">Auto</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">Auto Interval (ms)</label>
+        <input type="number" class="input input-bordered w-full" x-model="interval" />
+      </div>
+    </div>
+
+    <!-- QR Code -->
+    <div class="text-center mt-8">
+      <canvas id="qrcode" class="mx-auto"></canvas>
+    </div>
+
+    <!-- Start Controls -->
+    <div class="btm-nav">
+      <button class="btn btn-primary" @click="startGame()">▶️ Start</button>
+      <button class="btn btn-warning" @click="pauseGame()">⏸️ Pause</button>
+      <button class="btn btn-success" @click="resumeGame()">▶️ Resume</button>
+      <button class="btn btn-error" @click="stopGame()">⛔ Stop</button>
+    </div>
+
+  </main>
 </body>
 </html>
