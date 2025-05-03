@@ -1,4 +1,3 @@
-// No package.json here; this is the update for backend/package.json
 {
   "name": "tambola-backend",
   "version": "1.0.0",
