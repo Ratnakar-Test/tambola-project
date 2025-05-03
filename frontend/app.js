@@ -4,18 +4,25 @@ const socket = io('https://tambola-backend.onrender.com', { transports: ['websoc
 
 function playerDashboard() {
   return {
+    // 🌐 Game state
     roomId: '',
     playerName: '',
     tickets: [],
     called: [],
     autoMark: false,
+    joined: false, // ✅ NEW: controls visibility of join UI
+
+    // 📦 UI States
     showMenu: false,
     showAddModal: false,
     showClaimModal: false,
     showAutoInfo: false,
+
+    // 🎯 Claim types
     selectedPrize: null,
     prizeTypes: ['Full House', 'Top Line', 'Middle Line', 'Bottom Line', 'Corners'],
 
+    // 🚀 On page load
     init() {
       const urlParams = new URLSearchParams(window.location.search);
       this.roomId = urlParams.get('room') || '';
@@ -25,7 +32,7 @@ function playerDashboard() {
         this.called.push(n);
       });
 
-      socket.on('ticket-assigned', (tickets, pending=[]) => {
+      socket.on('ticket-assigned', (tickets, pending = []) => {
         this.tickets = tickets.map((layout, i) => ({ id: i + 1, layout, marks: [] }));
         this.initLayouts();
         this.showMenu = true;
@@ -39,19 +46,23 @@ function playerDashboard() {
       socket.on('room-error', (msg) => alert(msg));
     },
 
+    // 🎮 Join game
     joinGame() {
       if (!this.roomId || !this.playerName) return alert('Enter name and Room ID');
       socket.emit('join-room', { roomId: this.roomId, playerName: this.playerName });
+      this.joined = true; // ✅ Show game UI after successful join
     },
 
+    // 🎟 Ticket grid prep (no reshaping)
     initLayouts() {
       this.tickets.forEach((ticket, i) => {
         const nums = ticket.layout.flat().filter(n => n);
         this.tickets[i].marks = [];
-        // No extra reshaping; layout is already 3x9 from backend
+        // Already 3x9 layout from backend
       });
     },
 
+    // ✅ Toggle mark for number
     isMarked(tid, num) {
       if (this.autoMark) return this.called.includes(num);
       const t = this.tickets.find(t => t.id === tid);
@@ -67,12 +78,14 @@ function playerDashboard() {
       else t.marks.push(num);
     },
 
+    // ➕ Ticket request
     requestTicket() {
       socket.emit('request-ticket', { roomId: this.roomId, playerName: this.playerName });
       this.showAddModal = false;
       alert('📨 Request sent to admin for a new ticket');
     },
 
+    // 🏆 Submit prize claim
     submitClaim() {
       if (!this.selectedPrize) return alert('Select a prize to claim');
       const ticket = this.tickets[0]?.layout || [];
@@ -85,6 +98,7 @@ function playerDashboard() {
       this.showClaimModal = false;
     },
 
+    // 🎯 Toggle auto-mark UI alert
     autoChanged() {
       this.showAutoInfo = true;
       setTimeout(() => this.showAutoInfo = false, 2000);
