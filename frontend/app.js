@@ -1,6 +1,8 @@
 // ✅ app.js — Alpine.js Tambola Player Logic (DaisyUI + Socket.IO integrated)
 
-const socket = io('https://tambola-backend.onrender.com', { transports: ['websocket', 'polling'] });
+const socket = io('https://tambola-backend.onrender.com', {
+  transports: ['websocket', 'polling']
+});
 
 function playerDashboard() {
   return {
@@ -10,36 +12,38 @@ function playerDashboard() {
     tickets: [],
     called: [],
     autoMark: false,
-    joined: false,                // controls visibility of join UI
+    joined: false,
 
     // 📦 UI States
     showMenu: false,
     showAddModal: false,
     showClaimModal: false,
     showAutoInfo: false,
-    showRoomError: false,         // room validation dialog
+    showRoomError: false,
     roomErrorMessage: '',
-    showBoogie: false,            // wrong mark dialog
+    showBoogie: false,
 
     // 🎯 Claim types
     selectedPrize: null,
     prizeTypes: ['Full House', 'Top Line', 'Middle Line', 'Bottom Line', 'Corners'],
 
-    // 🚀 On page load
+    // 🚀 Lifecycle
     init() {
       const urlParams = new URLSearchParams(window.location.search);
       this.roomId = urlParams.get('room') || '';
       if (this.roomId) this.showMenu = true;
 
       socket.on('number-called', (n) => {
-        this.called.push(n);
+        // Immutable update so Alpine will re-render the full list
+        this.called = [...this.called, n];
       });
 
-      socket.on('ticket-assigned', (tickets, pending = []) => {
-        this.tickets = tickets.map((layout, i) => ({ id: i + 1, layout, marks: [] }));
-        this.initLayouts();
-        this.showMenu = true;
+      socket.on('ticket-assigned', (layouts, pending = []) => {
+        // layouts: array of 3x9 arrays from backend
+        this.tickets = layouts.map((layout, i) => ({ id: i + 1, layout, marks: [] }));
+        this.initLayouts();       // enforce 5 numbers per row
         this.joined = true;
+        this.showMenu = true;
       });
 
       socket.on('claim-result', ({ status, claimType, reason }) => {
@@ -58,29 +62,46 @@ function playerDashboard() {
     // 🎮 Join game
     joinGame() {
       if (!this.roomId || !this.playerName) {
-        this.roomErrorMessage = 'Please enter both name and Room ID';
+        this.roomErrorMessage = 'Please enter both Name and Room ID';
         this.showRoomError = true;
         return;
       }
-      socket.emit('join-room', { roomId: this.roomId, playerName: this.playerName });
-      // joined = true will be set on 'ticket-assigned' event
+      socket.emit('join-room', {
+        roomId: this.roomId,
+        playerName: this.playerName
+      });
+      // joined = true is set when 'ticket-assigned' arrives
     },
 
-    // 🎟 Ticket grid prep (layout already 3×9)
+    // 🎟 Enforce exactly 5 numbers per row in a 3×9 layout
     initLayouts() {
-      this.tickets.forEach((ticket, i) => {
-        this.tickets[i].marks = [];
+      this.tickets.forEach(ticket => {
+        // Flatten out all numbers (should be 15)
+        const nums = ticket.layout.flat().filter(n => n);
+        ticket.layout = [];
+        for (let r = 0; r < 3; r++) {
+          const row = Array(9).fill(null);
+          // Take next 5 numbers
+          const picks = nums.splice(0, 5);
+          // Randomly place them in 9 cols
+          const indices = Array.from({ length: 9 }, (_, i) => i);
+          picks.forEach(num => {
+            const idx = indices.splice(Math.floor(Math.random() * indices.length), 1)[0];
+            row[idx] = num;
+          });
+          ticket.layout.push(row);
+        }
       });
     },
 
-    // ✅ Is number marked?
+    // ✅ Check mark state
     isMarked(tid, num) {
       if (this.autoMark) return this.called.includes(num);
       const t = this.tickets.find(t => t.id === tid);
       return t?.marks?.includes(num);
     },
 
-    // ✏️ Toggle mark manually
+    // ✏️ Toggle a manual mark
     toggleMark(tid, num) {
       if (this.autoMark) return;
       const t = this.tickets.find(t => t.id === tid);
@@ -90,9 +111,10 @@ function playerDashboard() {
       else t.marks.push(num);
     },
 
-    // 📍 Mark number action (with Boogie logic)
+    // 🎯 Handle clicks on cells (with Boogie logic)
     markNumber(tid, num) {
       if (this.autoMark) return;
+      // Wrong if number hasn't been called
       if (!this.called.includes(num)) {
         this.showBoogie = true;
       } else {
@@ -100,15 +122,18 @@ function playerDashboard() {
       }
     },
 
-    // ➕ Ticket request
+    // ➕ Request a new ticket
     requestTicket() {
-      socket.emit('request-ticket', { roomId: this.roomId, playerName: this.playerName });
+      socket.emit('request-ticket', {
+        roomId: this.roomId,
+        playerName: this.playerName
+      });
       this.showAddModal = false;
-      this.roomErrorMessage = '📨 Request sent to admin for a new ticket';
+      this.roomErrorMessage = '📨 Ticket request sent to admin';
       this.showRoomError = true;
     },
 
-    // 🏆 Submit prize claim
+    // 🏆 Submit a prize claim
     submitClaim() {
       if (!this.selectedPrize) {
         this.roomErrorMessage = 'Select a prize to claim';
@@ -120,23 +145,21 @@ function playerDashboard() {
         roomId: this.roomId,
         playerName: this.playerName,
         claimType: this.selectedPrize,
-        ticket,
+        ticket
       });
       this.showClaimModal = false;
     },
 
-    // 🎯 Toggle auto-mark UI alert
+    // 🌟 Auto-mark toggle info
     autoChanged() {
       this.showAutoInfo = true;
       setTimeout(() => this.showAutoInfo = false, 2000);
     },
 
-    // ❌ Close Boogie modal
+    // ❌ Close dialogs
     closeBoogie() {
       this.showBoogie = false;
     },
-
-    // ❌ Close Room Error modal
     closeRoomError() {
       this.showRoomError = false;
     }
