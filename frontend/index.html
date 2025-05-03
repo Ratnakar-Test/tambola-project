@@ -1,73 +1,295 @@
 <!-- File: tambola-project/frontend/index.html -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tambola Player</title>
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- BLOCK 1: HEAD (Imports & Metadata) -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tambola Player Dashboard</title>
+  <!-- DaisyUI (includes Tailwind) -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" />
+  <!-- Tailwind “browser” build -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <!-- Alpine.js for reactivity -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- Socket.IO client -->
+  <script src="/socket.io/socket.io.js"></script>
 </head>
-<body class="bg-gray-100 text-gray-800 p-6">
+<body x-data="playerDashboard()" x-init="init()" class="bg-gray-50 min-h-screen relative">
 
-  <!-- BLOCK 1: Join Screen -->
-  <div id="join-screen" class="flex flex-col items-center justify-center min-h-screen">
-    <h1 class="text-4xl font-bold mb-6">Tambola Game</h1>
-    <input id="room-id-input" type="text" placeholder="Room ID" class="mb-4 p-2 border rounded w-64" />
-    <input id="player-name-input" type="text" placeholder="Your Name" class="mb-6 p-2 border rounded w-64" />
-    <button onclick="joinRoom()" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Join Game</button>
+  <!-- BLOCK 2: SETUP SCREEN -->
+  <div x-show="!connected" class="flex flex-col items-center justify-center min-h-screen p-4">
+    <h1 class="text-4xl font-bold mb-6">Join Tambola Game</h1>
+    <input x-model="playerName" type="text" placeholder="Your Name"
+           class="mb-4 p-2 border rounded w-64" />
+    <input x-model="roomId" type="text" placeholder="Room ID"
+           class="mb-6 p-2 border rounded w-64" />
+    <button @click="joinRoom()"
+            class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+      Join Game
+    </button>
+    <template x-if="errorMsg">
+      <p class="mt-4 text-red-600" x-text="errorMsg"></p>
+    </template>
   </div>
 
-  <!-- BLOCK 2: Game Screen -->
-  <div id="game-screen" class="hidden">
-    <!-- SECTION: Called Numbers -->
-    <div class="mb-6">
-      <h2 class="text-2xl font-semibold mb-2">Called Numbers</h2>
-      <div id="called-numbers" class="flex flex-wrap gap-2"></div>
-    </div>
+  <!-- BLOCK 3: DRAWER LAYOUT (Main UI) -->
+  <div x-show="connected" class="drawer">
+    <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle" />
 
-    <!-- SECTION: Tickets -->
-    <div class="mb-6">
-      <h2 class="text-2xl font-semibold mb-2">Your Tickets</h2>
-      <div id="tickets-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-    </div>
+    <!-- DRAWER CONTENT -->
+    <div class="drawer-content flex flex-col">
 
-    <!-- BLOCK 3: Player Actions -->
-    <div class="flex items-center space-x-4 mb-6">
-      <button onclick="requestTicket()" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Request Ticket</button>
-      <label class="flex items-center space-x-2">
-        <input type="checkbox" onchange="toggleAutoMark()" class="form-checkbox" />
-        <span>Auto-Mark</span>
-      </label>
-    </div>
+      <!-- HEADER -->
+      <header class="flex items-center p-4 bg-white shadow">
+        <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
+               viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </label>
+        <h1 class="text-2xl font-semibold flex-1">Tambola Player</h1>
+      </header>
 
-    <!-- SECTION: Claim Prize -->
-    <div id="claim-section" class="mb-6">
-      <h2 class="text-2xl font-semibold mb-2">Claim Prize</h2>
-      <div class="flex flex-col md:flex-row items-start md:items-center space-y-4 md:space-y-0 md:space-x-4">
-        <select id="claim-type" class="p-2 border rounded">
-          <option value="topLine">Top Line</option>
-          <option value="twoLines">Two Lines</option>
-          <option value="fullHouse">Full House</option>
-        </select>
-        <input id="claim-numbers" type="text" placeholder="Numbers (comma-separated)" class="p-2 border rounded w-full md:w-64" />
-        <button onclick="
-          submitClaim(
-            document.getElementById('claim-type').value,
-            document.getElementById('claim-numbers').value.split(',').map(n => +n)
-          )"
-          class="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600">
-          Submit Claim
+      <!-- MAIN CONTENT -->
+      <main class="p-4 pb-24">
+
+        <!-- SECTION: Called Numbers -->
+        <div class="mb-6">
+          <h2 class="text-lg font-semibold mb-2">Called Numbers</h2>
+          <div class="flex flex-wrap gap-2 bg-white p-3 rounded-lg shadow-inner">
+            <template x-for="n in called" :key="n">
+              <div class="badge badge-primary" x-text="n"></div>
+            </template>
+            <template x-if="called.length === 0">
+              <span class="text-gray-500">No numbers called yet</span>
+            </template>
+          </div>
+        </div>
+
+        <!-- SECTION: Tickets Carousel -->
+        <h2 class="text-lg font-semibold mb-2">Your Tickets</h2>
+        <div class="overflow-x-auto mb-6">
+          <div class="flex gap-4">
+            <template x-for="ticket in tickets" :key="ticket.id">
+              <div class="bg-white p-4 rounded-lg shadow-md min-w-[360px]">
+                <!-- 3×9 Grid -->
+                <div class="grid grid-cols-9 gap-2">
+                  <template x-for="(cell, idx) in ticket.flat()" :key="idx">
+                    <div
+                      class="border border-gray-300 rounded p-2 h-10 flex items-center justify-center cursor-pointer"
+                      :class="cell && isMarked(ticket.id, cell) ? 'bg-primary text-white' : ''"
+                      x-text="cell || ''"
+                      @click="cell && toggleMark(ticket.id, cell)">
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+      </main>
+
+      <!-- BLOCK 4: BOTTOM NAVIGATION -->
+      <nav class="fixed bottom-0 left-0 w-full bg-white border-t shadow-lg p-3 flex justify-between items-center z-50">
+        <button class="btn btn-primary flex-1 mx-1" @click="showAddModal = true">
+          Add Ticket
         </button>
+        <button class="btn btn-secondary flex-1 mx-1" @click="showClaimModal = true">
+          Claim Prize
+        </button>
+        <div class="flex-1 mx-1 flex items-center justify-center">
+          <label class="mr-2">Auto-Mark:</label>
+          <input type="checkbox" class="toggle toggle-primary"
+                 x-model="autoMark" @change="autoChanged()" />
+        </div>
+      </nav>
+
+    </div>
+
+    <!-- BLOCK 5: SIDEBAR MENU -->
+    <div class="drawer-side">
+      <label for="sidebar-toggle" class="drawer-overlay"></label>
+      <aside class="p-6 w-64 bg-gradient-to-b from-blue-600 to-blue-800 text-white shadow-xl rounded-r-xl">
+        <h2 class="text-xl font-bold mb-4">Menu</h2>
+        <ul class="space-y-2">
+          <!-- future sidebar items -->
+        </ul>
+      </aside>
+    </div>
+  </div>
+
+  <!-- BLOCK 6: MODALS -->
+  <!-- Add Ticket Modal -->
+  <div x-show="showAddModal" class="modal modal-open">
+    <div class="modal-box">
+      <button @click="showAddModal = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+      <h3 class="font-bold text-lg text-center mb-4">Request New Ticket</h3>
+      <p class="mb-4 text-center">
+        Send a request to the admin to add a new ticket.
+      </p>
+      <div class="flex justify-end">
+        <button class="btn btn-primary" @click="requestTicket()">Confirm Request</button>
       </div>
     </div>
   </div>
 
-  <!-- Alpine.js (optional) -->
-  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-  <!-- Socket.IO client -->
-  <script src="/socket.io/socket.io.js"></script>
-  <!-- App logic -->
-  <script src="app.js"></script>
+  <!-- Claim Prize Modal -->
+  <div x-show="showClaimModal" class="modal modal-open">
+    <div class="modal-box">
+      <button @click="showClaimModal = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+      <h3 class="font-bold text-lg text-center mb-4">Claim Prize</h3>
+      <div class="space-y-2 mb-4">
+        <template x-for="prize in prizeTypes" :key="prize">
+          <button
+            class="btn btn-outline btn-block text-left"
+            :class="selectedPrize === prize ? 'btn-primary' : ''"
+            @click="selectedPrize = prize"
+            x-text="prize">
+          </button>
+        </template>
+      </div>
+      <div class="flex justify-end">
+        <button class="btn btn-success" @click="submitClaim()">Submit Claim</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auto-Mark Info Modal -->
+  <div x-show="showAutoInfo" class="modal modal-open">
+    <div class="modal-box">
+      <button @click="showAutoInfo = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+      <h3 class="font-bold text-lg mb-2"
+          x-text="autoMark ? 'Auto-Mark Enabled' : 'Auto-Mark Disabled'">
+      </h3>
+      <p x-text="autoMark
+        ? 'New called numbers will be marked automatically on your tickets.'
+        : 'You must mark called numbers manually on your tickets.'">
+      </p>
+    </div>
+  </div>
+
+  <!-- BLOCK 7: Alpine.js Component -->
+  <script>
+    function playerDashboard() {
+      return {
+        // STATE
+        roomId: '',
+        playerName: '',
+        connected: false,
+        errorMsg: '',
+        called: [],
+        tickets: [],
+        prizeTypes: ['Top Line', 'Two Lines', 'Full House'],
+        showAddModal: false,
+        showClaimModal: false,
+        showAutoInfo: false,
+        selectedPrize: null,
+        autoMark: false,
+        socket: null,
+
+        // INITIALIZER
+        init() {
+          this.socket = io();
+
+          // Listen for called numbers
+          this.socket.on('number-called', data => {
+            this.called = data.calledNumbers;
+          });
+
+          // Ticket updates for this player
+          this.socket.on('ticket-updated', data => {
+            if (data.playerName === this.playerName) {
+              this.tickets = data.tickets;
+            }
+          });
+
+          // Ticket request response
+          this.socket.on('ticket-request-response', data => {
+            if (data.approved) {
+              this.tickets = data.tickets;
+              this.showAddModal = false;
+            } else {
+              alert(`Ticket request denied: ${data.error}`);
+            }
+          });
+
+          // Claim verification
+          this.socket.on('claim-updated', data => {
+            if (data.playerName === this.playerName) {
+              alert(`Your ${data.claimType} claim was ${data.approved ? 'approved' : 'denied'}.`);
+              this.showClaimModal = false;
+            }
+          });
+        },
+
+        // ACTIONS
+        joinRoom() {
+          this.errorMsg = '';
+          if (!this.roomId || !this.playerName) {
+            return this.errorMsg = 'Enter both your name and room ID.';
+          }
+          this.socket.emit('join-room',
+            { roomId: this.roomId, playerName: this.playerName },
+            res => {
+              if (res.success) {
+                this.connected = true;
+              } else {
+                this.errorMsg = res.error;
+              }
+            }
+          );
+        },
+
+        requestTicket() {
+          this.socket.emit('request-ticket', {
+            roomId: this.roomId,
+            playerName: this.playerName
+          });
+        },
+
+        submitClaim() {
+          if (!this.selectedPrize) {
+            return alert('Select a prize to claim.');
+          }
+          this.socket.emit('submit-claim', {
+            roomId: this.roomId,
+            playerName: this.playerName,
+            claimType: this.selectedPrize,
+            numbers: []  // Optionally include marked numbers if needed
+          });
+        },
+
+        // Ticket marking
+        isMarked(tid, num) {
+          if (this.autoMark) {
+            return this.called.includes(num);
+          }
+          const ticket = this.tickets.find(t => t.id === tid);
+          return ticket?.marks?.includes(num);
+        },
+
+        toggleMark(tid, num) {
+          if (!this.autoMark) {
+            const ticket = this.tickets.find(t => t.id === tid);
+            ticket.marks = ticket.marks || [];
+            const idx = ticket.marks.indexOf(num);
+            if (idx > -1) ticket.marks.splice(idx, 1);
+            else ticket.marks.push(num);
+          }
+        },
+
+        // Auto-mark info
+        autoChanged() {
+          this.showAutoInfo = true;
+          setTimeout(() => this.showAutoInfo = false, 2000);
+        }
+      };
+    }
+  </script>
+
 </body>
 </html>
