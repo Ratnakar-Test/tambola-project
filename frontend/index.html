@@ -1,4 +1,4 @@
-<!-- File: tambola-project/frontend/index.html -->
+<!-- File: frontend/index.html -->
 
 <!DOCTYPE html>
 <html lang="en">
@@ -99,7 +99,7 @@
       <!-- MAIN CONTENT -->
       <main class="p-4 space-y-6">
 
-        <!-- BLOCK 3: CALLED NUMBERS (left-to-right, newest on the right) -->
+        <!-- BLOCK 3: CALLED NUMBERS (left-to-right) -->
         <div class="bg-white p-3 rounded-lg shadow-inner overflow-x-auto whitespace-nowrap flex">
           <template x-for="n in called" :key="n">
             <span class="badge badge-primary inline-block mr-2" x-text="n"></span>
@@ -124,7 +124,6 @@
               <div class="flex gap-4">
                 <template x-for="ticket in tickets" :key="ticket.id">
                   <div class="bg-white p-4 rounded-lg shadow-md min-w-[360px]">
-                    <!-- 3×9 Ticket Grid -->
                     <div class="grid grid-cols-9 gap-2">
                       <template x-for="(row, rIndex) in ticket.grid" :key="rIndex">
                         <template x-for="(cell, cIndex) in row" :key="cIndex">
@@ -149,8 +148,8 @@
       <!-- BLOCK 4: BOTTOM NAVIGATION -->
       <nav x-show="connected"
            class="fixed bottom-0 left-0 w-full bg-white border-t p-3 flex justify-between items-center z-50">
-        <button class="btn btn-primary flex-1 mx-1" @click="showAddModal=true">Add Ticket</button>
-        <button class="btn btn-secondary flex-1 mx-1" @click="showClaimModal=true">Claim Prize</button>
+        <button class="btn btn-primary flex-1 mx-1" @click="showAddModal = true">Add Ticket</button>
+        <button class="btn btn-secondary flex-1 mx-1" @click="showClaimModal = true">Claim Prize</button>
         <div class="flex-1 mx-1 flex items-center justify-center">
           <label class="mr-2">Auto-Mark:</label>
           <input type="checkbox" class="toggle toggle-primary"
@@ -162,7 +161,7 @@
       <!-- Add Ticket Modal -->
       <div x-show="connected && showAddModal" class="modal modal-open">
         <div class="modal-box">
-          <button @click="showAddModal=false"
+          <button @click="showAddModal = false"
                   class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
           <h3 class="font-bold text-lg mb-4">Request New Ticket</h3>
           <div class="flex justify-end">
@@ -174,14 +173,14 @@
       <!-- Claim Prize Modal -->
       <div x-show="connected && showClaimModal" class="modal modal-open">
         <div class="modal-box">
-          <button @click="showClaimModal=false"
+          <button @click="showClaimModal = false"
                   class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
           <h3 class="font-bold text-lg mb-4">Claim Prize</h3>
           <div class="space-y-2 mb-4">
             <template x-for="prize in prizeTypes" :key="prize">
               <button class="btn btn-outline btn-block text-left"
-                      :class="selectedPrize===prize?'btn-primary':''"
-                      @click="selectedPrize=prize"
+                      :class="selectedPrize === prize ? 'btn-primary' : ''"
+                      @click="selectedPrize = prize"
                       x-text="prize"></button>
             </template>
           </div>
@@ -190,7 +189,6 @@
           </div>
         </div>
       </div>
-
     </div>
 
     <!-- SIDEBAR -->
@@ -216,7 +214,7 @@
     </div>
   </div>
 
-  <!-- BLOCK 6: Alpine Component Script (unchanged) -->
+  <!-- BLOCK 6: Alpine Component Script -->
   <script>
     function playerDashboard() {
       return {
@@ -236,12 +234,12 @@
 
         init() {
           this.socket = io('https://tambola-backend.onrender.com');
-          this.socket.on('connect_error', () => this.errorMsg='Cannot reach server');
+          this.socket.on('connect_error', () => this.errorMsg = 'Cannot reach server');
           this.socket.on('number-called', data => this.called = data.calledNumbers);
           this.socket.on('ticket-updated', data => {
             if (data.playerName === this.playerName) {
-              const oldMarks = this.tickets.reduce((m,t)=>{ m[t.id]=t.marks; return m; }, {});
-              this.tickets = data.tickets.map((grid,i)=>({
+              const oldMarks = this.tickets.reduce((m, t) => { m[t.id] = t.marks; return m; }, {});
+              this.tickets = data.tickets.map((grid, i) => ({
                 id: i,
                 grid,
                 marks: oldMarks[i] || []
@@ -250,14 +248,16 @@
           });
           this.socket.on('ticket-request-response', data => {
             if (data.approved) {
-              this.tickets = data.tickets.map((grid,i)=>({ id:i, grid, marks: [] }));
+              this.tickets = data.tickets.map((grid, i) => ({ id: i, grid, marks: [] }));
               this.showAddModal = false;
             } else {
               this.errorMsg = data.error;
             }
           });
           this.socket.on('claim-updated', data => {
-            if (data.playerName === this.playerName) this.showClaimModal = false;
+            if (data.playerName === this.playerName) {
+              this.showClaimModal = false;
+            }
           });
         },
 
@@ -268,44 +268,51 @@
             return;
           }
           this.socket.emit('join-room',
-            { roomId:this.roomId, playerName:this.playerName },
-            res => { if(res.success) this.connected=true; else this.errorMsg=res.error; }
+            { roomId: this.roomId.trim().toUpperCase(), playerName: this.playerName },
+            res => { if (res.success) this.connected = true; else this.errorMsg = res.error; }
           );
         },
 
         confirmRequest() {
           this.socket.emit('request-ticket',
-            { roomId:this.roomId, playerName:this.playerName },
-            res => { if(res.success) this.showAddModal=false; else this.errorMsg=res.error; }
+            { roomId: this.roomId.trim().toUpperCase(), playerName: this.playerName },
+            res => { if (res.success) this.showAddModal = false; else this.errorMsg = res.error; }
           );
         },
 
         submitClaim() {
           if (!this.selectedPrize) return;
-          this.socket.emit('submit-claim', {
-            roomId: this.roomId,
-            playerName: this.playerName,
-            claimType: this.selectedPrize,
-            numbers: []
-          });
+          this.socket.emit(
+            'submit-claim',
+            {
+              roomId: this.roomId.trim().toUpperCase(),
+              playerName: this.playerName,
+              claimType: this.selectedPrize,
+              numbers: []
+            },
+            res => {
+              if (res.success) this.showClaimModal = false;
+              else this.errorMsg = res.error;
+            }
+          );
         },
 
         isMarked(tid, num) {
           if (this.autoMark) return this.called.includes(num);
-          return this.tickets.find(t=>t.id===tid)?.marks.includes(num);
+          return this.tickets.find(t => t.id === tid)?.marks.includes(num);
         },
 
         toggleMark(tid, num) {
           if (!this.autoMark) {
-            const ticket = this.tickets.find(t=>t.id===tid);
+            const ticket = this.tickets.find(t => t.id === tid);
             const idx = ticket.marks.indexOf(num);
-            if (idx > -1) ticket.marks.splice(idx,1);
+            if (idx > -1) ticket.marks.splice(idx, 1);
             else ticket.marks.push(num);
           }
         },
 
-        autoChanged() {},
-      }
+        autoChanged() {}
+      };
     }
   </script>
 </body>
