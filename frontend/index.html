@@ -1,8 +1,9 @@
 <!-- File: tambola-project/frontend/index.html -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- BLOCK 1: HEAD -->
+  <!-- BLOCK 1: HEAD (Imports & Metadata) -->
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Tambola Player Dashboard</title>
@@ -54,7 +55,7 @@
       <!-- MAIN CONTENT -->
       <main class="p-4 space-y-6">
 
-        <!-- CALLED NUMBERS (horizontal scroll) -->
+        <!-- CALLED NUMBERS -->
         <div>
           <h2 class="text-lg font-semibold mb-2">Called Numbers</h2>
           <div class="bg-white p-3 rounded-lg shadow-inner overflow-x-auto whitespace-nowrap">
@@ -67,29 +68,36 @@
           </div>
         </div>
 
-        <!-- YOUR TICKETS (3×9 grid) -->
+        <!-- YOUR TICKETS -->
         <div>
           <h2 class="text-lg font-semibold mb-2">Your Tickets</h2>
           <div class="overflow-x-auto">
             <div class="flex gap-4">
               <template x-for="ticket in tickets" :key="ticket.id">
                 <div class="bg-white p-4 rounded-lg shadow-md min-w-[360px]">
+                  <!-- ===== SNIPPET: Nested Loops for 3×9 Grid ===== -->
                   <div class="grid grid-cols-9 gap-2">
-                    <template x-for="(cell, idx) in ticket.grid.flat()" :key="idx">
-                      <div class="border border-gray-300 rounded p-2 h-10 flex items-center justify-center cursor-pointer"
-                           :class="isMarked(ticket.id, cell)? 'bg-primary text-white':''"
-                           x-text="cell||''"
-                           @click="cell && toggleMark(ticket.id,cell)">
-                      </div>
+                    <!-- Loop over each row -->
+                    <template x-for="(row, rIndex) in ticket.grid" :key="rIndex">
+                      <!-- Loop over each cell in row -->
+                      <template x-for="(cell, cIndex) in row" :key="cIndex">
+                        <div
+                          class="border border-gray-300 rounded p-2 h-10 flex items-center justify-center cursor-pointer transition-colors"
+                          :class="isMarked(ticket.id, cell) ? 'bg-primary text-white' : ''"
+                          x-text="cell || ''"
+                          @click="cell && toggleMark(ticket.id, cell)">
+                        </div>
+                      </template>
                     </template>
                   </div>
+                  <!-- ===== end SNIPPET ===== -->
                 </div>
               </template>
             </div>
           </div>
         </div>
 
-        <!-- PLACEHOLDER SECTIONS FOR SIDEBAR MENUS -->
+        <!-- MENU PLACEHOLDERS -->
         <div x-show="menu==='Home'">
           <h3 class="text-xl font-semibold">Home</h3>
           <p>Welcome to Tambola! Your game will start soon.</p>
@@ -130,9 +138,7 @@
           <li>
             <a href="#" @click.prevent="menu='Home'; $refs.sidebarToggle.checked=false"
                :class="menu==='Home'?'bg-blue-700 font-semibold':''"
-               class="block py-2 px-4 rounded hover:bg-blue-500">
-              Home
-            </a>
+               class="block py-2 px-4 rounded hover:bg-blue-500">Home</a>
           </li>
           <li>
             <a href="#" @click.prevent="menu='My Claims'; $refs.sidebarToggle.checked=false"
@@ -158,7 +164,7 @@
   <script>
     function playerDashboard() {
       return {
-        // state
+        // State
         roomId: '',
         playerName: '',
         connected: false,
@@ -175,69 +181,91 @@
 
         init() {
           this.socket = io('https://tambola-backend.onrender.com');
+
+          // Connection-error handler
           this.socket.on('connect_error', () => this.errorMsg='Cannot reach server');
+
+          // Handle called numbers
           this.socket.on('number-called', data => this.called = data.calledNumbers);
+
+          // Handle ticket updates
           this.socket.on('ticket-updated', data => {
-            if (data.playerName===this.playerName) {
-              const old = this.tickets.reduce((m,t)=>{m[t.id]=t.marks;return m;},{});
+            if (data.playerName === this.playerName) {
+              // Preserve marks
+              const oldMarks = this.tickets.reduce((m,t)=>{ m[t.id]=t.marks; return m; }, {});
               this.tickets = data.tickets.map((grid,i)=>({
-                id:i,
+                id: i,
                 grid,
-                marks: old[i]||[]
+                marks: oldMarks[i] || []
               }));
             }
           });
+
+          // Handle ticket request response
           this.socket.on('ticket-request-response', data => {
-            if (data.approved){
-              this.tickets = data.tickets.map((grid,i)=>({id:i,grid,marks:[]}));
-              this.showAddModal=false;
-            } else this.errorMsg=data.error;
+            if (data.approved) {
+              this.tickets = data.tickets.map((grid,i)=>({ id:i, grid, marks: [] }));
+              this.showAddModal = false;
+            } else {
+              this.errorMsg = data.error;
+            }
           });
+
+          // Handle claim response
           this.socket.on('claim-updated', data => {
-            if (data.playerName===this.playerName) this.showClaimModal=false;
+            if (data.playerName === this.playerName) {
+              this.showClaimModal = false;
+            }
           });
         },
 
+        // Actions
         joinRoom() {
-          this.errorMsg=''; 
-          if (!this.playerName||!this.roomId){this.errorMsg='Name & Room ID required';return;}
-          this.socket.emit('join-room', { roomId:this.roomId, playerName:this.playerName },
-            res=>{ if(res.success)this.connected=true; else this.errorMsg=res.error; });
+          this.errorMsg = '';
+          if (!this.playerName || !this.roomId) {
+            this.errorMsg = 'Name & Room ID required';
+            return;
+          }
+          this.socket.emit('join-room',
+            { roomId:this.roomId, playerName:this.playerName },
+            res => { if(res.success) this.connected=true; else this.errorMsg=res.error; }
+          );
         },
 
         confirmRequest() {
           this.socket.emit('request-ticket',
-            { roomId:this.roomId, playerName:this.playerName},
-            res=>{ if(res.success)this.showAddModal=false; else this.errorMsg=res.error;}
+            { roomId:this.roomId, playerName:this.playerName },
+            res => { if(res.success) this.showAddModal=false; else this.errorMsg=res.error; }
           );
         },
 
         submitClaim() {
-          if(!this.selectedPrize)return;
-          this.socket.emit('submit-claim',{
-            roomId:this.roomId,
-            playerName:this.playerName,
-            claimType:this.selectedPrize,
-            numbers:[]
+          if (!this.selectedPrize) return;
+          this.socket.emit('submit-claim', {
+            roomId: this.roomId,
+            playerName: this.playerName,
+            claimType: this.selectedPrize,
+            numbers: []
           });
         },
 
-        isMarked(tid,num) {
-          if(this.autoMark) return this.called.includes(num);
+        isMarked(tid, num) {
+          if (this.autoMark) return this.called.includes(num);
           return this.tickets.find(t=>t.id===tid)?.marks.includes(num);
         },
 
-        toggleMark(tid,num){
-          if(!this.autoMark){
-            const t=this.tickets.find(x=>x.id===tid);
-            const i=t.marks.indexOf(num);
-            if(i>-1)t.marks.splice(i,1);
-            else t.marks.push(num);
+        toggleMark(tid, num) {
+          if (!this.autoMark) {
+            const ticket = this.tickets.find(t=>t.id===tid);
+            const idx = ticket.marks.indexOf(num);
+            if (idx > -1) ticket.marks.splice(idx,1);
+            else ticket.marks.push(num);
           }
         },
 
-        autoChanged(){},
-
+        autoChanged() {
+          // you can show a brief info if desired
+        }
       }
     }
   </script>
