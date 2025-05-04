@@ -15,25 +15,49 @@
 <body x-data="playerDashboard()" x-init="init()" class="bg-base-200 flex flex-col h-screen">
 
   <!-- BLOCK 2: HERO JOIN SCREEN -->
-  <div x-show="!connected" class="hero flex-1 bg-base-200">
-    <div class="hero-content text-center">
-      <div class="max-w-md w-full">
-        <h1 class="text-5xl font-bold mb-6">Join Tambola</h1>
-        <input x-model="playerName" type="text" placeholder="Your Name"
-               class="input input-bordered w-full mb-4"/>
-        <input x-model="roomId" type="text" placeholder="Room ID"
-               class="input input-bordered w-full mb-6"/>
-        <button @click="joinRoom()"
-                class="btn btn-primary w-full mb-4">Join Game</button>
-        <div x-show="errorMsg" class="alert alert-error shadow-lg">
-          <div>
-            <span x-text="errorMsg"></span>
-            <button @click="errorMsg=''" class="btn btn-sm btn-ghost ml-4">OK</button>
-          </div>
+ 
+<!-- BLOCK 2: HERO JOIN SCREEN (enhanced) -->
+<div x-show="!connected" class="hero min-h-screen bg-gradient-to-br from-blue-500 to-indigo-600">
+  <div class="hero-content text-center text-white">
+    <div class="max-w-md w-full bg-white/20 backdrop-blur-md p-8 rounded-xl shadow-xl ring-1 ring-white/30">
+      <h1 class="text-5xl font-extrabold mb-6 drop-shadow-lg">Join Tambola</h1>
+      
+      <input
+        x-model="playerName"
+        type="text"
+        placeholder="Your Name"
+        class="input input-bordered input-primary w-full mb-4 bg-white/80 text-base-content placeholder-gray-600"
+      />
+      
+      <input
+        x-model="roomId"
+        type="text"
+        placeholder="Room ID"
+        class="input input-bordered input-primary w-full mb-6 bg-white/80 text-base-content placeholder-gray-600"
+      />
+      
+      <button
+        @click="joinRoom()"
+        class="btn btn-wide btn-accent mb-4 transform hover:scale-105 transition"
+      >
+        Join Game
+      </button>
+      
+      <!-- Error Alert -->
+      <div x-show="errorMsg" class="alert alert-error shadow-lg">
+        <div class="flex-1">
+          <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span x-text="errorMsg"></span>
         </div>
+        <button @click="errorMsg=''" class="btn btn-sm btn-ghost">OK</button>
       </div>
     </div>
   </div>
+</div>
 
   <!-- BLOCK 3: DRAWER LAYOUT -->
   <div x-show="connected" class="drawer drawer-mobile flex-1 overflow-hidden">
