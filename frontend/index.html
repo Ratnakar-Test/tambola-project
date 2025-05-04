@@ -14,50 +14,70 @@
 </head>
 <body x-data="playerDashboard()" x-init="init()" class="bg-base-200 flex flex-col h-screen">
 
-  <!-- BLOCK 2: HERO JOIN SCREEN -->
- 
-<!-- BLOCK 2: HERO JOIN SCREEN (enhanced) -->
-<div x-show="!connected" class="hero min-h-screen bg-gradient-to-br from-blue-500 to-indigo-600">
-  <div class="hero-content text-center text-white">
-    <div class="max-w-md w-full bg-white/20 backdrop-blur-md p-8 rounded-xl shadow-xl ring-1 ring-white/30">
-      <h1 class="text-5xl font-extrabold mb-6 drop-shadow-lg">Join Tambola</h1>
-      
-      <input
-        x-model="playerName"
-        type="text"
-        placeholder="Your Name"
-        class="input input-bordered input-primary w-full mb-4 bg-white/80 text-base-content placeholder-gray-600"
-      />
-      
-      <input
-        x-model="roomId"
-        type="text"
-        placeholder="Room ID"
-        class="input input-bordered input-primary w-full mb-6 bg-white/80 text-base-content placeholder-gray-600"
-      />
-      
-      <button
-        @click="joinRoom()"
-        class="btn btn-wide btn-accent mb-4 transform hover:scale-105 transition"
-      >
-        Join Game
-      </button>
-      
-      <!-- Error Alert -->
-      <div x-show="errorMsg" class="alert alert-error shadow-lg">
-        <div class="flex-1">
-          <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span x-text="errorMsg"></span>
+  <!-- BLOCK 2: HERO JOIN SCREEN (enhanced with icons) -->
+  <div x-show="!connected" class="hero min-h-screen bg-gradient-to-br from-blue-500 to-indigo-600">
+    <div class="hero-content text-center text-white">
+      <div class="max-w-md w-full bg-white/20 backdrop-blur-md p-8 rounded-xl shadow-xl ring-1 ring-white/30">
+        <h1 class="text-5xl font-extrabold mb-6 drop-shadow-lg">Join Tambola</h1>
+        
+        <!-- Name Input with Icon -->
+        <div class="input-group mb-4">
+          <span class="bg-white/50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" fill="none"
+                 viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M5.121 17.804A9 9 0 1112 21a9 9 0 01-6.879-3.196z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+          </span>
+          <input
+            x-model="playerName"
+            type="text"
+            placeholder="Your Name"
+            class="input input-bordered input-primary w-full bg-white/80 text-base-content placeholder-gray-600"
+          />
         </div>
-        <button @click="errorMsg=''" class="btn btn-sm btn-ghost">OK</button>
+
+        <!-- Room ID Input with Icon -->
+        <div class="input-group mb-6">
+          <span class="bg-white/50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" fill="none"
+                 viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 20H5a2 2 0 01-2-2v-4.586a2 2 0 01.586-1.414L9 7l5 5l4.414-4.414a2 2 0 011.414-.586H19a2 2 0 012 2v4.586a2 2 0 01-.586 1.414L15 17l-5-5l-4.414 4.414A2 2 0 015 20z"/>
+            </svg>
+          </span>
+          <input
+            x-model="roomId"
+            type="text"
+            placeholder="Room ID"
+            class="input input-bordered input-primary w-full bg-white/80 text-base-content placeholder-gray-600"
+          />
+        </div>
+
+        <button
+          @click="joinRoom()"
+          class="btn btn-wide btn-accent mb-4 transform hover:scale-105 transition"
+        >
+          Join Game
+        </button>
+
+        <!-- Error Alert -->
+        <div x-show="errorMsg" class="alert alert-error shadow-lg">
+          <div class="flex-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span x-text="errorMsg"></span>
+          </div>
+          <button @click="errorMsg=''" class="btn btn-sm btn-ghost">OK</button>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
   <!-- BLOCK 3: DRAWER LAYOUT -->
   <div x-show="connected" class="drawer drawer-mobile flex-1 overflow-hidden">
@@ -79,24 +99,19 @@
       <!-- MAIN CONTENT -->
       <main class="p-4 space-y-6">
 
-      
-<!-- BLOCK 3: CALLED NUMBERS (make newest-on-left and highlight) -->
-<div
-  class="bg-white p-3 rounded-lg shadow-inner overflow-x-auto whitespace-nowrap flex flex-row-reverse"
->
-  <template x-for="n in called" :key="n">
-    <span
-      x-text="n"
-      :class="n === called[called.length - 1]
-        ? 'badge badge-secondary inline-block ml-2'
-        : 'badge badge-primary inline-block ml-2'"
-    ></span>
-  </template>
-  <template x-if="called.length === 0">
-    <span class="text-gray-500">No numbers called yet</span>
-  </template>
-</div>
-</div>
+        <!-- BLOCK 3: CALLED NUMBERS (newest-on-left & highlight) -->
+        <div class="bg-white p-3 rounded-lg shadow-inner overflow-x-auto whitespace-nowrap flex flex-row-reverse">
+          <template x-for="n in called" :key="n">
+            <span
+              x-text="n"
+              :class="n === called[called.length - 1]
+                ? 'badge badge-secondary inline-block ml-2'
+                : 'badge badge-primary inline-block ml-2'"
+            ></span>
+          </template>
+          <template x-if="called.length === 0">
+            <span class="text-gray-500">No numbers called yet</span>
+          </template>
         </div>
 
         <!-- YOUR TICKETS -->
@@ -106,11 +121,9 @@
             <div class="flex gap-4">
               <template x-for="ticket in tickets" :key="ticket.id">
                 <div class="bg-white p-4 rounded-lg shadow-md min-w-[360px]">
-                  <!-- ===== SNIPPET: Nested Loops for 3×9 Grid ===== -->
+                  <!-- 3×9 Ticket Grid -->
                   <div class="grid grid-cols-9 gap-2">
-                    <!-- Loop over each row -->
                     <template x-for="(row, rIndex) in ticket.grid" :key="rIndex">
-                      <!-- Loop over each cell in row -->
                       <template x-for="(cell, cIndex) in row" :key="cIndex">
                         <div
                           class="border border-gray-300 rounded p-2 h-10 flex items-center justify-center cursor-pointer transition-colors"
@@ -121,43 +134,64 @@
                       </template>
                     </template>
                   </div>
-                  <!-- ===== end SNIPPET ===== -->
                 </div>
               </template>
             </div>
           </div>
         </div>
 
-        <!-- MENU PLACEHOLDERS -->
-        <div x-show="menu==='Home'">
-          <h3 class="text-xl font-semibold">Home</h3>
-          <p>Welcome to Tambola! Your game will start soon.</p>
-        </div>
-        <div x-show="menu==='My Claims'">
-          <h3 class="text-xl font-semibold">My Claims</h3>
-          <p>View the status of your prize claims here.</p>
-        </div>
-        <div x-show="menu==='History'">
-          <h3 class="text-xl font-semibold">History</h3>
-          <p>Your past games and tickets will appear here.</p>
-        </div>
-        <div x-show="menu==='Settings'">
-          <h3 class="text-xl font-semibold">Settings</h3>
-          <p>Update your preferences and notification settings.</p>
-        </div>
-
       </main>
 
-      <!-- BOTTOM NAV -->
-      <nav class="fixed bottom-0 left-0 w-full bg-white border-t p-3 flex justify-between items-center z-50">
+      <!-- BLOCK 4: BOTTOM NAVIGATION -->
+      <nav
+        x-show="connected"
+        class="fixed bottom-0 left-0 w-full bg-white border-t p-3 flex justify-between items-center z-50"
+      >
         <button class="btn btn-primary flex-1 mx-1" @click="showAddModal=true">Add Ticket</button>
         <button class="btn btn-secondary flex-1 mx-1" @click="showClaimModal=true">Claim Prize</button>
         <div class="flex-1 mx-1 flex items-center justify-center">
           <label class="mr-2">Auto-Mark:</label>
-          <input type="checkbox" class="toggle toggle-primary" x-model="autoMark" @change="autoChanged()"/>
+          <input
+            type="checkbox"
+            class="toggle toggle-primary"
+            x-model="autoMark"
+            @change="autoChanged()"
+          />
         </div>
       </nav>
 
+      <!-- BLOCK 5: MODALS -->
+      <!-- Add Ticket Modal -->
+      <div x-show="connected && showAddModal" class="modal modal-open">
+        <div class="modal-box">
+          <button @click="showAddModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+          <h3 class="font-bold text-lg mb-4">Request New Ticket</h3>
+          <div class="flex justify-end">
+            <button class="btn btn-primary" @click="confirmRequest()">Confirm</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Claim Prize Modal -->
+      <div x-show="connected && showClaimModal" class="modal modal-open">
+        <div class="modal-box">
+          <button @click="showClaimModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+          <h3 class="font-bold text-lg mb-4">Claim Prize</h3>
+          <div class="space-y-2 mb-4">
+            <template x-for="prize in prizeTypes" :key="prize">
+              <button
+                class="btn btn-outline btn-block text-left"
+                :class="selectedPrize===prize?'btn-primary':''"
+                @click="selectedPrize=prize"
+                x-text="prize"
+              ></button>
+            </template>
+          </div>
+          <div class="flex justify-end">
+            <button class="btn btn-success" @click="submitClaim()">Submit Claim</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- SIDEBAR -->
@@ -191,11 +225,10 @@
     </div>
   </div>
 
-  <!-- BLOCK 6: Alpine Component Script -->
+  <!-- BLOCK 6: Alpine Component Script (unchanged) -->
   <script>
     function playerDashboard() {
       return {
-        // State
         roomId: '',
         playerName: '',
         connected: false,
@@ -212,17 +245,10 @@
 
         init() {
           this.socket = io('https://tambola-backend.onrender.com');
-
-          // Connection-error handler
           this.socket.on('connect_error', () => this.errorMsg='Cannot reach server');
-
-          // Handle called numbers
           this.socket.on('number-called', data => this.called = data.calledNumbers);
-
-          // Handle ticket updates
           this.socket.on('ticket-updated', data => {
             if (data.playerName === this.playerName) {
-              // Preserve marks
               const oldMarks = this.tickets.reduce((m,t)=>{ m[t.id]=t.marks; return m; }, {});
               this.tickets = data.tickets.map((grid,i)=>({
                 id: i,
@@ -231,8 +257,6 @@
               }));
             }
           });
-
-          // Handle ticket request response
           this.socket.on('ticket-request-response', data => {
             if (data.approved) {
               this.tickets = data.tickets.map((grid,i)=>({ id:i, grid, marks: [] }));
@@ -241,16 +265,11 @@
               this.errorMsg = data.error;
             }
           });
-
-          // Handle claim response
           this.socket.on('claim-updated', data => {
-            if (data.playerName === this.playerName) {
-              this.showClaimModal = false;
-            }
+            if (data.playerName === this.playerName) this.showClaimModal = false;
           });
         },
 
-        // Actions
         joinRoom() {
           this.errorMsg = '';
           if (!this.playerName || !this.roomId) {
@@ -294,9 +313,8 @@
           }
         },
 
-        autoChanged() {
-          // you can show a brief info if desired
-        }
+        autoChanged() {},
+
       }
     }
   </script>
