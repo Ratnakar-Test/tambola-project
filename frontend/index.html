@@ -7,12 +7,9 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Tambola Player Dashboard</title>
-  <!-- DaisyUI (includes Tailwind) -->
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <!-- Socket.IO client -->
   <script src="https://tambola-backend.onrender.com/socket.io/socket.io.js"></script>
 </head>
 <body x-data="playerDashboard()" x-init="init()" class="bg-base-200 flex flex-col h-screen">
@@ -120,30 +117,32 @@
         </div>
 
         <!-- YOUR TICKETS -->
-        <div x-show="tickets.length > 0">
-          <h2 class="text-lg font-semibold mb-2">Your Tickets</h2>
-          <div class="overflow-x-auto">
-            <div class="flex gap-4">
-              <template x-for="ticket in tickets" :key="ticket.id">
-                <div class="bg-white p-4 rounded-lg shadow-md min-w-[360px]">
-                  <!-- 3×9 Ticket Grid -->
-                  <div class="grid grid-cols-9 gap-2">
-                    <template x-for="(row, rIndex) in ticket.grid" :key="rIndex">
-                      <template x-for="(cell, cIndex) in row" :key="cIndex">
-                        <div
-                          class="border border-gray-300 rounded p-2 h-10 flex items-center justify-center cursor-pointer transition-colors"
-                          :class="isMarked(ticket.id, cell) ? 'bg-primary text-white' : ''"
-                          x-text="cell || ''"
-                          @click="cell && toggleMark(ticket.id, cell)">
-                        </div>
+        <template x-if="tickets.length > 0">
+          <div>
+            <h2 class="text-lg font-semibold mb-2">Your Tickets</h2>
+            <div class="overflow-x-auto">
+              <div class="flex gap-4">
+                <template x-for="ticket in tickets" :key="ticket.id">
+                  <div class="bg-white p-4 rounded-lg shadow-md min-w-[360px]">
+                    <!-- 3×9 Ticket Grid -->
+                    <div class="grid grid-cols-9 gap-2">
+                      <template x-for="(row, rIndex) in ticket.grid" :key="rIndex">
+                        <template x-for="(cell, cIndex) in row" :key="cIndex">
+                          <div
+                            class="border border-gray-300 rounded p-2 h-10 flex items-center justify-center cursor-pointer transition-colors"
+                            :class="isMarked(ticket.id, cell) ? 'bg-primary text-white' : ''"
+                            x-text="cell || ''"
+                            @click="cell && toggleMark(ticket.id, cell)">
+                          </div>
+                        </template>
                       </template>
-                    </template>
+                    </div>
                   </div>
-                </div>
-              </template>
+                </template>
+              </div>
             </div>
           </div>
-        </div>
+        </template>
 
       </main>
 
@@ -252,7 +251,7 @@
           this.socket.on('ticket-request-response', data => {
             if (data.approved) {
               this.tickets = data.tickets.map((grid,i)=>({ id:i, grid, marks: [] }));
-              this.showAddModal = false;  
+              this.showAddModal = false;
             } else {
               this.errorMsg = data.error;
             }
