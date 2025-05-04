@@ -84,12 +84,12 @@ io.on('connection', (socket) => {
         players: Object.keys(room.playerTickets)
       });
 
-+     // ←← NEW: send this player's existing tickets immediately
-+     socket.emit('ticket-updated', {
-+       roomId: data.roomId,
-+       playerName: data.playerName,
-+       tickets: room.playerTickets[data.playerName]
-+     });
+    // ←← NEW: send this player's existing tickets immediately
+    socket.emit('ticket-updated', {
+      roomId: data.roomId,
+    playerName: data.playerName,
+       tickets: room.playerTickets[data.playerName]
+    });
 
     } catch (err) {
       ack({ success: false, error: err.message });
