@@ -7,9 +7,12 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Tambola Player Dashboard</title>
+  <!-- DaisyUI (includes Tailwind) -->
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- Socket.IO client -->
   <script src="https://tambola-backend.onrender.com/socket.io/socket.io.js"></script>
 </head>
 <body x-data="playerDashboard()" x-init="init()" class="bg-base-200 flex flex-col h-screen">
@@ -83,7 +86,7 @@
   <div x-show="connected" class="drawer drawer-mobile flex-1 overflow-hidden">
     <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle"/>
     <div class="drawer-content flex flex-col overflow-y-auto">
-      
+
       <!-- HEADER -->
       <header class="flex items-center p-4 bg-white shadow">
         <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
@@ -95,18 +98,14 @@
         </label>
         <h1 class="text-2xl font-semibold flex-1">Tambola Player</h1>
       </header>
-      
+
       <!-- MAIN CONTENT -->
       <main class="p-4 space-y-6">
 
         <!-- BLOCK 3: CALLED NUMBERS (left-to-right, newest on the right) -->
         <div class="bg-white p-3 rounded-lg shadow-inner overflow-x-auto whitespace-nowrap flex">
-           <h2 class="text-lg font-semibold mb-2">Called Numbers</h2>
           <template x-for="n in called" :key="n">
-            <span
-              class="badge badge-primary inline-block mr-2"
-              x-text="n"
-            ></span>
+            <span class="badge badge-primary inline-block mr-2" x-text="n"></span>
           </template>
           <template x-if="called.length === 0">
             <span class="text-gray-500">No numbers called yet</span>
@@ -116,10 +115,8 @@
         <!-- BLOCK 3b: LATEST CALLED NUMBER -->
         <div class="mt-4 bg-white p-4 rounded-lg shadow-inner text-center">
           <h3 class="text-lg font-semibold mb-2">Latest Number</h3>
-          <span
-            class="text-4xl font-bold badge badge-secondary"
-            x-text="called[called.length - 1] || '-'"
-          ></span>
+          <span class="text-4xl font-bold badge badge-secondary"
+                x-text="called[called.length - 1] || '-'"></span>
         </div>
 
         <!-- YOUR TICKETS -->
@@ -151,20 +148,14 @@
       </main>
 
       <!-- BLOCK 4: BOTTOM NAVIGATION -->
-      <nav
-        x-show="connected"
-        class="fixed bottom-0 left-0 w-full bg-white border-t p-3 flex justify-between items-center z-50"
-      >
+      <nav x-show="connected"
+           class="fixed bottom-0 left-0 w-full bg-white border-t p-3 flex justify-between items-center z-50">
         <button class="btn btn-primary flex-1 mx-1" @click="showAddModal=true">Add Ticket</button>
         <button class="btn btn-secondary flex-1 mx-1" @click="showClaimModal=true">Claim Prize</button>
         <div class="flex-1 mx-1 flex items-center justify-center">
           <label class="mr-2">Auto-Mark:</label>
-          <input
-            type="checkbox"
-            class="toggle toggle-primary"
-            x-model="autoMark"
-            @change="autoChanged()"
-          />
+          <input type="checkbox" class="toggle toggle-primary"
+                 x-model="autoMark" @change="autoChanged()"/>
         </div>
       </nav>
 
@@ -172,7 +163,8 @@
       <!-- Add Ticket Modal -->
       <div x-show="connected && showAddModal" class="modal modal-open">
         <div class="modal-box">
-          <button @click="showAddModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+          <button @click="showAddModal=false"
+                  class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
           <h3 class="font-bold text-lg mb-4">Request New Ticket</h3>
           <div class="flex justify-end">
             <button class="btn btn-primary" @click="confirmRequest()">Confirm</button>
@@ -183,16 +175,15 @@
       <!-- Claim Prize Modal -->
       <div x-show="connected && showClaimModal" class="modal modal-open">
         <div class="modal-box">
-          <button @click="showClaimModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+          <button @click="showClaimModal=false"
+                  class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
           <h3 class="font-bold text-lg mb-4">Claim Prize</h3>
           <div class="space-y-2 mb-4">
             <template x-for="prize in prizeTypes" :key="prize">
-              <button
-                class="btn btn-outline btn-block text-left"
-                :class="selectedPrize===prize?'btn-primary':''"
-                @click="selectedPrize=prize"
-                x-text="prize"
-              ></button>
+              <button class="btn btn-outline btn-block text-left"
+                      :class="selectedPrize===prize?'btn-primary':''"
+                      @click="selectedPrize=prize"
+                      x-text="prize"></button>
             </template>
           </div>
           <div class="flex justify-end">
@@ -200,6 +191,7 @@
           </div>
         </div>
       </div>
+
     </div>
 
     <!-- SIDEBAR -->
@@ -208,26 +200,18 @@
       <aside class="p-6 w-64 bg-gradient-to-b from-blue-600 to-blue-800 text-white rounded-r-xl shadow-xl">
         <h2 class="text-2xl font-bold mb-4">Menu</h2>
         <ul class="space-y-2">
-          <li>
-            <a href="#" @click.prevent="menu='Home'; $refs.sidebarToggle.checked=false"
-               :class="menu==='Home'?'bg-blue-700 font-semibold':''"
-               class="block py-2 px-4 rounded hover:bg-blue-500">Home</a>
-          </li>
-          <li>
-            <a href="#" @click.prevent="menu='My Claims'; $refs.sidebarToggle.checked=false"
-               :class="menu==='My Claims'?'bg-blue-700 font-semibold':''"
-               class="block py-2 px-4 rounded hover:bg-blue-500">My Claims</a>
-          </li>
-          <li>
-            <a href="#" @click.prevent="menu='History'; $refs.sidebarToggle.checked=false"
-               :class="menu==='History'?'bg-blue-700 font-semibold':''"
-               class="block py-2 px-4 rounded hover:bg-blue-500">History</a>
-          </li>
-          <li>
-            <a href="#" @click.prevent="menu='Settings'; $refs.sidebarToggle.checked=false"
-               :class="menu==='Settings'?'bg-blue-700 font-semibold':''"
-               class="block py-2 px-4 rounded hover:bg-blue-500">Settings</a>
-          </li>
+          <li><a href="#" @click.prevent="menu='Home'; $refs.sidebarToggle.checked=false"
+                 :class="menu==='Home'?'bg-blue-700 font-semibold':''"
+                 class="block py-2 px-4 rounded hover:bg-blue-500">Home</a></li>
+          <li><a href="#" @click.prevent="menu='My Claims'; $refs.sidebarToggle.checked=false"
+                 :class="menu==='My Claims'?'bg-blue-700 font-semibold':''"
+                 class="block py-2 px-4 rounded hover:bg-blue-500">My Claims</a></li>
+          <li><a href="#" @click.prevent="menu='History'; $refs.sidebarToggle.checked=false"
+                 :class="menu==='History'?'bg-blue-700 font-semibold':''"
+                 class="block py-2 px-4 rounded hover:bg-blue-500">History</a></li>
+          <li><a href="#" @click.prevent="menu='Settings'; $refs.sidebarToggle.checked=false"
+                 :class="menu==='Settings'?'bg-blue-700 font-semibold':''"
+                 class="block py-2 px-4 rounded hover:bg-blue-500">Settings</a></li>
         </ul>
       </aside>
     </div>
