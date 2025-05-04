@@ -79,17 +79,24 @@
       <!-- MAIN CONTENT -->
       <main class="p-4 space-y-6">
 
-        <!-- CALLED NUMBERS -->
-        <div>
-          <h2 class="text-lg font-semibold mb-2">Called Numbers</h2>
-          <div class="bg-white p-3 rounded-lg shadow-inner overflow-x-auto whitespace-nowrap">
-            <template x-for="n in called" :key="n">
-              <span class="badge badge-primary inline-block mr-2" x-text="n"></span>
-            </template>
-            <template x-if="called.length===0">
-              <span class="text-gray-500">No numbers called yet</span>
-            </template>
-          </div>
+      
+<!-- BLOCK 3: CALLED NUMBERS (make newest-on-left and highlight) -->
+<div
+  class="bg-white p-3 rounded-lg shadow-inner overflow-x-auto whitespace-nowrap flex flex-row-reverse"
+>
+  <template x-for="n in called" :key="n">
+    <span
+      x-text="n"
+      :class="n === called[called.length - 1]
+        ? 'badge badge-secondary inline-block ml-2'
+        : 'badge badge-primary inline-block ml-2'"
+    ></span>
+  </template>
+  <template x-if="called.length === 0">
+    <span class="text-gray-500">No numbers called yet</span>
+  </template>
+</div>
+</div>
         </div>
 
         <!-- YOUR TICKETS -->
