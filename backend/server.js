@@ -1,5 +1,3 @@
-// File: tambola-project/backend/server.js
-
 // ========== BLOCK 1: Imports & Setup ==========
 const express = require('express');
 const http = require('http');
@@ -84,18 +82,19 @@ io.on('connection', (socket) => {
         players: Object.keys(room.playerTickets)
       });
 
-    // ←← NEW: send this player's existing tickets immediately
-    socket.emit('ticket-updated', {
-      roomId: data.roomId,
-    playerName: data.playerName,
-       tickets: room.playerTickets[data.playerName]
-    });
+      // Assign an initial ticket and send it immediately
+      const requestId = ticketStore.requestTicket(data.roomId, data.playerName);
+      const result = ticketStore.approveTicket(data.roomId, requestId, true);
+      socket.emit('ticket-updated', {
+        roomId: data.roomId,
+        playerName: data.playerName,
+        tickets: result.tickets
+      });
 
     } catch (err) {
       ack({ success: false, error: err.message });
     }
   });
-
 
   // --- BLOCK 4.3: Call Number ---
   socket.on('call-number', (data, ack) => {
@@ -129,7 +128,6 @@ io.on('connection', (socket) => {
         return ack({ success: false, error: 'room not found' });
       }
       const requestId = ticketStore.requestTicket(data.roomId, data.playerName);
-      // Track requester
       pendingTicketRequests[requestId] = {
         socketId: socket.id,
         playerName: data.playerName
@@ -137,7 +135,6 @@ io.on('connection', (socket) => {
 
       ack({ success: true, requestId });
 
-      // Notify admin(s)
       io.to(data.roomId).emit('ticket-requested', {
         roomId: data.roomId,
         requestId,
@@ -160,21 +157,17 @@ io.on('connection', (socket) => {
       const result = ticketStore.approveTicket(data.roomId, requestId, approved);
       ack({ success: true });
 
-      // Notify the requesting player only
       if (socketId) {
         const payload = {
           roomId: data.roomId,
           requestId,
           approved
         };
-        if (approved) {
-          payload.tickets = result.tickets;
-        }
+        if (approved) payload.tickets = result.tickets;
         io.to(socketId).emit('ticket-request-response', payload);
         delete pendingTicketRequests[requestId];
       }
 
-      // Broadcast updated tickets list to room
       if (approved) {
         io.to(data.roomId).emit('ticket-updated', {
           roomId: data.roomId,
@@ -200,7 +193,6 @@ io.on('connection', (socket) => {
         claimType,
         numbers
       );
-      // Track requester
       pendingClaimRequests[claimId] = {
         socketId: socket.id,
         playerName,
@@ -209,7 +201,6 @@ io.on('connection', (socket) => {
 
       ack({ success: true, claimId });
 
-      // Notify admin(s)
       io.to(data.roomId).emit('claim-submitted', {
         roomId: data.roomId,
         claimId,
@@ -234,7 +225,6 @@ io.on('connection', (socket) => {
       const result = ticketStore.verifyClaim(data.roomId, claimId, approved);
       ack({ success: true });
 
-      // Notify the claiming player only
       if (socketId) {
         io.to(socketId).emit('claim-updated', {
           roomId: data.roomId,
@@ -246,7 +236,6 @@ io.on('connection', (socket) => {
         delete pendingClaimRequests[claimId];
       }
 
-      // Broadcast to room for admin’s winners list
       io.to(data.roomId).emit('claim-updated', {
         roomId: data.roomId,
         claimId,
