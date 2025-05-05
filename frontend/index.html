@@ -1,9 +1,7 @@
-<!-- File: frontend/index.html -->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- BLOCK 1: HEAD (Imports & Metadata) -->
+  <!-- BLOCK 1: HEAD -->
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Tambola Player Dashboard</title>
@@ -14,65 +12,30 @@
 </head>
 <body x-data="playerDashboard()" x-init="init()" class="bg-base-200 flex flex-col h-screen">
 
-  <!-- BLOCK 2: HERO JOIN SCREEN (enhanced with icons) -->
+  <!-- BLOCK 2: JOIN SCREEN -->
   <div x-show="!connected" class="hero min-h-screen bg-gradient-to-br from-blue-500 to-indigo-600">
     <div class="hero-content text-center text-white">
       <div class="max-w-md w-full bg-white/20 backdrop-blur-md p-8 rounded-xl shadow-xl ring-1 ring-white/30">
         <h1 class="text-5xl font-extrabold mb-6 drop-shadow-lg">Join Tambola</h1>
-        
-        <!-- Name Input with Icon -->
         <div class="input-group mb-4">
           <span class="bg-white/50">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" fill="none"
-                 viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M5.121 17.804A9 9 0 1112 21a9 9 0 01-6.879-3.196z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
+            <!-- user icon -->
           </span>
-          <input
-            x-model="playerName"
-            type="text"
-            placeholder="Your Name"
-            class="input input-bordered input-primary w-full bg-white/80 text-base-content placeholder-gray-600"
-          />
+          <input x-model="playerName" type="text" placeholder="Your Name"
+                 class="input input-bordered input-primary w-full bg-white/80 text-base-content"/>
         </div>
-
-        <!-- Room ID Input with Icon -->
         <div class="input-group mb-6">
           <span class="bg-white/50">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" fill="none"
-                 viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M9 20H5a2 2 0 01-2-2v-4.586a2 2 0 01.586-1.414L9 7l5 5l4.414-4.414a2 2 0 011.414-.586H19a2 2 0 012 2v4.586a2 2 0 01-.586 1.414L15 17l-5-5l-4.414 4.414A2 2 0 015 20z"/>
-            </svg>
+            <!-- ticket icon -->
           </span>
-          <input
-            x-model="roomId"
-            type="text"
-            placeholder="Room ID"
-            class="input input-bordered input-primary w-full bg-white/80 text-base-content placeholder-gray-600"
-          />
+          <input x-model="roomId" type="text" placeholder="Room ID"
+                 class="input input-bordered input-primary w-full bg-white/80 text-base-content"/>
         </div>
-
-        <button
-          @click="joinRoom()"
-          class="btn btn-wide btn-accent mb-4 transform hover:scale-105 transition"
-        >
+        <button @click="joinRoom()" class="btn btn-wide btn-accent mb-4 transform hover:scale-105 transition">
           Join Game
         </button>
-
-        <!-- Error Alert -->
         <div x-show="errorMsg" class="alert alert-error shadow-lg">
-          <div class="flex-1">
-            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none"
-                 viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span x-text="errorMsg"></span>
-          </div>
+          <div class="flex-1"><span x-text="errorMsg"></span></div>
           <button @click="errorMsg=''" class="btn btn-sm btn-ghost">OK</button>
         </div>
       </div>
@@ -81,17 +44,13 @@
 
   <!-- BLOCK 3: DRAWER LAYOUT -->
   <div x-show="connected" class="drawer drawer-mobile flex-1 overflow-hidden">
-    <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle"/>
+    <input id="sidebar-toggle" type="checkbox" class="drawer-toggle"/>
     <div class="drawer-content flex flex-col overflow-y-auto">
 
       <!-- HEADER -->
       <header class="flex items-center p-4 bg-white shadow">
         <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
-               viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M4 6h16M4 12h16M4 18h16"/>
-          </svg>
+          <!-- menu icon -->
         </label>
         <h1 class="text-2xl font-semibold flex-1">Tambola Player</h1>
       </header>
@@ -99,103 +58,88 @@
       <!-- MAIN CONTENT -->
       <main class="p-4 space-y-6">
 
-        <!-- BLOCK 3: CALLED NUMBERS (left-to-right) -->
+        <!-- Called Numbers -->
         <div class="bg-white p-3 rounded-lg shadow-inner overflow-x-auto whitespace-nowrap flex">
           <template x-for="n in called" :key="n">
             <span class="badge badge-primary inline-block mr-2" x-text="n"></span>
           </template>
-          <template x-if="called.length === 0">
-            <span class="text-gray-500">No numbers called yet</span>
-          </template>
         </div>
 
-        <!-- BLOCK 3b: LATEST CALLED NUMBER -->
+        <!-- Latest Number -->
         <div class="mt-4 bg-white p-4 rounded-lg shadow-inner text-center">
           <h3 class="text-lg font-semibold mb-2">Latest Number</h3>
           <span class="text-4xl font-bold badge badge-secondary"
-                x-text="called[called.length - 1] || '-'"></span>
+                x-text="called[called.length-1]|| '-'"></span>
         </div>
 
-        <!-- YOUR TICKETS -->
-        <template x-if="tickets.length > 0">
-          <div>
-            <h2 class="text-lg font-semibold mb-2">Your Tickets</h2>
-            <div class="overflow-x-auto">
-              <div class="flex gap-4">
-                <template x-for="ticket in tickets" :key="ticket.id">
-                  <div class="bg-white p-4 rounded-lg shadow-md min-w-[360px]">
-                    <div class="grid grid-cols-9 gap-2">
-                      <template x-for="(row, rIndex) in ticket.grid" :key="rIndex">
-                        <template x-for="(cell, cIndex) in row" :key="cIndex">
-                          <div
-                            class="border border-gray-300 rounded p-2 h-10 flex items-center justify-center cursor-pointer transition-colors"
-                            :class="isMarked(ticket.id, cell) ? 'bg-primary text-white' : ''"
-                            x-text="cell || ''"
-                            @click="cell && toggleMark(ticket.id, cell)">
-                          </div>
-                        </template>
+        <!-- Your Tickets (always rendered, then populated) -->
+        <div>
+          <h2 class="text-lg font-semibold mb-2">Your Tickets</h2>
+          <div class="overflow-x-auto">
+            <div class="flex gap-4">
+              <template x-for="ticket in tickets" :key="ticket.id">
+                <div class="bg-white p-4 rounded-lg shadow-md min-w-[360px]">
+                  <div class="grid grid-cols-9 gap-2">
+                    <template x-for="(row, rIndex) in ticket.grid" :key="rIndex">
+                      <template x-for="(cell, cIndex) in row" :key="cIndex">
+                        <div class="border rounded p-2 h-10 flex items-center justify-center cursor-pointer"
+                             :class="isMarked(ticket.id, cell)? 'bg-primary text-white':''"
+                             x-text="cell||''"
+                             @click="cell && toggleMark(ticket.id,cell)">
+                        </div>
                       </template>
-                    </div>
+                    </template>
                   </div>
-                </template>
-              </div>
+                </div>
+              </template>
             </div>
           </div>
-        </template>
+        </div>
 
       </main>
 
-      <!-- BLOCK 4: BOTTOM NAVIGATION -->
+      <!-- BLOCK 4: BOTTOM NAV -->
       <nav x-show="connected"
-           class="fixed bottom-0 left-0 w-full bg-white border-t p-3 flex justify-between items-center z-50">
-        <button class="btn btn-primary flex-1 mx-1" @click="showAddModal = true">Add Ticket</button>
-        <button class="btn btn-secondary flex-1 mx-1" @click="showClaimModal = true">Claim Prize</button>
+           class="fixed bottom-0 w-full bg-white border-t p-3 flex justify-between items-center z-50">
+        <button class="btn btn-primary flex-1 mx-1" @click="showAddModal=true">Add Ticket</button>
+        <button class="btn btn-secondary flex-1 mx-1" @click="showClaimModal=true">Claim Prize</button>
         <div class="flex-1 mx-1 flex items-center justify-center">
           <label class="mr-2">Auto-Mark:</label>
-          <input type="checkbox" class="toggle toggle-primary"
-                 x-model="autoMark" @change="autoChanged()"/>
+          <input type="checkbox" class="toggle toggle-primary" x-model="autoMark" @change="autoChanged()"/>
         </div>
       </nav>
 
       <!-- BLOCK 5: MODALS -->
-      <!-- Add Ticket Modal -->
+      <!-- Add Ticket -->
       <div x-show="connected && showAddModal" class="modal modal-open">
         <div class="modal-box">
-          <button @click="showAddModal = false"
-                  class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+          <button @click="showAddModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
           <h3 class="font-bold text-lg mb-4">Request New Ticket</h3>
-          <div class="flex justify-end">
-            <button class="btn btn-primary" @click="confirmRequest()">Confirm</button>
-          </div>
+          <button class="btn btn-primary" @click="confirmRequest()">Confirm</button>
         </div>
       </div>
 
-      <!-- Claim Prize Modal -->
+      <!-- Claim Prize -->
       <div x-show="connected && showClaimModal" class="modal modal-open">
         <div class="modal-box">
-          <button @click="showClaimModal = false"
-                  class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+          <button @click="showClaimModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
           <h3 class="font-bold text-lg mb-4">Claim Prize</h3>
-          <div class="space-y-2 mb-4">
-            <template x-for="prize in prizeTypes" :key="prize">
-              <button class="btn btn-outline btn-block text-left"
-                      :class="selectedPrize === prize ? 'btn-primary' : ''"
-                      @click="selectedPrize = prize"
-                      x-text="prize"></button>
-            </template>
-          </div>
-          <div class="flex justify-end">
-            <button class="btn btn-success" @click="submitClaim()">Submit Claim</button>
-          </div>
+          <template x-for="prize in prizeTypes" :key="prize">
+            <button class="btn btn-outline btn-block text-left"
+                    :class="selectedPrize===prize?'btn-primary':''"
+                    @click="selectedPrize=prize"
+                    x-text="prize"></button>
+          </template>
+          <button class="btn btn-success mt-4" @click="submitClaim()">Submit Claim</button>
         </div>
       </div>
+
     </div>
 
     <!-- SIDEBAR -->
     <div class="drawer-side">
       <label for="sidebar-toggle" class="drawer-overlay"></label>
       <aside class="p-6 w-64 bg-gradient-to-b from-blue-600 to-blue-800 text-white rounded-r-xl shadow-xl">
-        <h2 class="text-2xl font-bold mb-4">Menu</h2>
         <ul class="space-y-2">
           <li><a href="#" @click.prevent="menu='Home'; $refs.sidebarToggle.checked=false"
                  :class="menu==='Home'?'bg-blue-700 font-semibold':''"
@@ -214,105 +158,80 @@
     </div>
   </div>
 
-  <!-- BLOCK 6: Alpine Component Script -->
+  <!-- BLOCK 6: Alpine Script -->
   <script>
     function playerDashboard() {
       return {
-        roomId: '',
-        playerName: '',
-        connected: false,
-        errorMsg: '',
-        called: [],
-        tickets: [],
-        menu: 'Home',
-        showAddModal: false,
-        showClaimModal: false,
-        autoMark: false,
-        selectedPrize: null,
-        prizeTypes: ['Top Line','Two Lines','Full House'],
-        socket: null,
+        roomId:'', playerName:'', connected:false, errorMsg:'',
+        called:[], tickets:[], menu:'Home',
+        showAddModal:false, showClaimModal:false,
+        autoMark:false, selectedPrize:null,
+        prizeTypes:['Top Line','Two Lines','Full House'],
+        socket:null,
 
-        init() {
+        init(){
           this.socket = io('https://tambola-backend.onrender.com');
-          this.socket.on('connect_error', () => this.errorMsg = 'Cannot reach server');
-          this.socket.on('number-called', data => this.called = data.calledNumbers);
-          this.socket.on('ticket-updated', data => {
-            if (data.playerName === this.playerName) {
-              const oldMarks = this.tickets.reduce((m, t) => { m[t.id] = t.marks; return m; }, {});
-              this.tickets = data.tickets.map((grid, i) => ({
-                id: i,
-                grid,
-                marks: oldMarks[i] || []
-              }));
+          this.socket.on('connect_error',()=>this.errorMsg='Cannot reach server');
+          this.socket.on('number-called',data=>this.called=data.calledNumbers);
+          // unified handler
+          this.socket.on('ticket-updated',data=>{
+            if(data.playerName===this.playerName){
+              const oldMarks=this.tickets.reduce((m,t)=>{m[t.id]=t.marks;return m;}, {});
+              this.tickets=data.tickets.map((grid,i)=>({id:i,grid,marks:oldMarks[i]||[]}));
             }
           });
-          this.socket.on('ticket-request-response', data => {
-            if (data.approved) {
-              this.tickets = data.tickets.map((grid, i) => ({ id: i, grid, marks: [] }));
-              this.showAddModal = false;
-            } else {
-              this.errorMsg = data.error;
-            }
+          this.socket.on('ticket-request-response',data=>{
+            if(data.approved) this.showAddModal=false;
+            else this.errorMsg=data.error;
           });
-          this.socket.on('claim-updated', data => {
-            if (data.playerName === this.playerName) {
-              this.showClaimModal = false;
-            }
+          this.socket.on('claim-updated',data=>{
+            if(data.playerName===this.playerName) this.showClaimModal=false;
           });
         },
 
-        joinRoom() {
-          this.errorMsg = '';
-          if (!this.playerName || !this.roomId) {
-            this.errorMsg = 'Name & Room ID required';
-            return;
-          }
+        joinRoom(){
+          this.errorMsg='';
+          if(!this.playerName||!this.roomId){this.errorMsg='Name & Room ID required';return;}
           this.socket.emit('join-room',
-            { roomId: this.roomId.trim().toUpperCase(), playerName: this.playerName },
-            res => { if (res.success) this.connected = true; else this.errorMsg = res.error; }
+            {roomId:this.roomId.trim().toUpperCase(),playerName:this.playerName},
+            res=>res.success?this.connected=true:this.errorMsg=res.error
           );
         },
 
-        confirmRequest() {
+        confirmRequest(){
           this.socket.emit('request-ticket',
-            { roomId: this.roomId.trim().toUpperCase(), playerName: this.playerName },
-            res => { if (res.success) this.showAddModal = false; else this.errorMsg = res.error; }
+            {roomId:this.roomId.trim().toUpperCase(),playerName:this.playerName},
+            res=>res.success?this.showAddModal=false:this.errorMsg=res.error
           );
         },
 
-        submitClaim() {
-          if (!this.selectedPrize) return;
-          this.socket.emit(
-            'submit-claim',
+        submitClaim(){
+          if(!this.selectedPrize)return;
+          this.socket.emit('submit-claim',
             {
-              roomId: this.roomId.trim().toUpperCase(),
-              playerName: this.playerName,
-              claimType: this.selectedPrize,
-              numbers: []
+              roomId:this.roomId.trim().toUpperCase(),
+              playerName:this.playerName,
+              claimType:this.selectedPrize,
+              numbers:[]
             },
-            res => {
-              if (res.success) this.showClaimModal = false;
-              else this.errorMsg = res.error;
-            }
+            res=>res.success?this.showClaimModal=false:this.errorMsg=res.error
           );
         },
 
-        isMarked(tid, num) {
-          if (this.autoMark) return this.called.includes(num);
-          return this.tickets.find(t => t.id === tid)?.marks.includes(num);
+        isMarked(tid,num){
+          if(this.autoMark) return this.called.includes(num);
+          return this.tickets.find(t=>t.id===tid)?.marks.includes(num);
         },
 
-        toggleMark(tid, num) {
-          if (!this.autoMark) {
-            const ticket = this.tickets.find(t => t.id === tid);
-            const idx = ticket.marks.indexOf(num);
-            if (idx > -1) ticket.marks.splice(idx, 1);
-            else ticket.marks.push(num);
+        toggleMark(tid,num){
+          if(!this.autoMark){
+            const t=this.tickets.find(x=>x.id===tid),i=t.marks.indexOf(num);
+            i>-1?t.marks.splice(i,1):t.marks.push(num);
           }
         },
 
-        autoChanged() {}
-      };
+        autoChanged(){}
+      }
     }
   </script>
 </body>
