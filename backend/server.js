@@ -3,264 +3,155 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
-const { v4: uuidv4 } = require('uuid');               // For room IDs
+const { v4: uuidv4 } = require('uuid');
 const TicketStore = require('./ticketStore');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: process.env.FRONTEND_ORIGIN || '*' }
-});
+const io = new Server(server, { cors: { origin: '*' } });
 
-// ========== BLOCK 2: State & Ticket Store ==========
+// ========== BLOCK 2: State ==========
 const ticketStore = new TicketStore(path.join(__dirname, 'scripts', 'tickets.json'));
-
-// Map requestId → { socketId, playerName }
 const pendingTicketRequests = {};
-// Map claimId   → { socketId, playerName, claimType }
 const pendingClaimRequests = {};
 
 // ========== BLOCK 3: HTTP Endpoints ==========
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
-});
-
+app.get('/health', (req, res) => res.json({ status:'ok', time:new Date().toISOString() }));
 app.get('/rooms/:roomId', (req, res) => {
-  if (ticketStore.roomExists(req.params.roomId)) {
-    return res.json({ exists: true });
-  }
-  res.status(404).json({ error: 'room not found' });
+  const rid = req.params.roomId.toUpperCase();
+  ticketStore.roomExists(rid)? res.json({exists:true}) : res.status(404).json({error:'room not found'});
 });
-
-app.get('/tickets.json', (req, res) => {
-  res.sendFile(path.join(__dirname, 'scripts', 'tickets.json'));
-});
+app.get('/tickets.json', (req, res) => res.sendFile(path.join(__dirname,'scripts','tickets.json')));
 
 // ========== BLOCK 4: Socket.IO Handlers ==========
-io.on('connection', (socket) => {
+io.on('connection', socket => {
 
-  // --- BLOCK 4.1: Create Room ---
+  // Create Room
   socket.on('create-room', (data, ack) => {
     try {
-      const roomId = uuidv4().slice(0, 6).toUpperCase();
+      const roomId = uuidv4().slice(0,6).toUpperCase();
       ticketStore.createRoom(roomId, data.maxTicketsPerPlayer);
       socket.join(roomId);
-      ack({ success: true, roomId });
-      socket.emit('room-created', {
-        roomId,
-        adminName: data.adminName,
-        maxTicketsPerPlayer: data.maxTicketsPerPlayer
-      });
-    } catch (err) {
-      ack({ success: false, error: err.message });
-    }
+      ack({success:true, roomId});
+      socket.emit('room-created', { roomId, adminName:data.adminName, maxTicketsPerPlayer:data.maxTicketsPerPlayer });
+    } catch(err) { ack({success:false, error:err.message}); }
   });
 
-  // --- BLOCK 4.2: Join Room ---
+  // Join Room
   socket.on('join-room', (data, ack) => {
     try {
-      if (!data.roomId || !data.playerName) {
-        return ack({ success: false, error: 'roomId and playerName required' });
-      }
-      if (!ticketStore.roomExists(data.roomId)) {
-        return ack({ success: false, error: 'room not found' });
-      }
+      data.roomId = data.roomId.trim().toUpperCase();
+      if(!data.roomId||!data.playerName) return ack({success:false,error:'roomId and playerName required'});
+      if(!ticketStore.roomExists(data.roomId)) return ack({success:false,error:'room not found'});
 
-      // Register player if new
       const room = ticketStore.rooms[data.roomId];
-      if (!room.playerTickets[data.playerName]) {
-        room.playerTickets[data.playerName] = [];
-      }
+      if(!room.playerTickets[data.playerName]) room.playerTickets[data.playerName]=[];
 
       socket.join(data.roomId);
-      ack({ success: true, isAdmin: false });
+      ack({success:true,isAdmin:false});
 
-      // Notify everyone in room
       io.to(data.roomId).emit('player-joined', {
-        roomId: data.roomId,
-        playerName: data.playerName,
-        players: Object.keys(room.playerTickets)
+        roomId:data.roomId,
+        playerName:data.playerName,
+        players:Object.keys(room.playerTickets)
       });
 
-      // Assign an initial ticket and send it immediately
-      const requestId = ticketStore.requestTicket(data.roomId, data.playerName);
-      const result = ticketStore.approveTicket(data.roomId, requestId, true);
+      // Issue and auto-approve one ticket
+      const reqId = ticketStore.requestTicket(data.roomId,data.playerName);
+      const result = ticketStore.approveTicket(data.roomId,reqId,true);
       socket.emit('ticket-updated', {
-        roomId: data.roomId,
-        playerName: data.playerName,
-        tickets: result.tickets
+        roomId:data.roomId,
+        playerName:data.playerName,
+        tickets:result.tickets
       });
 
-    } catch (err) {
-      ack({ success: false, error: err.message });
-    }
+    } catch(err){ ack({success:false,error:err.message}); }
   });
 
-  // --- BLOCK 4.3: Call Number ---
+  // Call Number
   socket.on('call-number', (data, ack) => {
     try {
-      if (!ticketStore.roomExists(data.roomId)) {
-        return ack({ success: false, error: 'room not found' });
-      }
+      data.roomId = data.roomId.trim().toUpperCase();
+      if(!ticketStore.roomExists(data.roomId)) return ack({success:false,error:'room not found'});
       const result = ticketStore.drawNumber(data.roomId);
-      if (!result) {
-        return ack({ success: false, error: 'All numbers have been drawn' });
-      }
-      const { number, calledNumbers } = result;
-
-      // Broadcast to room
-      io.to(data.roomId).emit('number-called', {
-        roomId: data.roomId,
-        number,
-        calledNumbers
-      });
-
-      ack({ success: true, number, calledNumbers });
-    } catch (err) {
-      ack({ success: false, error: err.message });
-    }
+      if(!result) return ack({success:false,error:'All numbers have been drawn'});
+      io.to(data.roomId).emit('number-called', { roomId:data.roomId, number:result.number, calledNumbers:result.calledNumbers });
+      ack({success:true,number:result.number,calledNumbers:result.calledNumbers});
+    } catch(err){ ack({success:false,error:err.message}); }
   });
 
-  // --- BLOCK 4.4: Request Ticket ---
+  // Request Ticket
   socket.on('request-ticket', (data, ack) => {
     try {
-      if (!ticketStore.roomExists(data.roomId)) {
-        return ack({ success: false, error: 'room not found' });
-      }
+      data.roomId = data.roomId.trim().toUpperCase();
+      if(!ticketStore.roomExists(data.roomId)) return ack({success:false,error:'room not found'});
       const requestId = ticketStore.requestTicket(data.roomId, data.playerName);
-      pendingTicketRequests[requestId] = {
-        socketId: socket.id,
-        playerName: data.playerName
-      };
-
-      ack({ success: true, requestId });
-
-      io.to(data.roomId).emit('ticket-requested', {
-        roomId: data.roomId,
-        requestId,
-        playerName: data.playerName
-      });
-    } catch (err) {
-      ack({ success: false, error: err.message });
-    }
+      pendingTicketRequests[requestId] = { socketId:socket.id, playerName:data.playerName };
+      ack({success:true,requestId});
+      io.to(data.roomId).emit('ticket-requested', { roomId:data.roomId, requestId, playerName:data.playerName });
+    } catch(err){ ack({success:false,error:err.message}); }
   });
 
-  // --- BLOCK 4.5: Approve / Deny Ticket ---
+  // Approve/Deny Ticket
   socket.on('approve-ticket', (data, ack) => {
     try {
-      if (!ticketStore.roomExists(data.roomId)) {
-        return ack({ success: false, error: 'room not found' });
-      }
-      const { requestId, approved } = data;
-      const { socketId, playerName } = pendingTicketRequests[requestId] || {};
+      data.roomId = data.roomId.trim().toUpperCase();
+      if(!ticketStore.roomExists(data.roomId)) return ack({success:false,error:'room not found'});
+      const {requestId,approved} = data;
+      const {socketId,playerName} = pendingTicketRequests[requestId]||{};
+      const result = ticketStore.approveTicket(data.roomId,requestId,approved);
+      ack({success:true});
 
-      const result = ticketStore.approveTicket(data.roomId, requestId, approved);
-      ack({ success: true });
-
-      if (socketId) {
-        const payload = {
-          roomId: data.roomId,
-          requestId,
-          approved
-        };
-        if (approved) payload.tickets = result.tickets;
+      if(socketId){
+        const payload = { roomId:data.roomId, requestId, approved };
+        if(approved) payload.tickets = result.tickets;
         io.to(socketId).emit('ticket-request-response', payload);
         delete pendingTicketRequests[requestId];
       }
 
-      if (approved) {
-        io.to(data.roomId).emit('ticket-updated', {
-          roomId: data.roomId,
-          playerName,
-          tickets: result.tickets
-        });
-      }
-    } catch (err) {
-      ack({ success: false, error: err.message });
-    }
+      // Broadcast updated tickets
+      io.to(data.roomId).emit('ticket-updated', {
+        roomId:data.roomId,
+        playerName,
+        tickets:result.tickets
+      });
+
+    } catch(err){ ack({success:false,error:err.message}); }
   });
 
-  // --- BLOCK 4.6: Submit Claim ---
+  // Submit Claim
   socket.on('submit-claim', (data, ack) => {
     try {
-      if (!ticketStore.roomExists(data.roomId)) {
-        return ack({ success: false, error: 'room not found' });
-      }
-      const { playerName, claimType, numbers } = data;
-      const claimId = ticketStore.submitClaim(
-        data.roomId,
-        playerName,
-        claimType,
-        numbers
-      );
-      pendingClaimRequests[claimId] = {
-        socketId: socket.id,
-        playerName,
-        claimType
-      };
-
-      ack({ success: true, claimId });
-
-      io.to(data.roomId).emit('claim-submitted', {
-        roomId: data.roomId,
-        claimId,
-        playerName,
-        claimType,
-        numbers
-      });
-    } catch (err) {
-      ack({ success: false, error: err.message });
-    }
+      data.roomId = data.roomId.trim().toUpperCase();
+      if(!ticketStore.roomExists(data.roomId)) return ack({success:false,error:'room not found'});
+      const claimId = ticketStore.submitClaim(data.roomId,data.playerName,data.claimType,data.numbers);
+      pendingClaimRequests[claimId] = { socketId:socket.id, playerName:data.playerName, claimType:data.claimType };
+      ack({success:true,claimId});
+      io.to(data.roomId).emit('claim-submitted', { roomId:data.roomId, claimId, playerName:data.playerName, claimType:data.claimType });
+    } catch(err){ ack({success:false,error:err.message}); }
   });
 
-  // --- BLOCK 4.7: Approve / Deny Claim ---
+  // Verify Claim
   socket.on('verify-claim', (data, ack) => {
     try {
-      if (!ticketStore.roomExists(data.roomId)) {
-        return ack({ success: false, error: 'room not found' });
+      data.roomId = data.roomId.trim().toUpperCase();
+      if(!ticketStore.roomExists(data.roomId)) return ack({success:false,error:'room not found'});
+      const {socketId,playerName,claimType} = pendingClaimRequests[data.claimId]||{};
+      const result = ticketStore.verifyClaim(data.roomId,data.claimId,data.approved);
+      ack({success:true});
+      if(socketId){
+        io.to(socketId).emit('claim-updated',{ roomId:data.roomId,claimId:data.claimId,playerName,claimType,approved:data.approved });
+        delete pendingClaimRequests[data.claimId];
       }
-      const { claimId, approved } = data;
-      const { socketId, playerName, claimType } = pendingClaimRequests[claimId] || {};
-
-      const result = ticketStore.verifyClaim(data.roomId, claimId, approved);
-      ack({ success: true });
-
-      if (socketId) {
-        io.to(socketId).emit('claim-updated', {
-          roomId: data.roomId,
-          claimId,
-          playerName,
-          claimType,
-          approved
-        });
-        delete pendingClaimRequests[claimId];
-      }
-
-      io.to(data.roomId).emit('claim-updated', {
-        roomId: data.roomId,
-        claimId,
-        playerName,
-        claimType,
-        approved
-      });
-    } catch (err) {
-      ack({ success: false, error: err.message });
-    }
+      io.to(data.roomId).emit('claim-updated',{ roomId:data.roomId,claimId:data.claimId,playerName,claimType,approved:data.approved });
+    } catch(err){ ack({success:false,error:err.message}); }
   });
 
-  // --- BLOCK 4.8: Toggle Auto-Mark (no-op) ---
-  socket.on('toggle-auto-mark', (data, ack) => {
-    ack({ success: true });
-  });
+  // Auto-Mark toggle (no-op)
+  socket.on('toggle-auto-mark',(data,ack)=>ack({success:true}));
 
-  // --- DISCONNECT CLEANUP ---
-  socket.on('disconnect', () => {
-    // (Optional) Clean up any pending requests tied to this socket
-  });
 });
 
 // ========== BLOCK 5: Start Server ==========
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Tambola server listening on port ${PORT}`);
-});
+const PORT = process.env.PORT||3000;
+server.listen(PORT,()=>console.log(`Listening on ${PORT}`));
