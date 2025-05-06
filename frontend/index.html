@@ -296,13 +296,15 @@
             this.notifications.push({ id: Date.now(), text: 'All numbers drawn' });
           });
           this.socket.on('game-summary', data => {
-            if (data.playerName === this.playerName || true) {
-              this.gameSummary = data;
-              this.gameState = 'finished';
-              // show summary modal or console.log
-              alert(`Game over! Called: ${data.calledNumbers.join(', ')}`);
-            }
-          });
+  // Update UI state and notify
+  this.gameState   = 'finished';
+  this.gameSummary = data;
+  this.notifications.push({
+    id:   Date.now(),
+    text: `Game over! Called: ${data.calledNumbers.join(', ')}`
+  });
+});
+
         },
 
         // UI Actions
@@ -331,23 +333,32 @@
           );
         },
 
-        submitClaim() {
-          if (!this.selectedPrize) return;
-          // track pending
-          this.myClaims.push({ claimId: Date.now(), prizeType: this.selectedPrize, status: 'Pending' });
-          this.socket.emit('submit-claim',
-            {
-              roomId: this.roomId.trim().toUpperCase(),
-              playerName: this.playerName,
-              claimType: this.selectedPrize,
-              numbers: []
-            },
-            res => {
-              if (!res.success) this.errorMsg = res.error;
-              this.showClaimModal = false;
-            }
-          );
-        },
+      submitClaim() {
+  if (!this.selectedPrize) return;
+  this.socket.emit(
+    'submit-claim',
+    {
+      roomId:     this.roomId.trim().toUpperCase(),
+      playerName: this.playerName,
+      claimType:  this.selectedPrize,
+      numbers:    []
+    },
+    (res) => {
+      if (res.success) {
+        // Use the returned claimId
+        this.myClaims.push({
+          claimId:    res.claimId,
+          prizeType:  this.selectedPrize,
+          status:     'Pending'
+        });
+        this.showClaimModal = false;
+      } else {
+        this.errorMsg = res.error;
+      }
+    }
+  );
+},
+
 
         isMarked(tid, num) {
           if (this.autoMark) return this.called.includes(num);
