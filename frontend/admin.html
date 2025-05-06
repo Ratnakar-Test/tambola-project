@@ -306,29 +306,57 @@
           );
         },
 
-        start() {
-          if (!this.hasRule) {
-            this.errorMsg = 'Select at least one prize rule';
-            return;
-          }
-          this.gameState = 'running';
-          // (Optionally emit start-game with rules & maxPrizes)
-        },
+        // Inside your adminDashboard() return object:
 
-        callNumber() {
-          const rid = this.roomId.trim().toUpperCase();
-          this.socket.emit('call-number', { roomId: rid }, res => {
-            if (!res.success) this.errorMsg = res.error;
-          });
-        },
+start() {
+  if (!this.hasRule) {
+    this.errorMsg = 'Select at least one prize rule';
+    return;
+  }
+  const rid = this.roomId.trim().toUpperCase();
+  this.socket.emit('start-game',
+    {
+      roomId:    rid,
+      rules:     this.rules,
+      maxPrizes: this.maxPrizes,
+      mode:      this.mode,
+      interval:  this.interval
+    },
+    res => {
+      if (res.success) {
+        this.gameState = 'running';
+        this.notifications.push({ id: Date.now(), text: 'Game started!' });
+      } else {
+        this.errorMsg = res.error;
+      }
+    }
+  );
+},
 
-        pause() {
-          this.gameState = 'paused';
-        },
+pause() {
+  const rid = this.roomId.trim().toUpperCase();
+  this.socket.emit('pause-auto', { roomId: rid }, res => {
+    if (res.success) {
+      this.gameState = 'paused';
+      this.notifications.push({ id: Date.now(), text: 'Auto-calling paused' });
+    } else {
+      this.errorMsg = res.error;
+    }
+  });
+},
 
-        resume() {
-          this.gameState = 'running';
-        },
+resume() {
+  const rid = this.roomId.trim().toUpperCase();
+  this.socket.emit('resume-auto', { roomId: rid }, res => {
+    if (res.success) {
+      this.gameState = 'running';
+      this.notifications.push({ id: Date.now(), text: 'Auto-calling resumed' });
+    } else {
+      this.errorMsg = res.error;
+    }
+  });
+},
+
 
         stop() {
           this.gameState = 'stopped';
