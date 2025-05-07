@@ -1,407 +1,682 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- BLOCK 1: HEAD (Imports & Metadata) -->
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Tambola Admin Dashboard</title>
-  <!-- DaisyUI & Tailwind -->
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet"/>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <!-- Alpine.js -->
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <!-- Socket.IO client -->
-  <script src="https://tambola-backend.onrender.com/socket.io/socket.io.js"></script>
-  <!-- QR code generator -->
-  <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Tambola Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.1/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+     <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+          }
+        },
+        plugins: [require("daisyui")],
+        daisyui: {
+            themes: ["light", "dark", "cupcake"],
+        },
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .number-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            gap: 0.5rem;
+        }
+         @media (min-width: 640px) { /* sm breakpoint */
+            .number-grid {
+                grid-template-columns: repeat(10, 1fr);
+            }
+        }
+        .number-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem;
+            border: 1px solid hsl(var(--bc) / 0.2);
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .number-cell.called {
+            background-color: hsl(var(--p));
+            color: hsl(var(--pc));
+        }
+        .number-cell:not(.called):hover {
+            background-color: hsl(var(--b2));
+        }
+    </style>
 </head>
-<body x-data="adminDashboard()" x-init="init()" class="bg-base-200">
+<body x-data="adminDashboard()" x-init="init()" class="bg-base-200 min-h-screen">
 
-  <!-- BLOCK 2: SETUP SCREEN -->
-  <div x-show="!connected" class="hero min-h-screen bg-base-200">
-    <div class="hero-content text-center">
-      <div class="max-w-md w-full space-y-4">
-        <h1 class="text-5xl font-bold">Tambola Admin</h1>
+    <div x-show="!connected" class="hero min-h-screen bg-base-200">
+        <div class="hero-content text-center">
+            <div class="max-w-lg w-full space-y-6 p-8 bg-base-100 rounded-xl shadow-xl">
+                <h1 class="text-4xl sm:text-5xl font-bold">Tambola Admin</h1>
 
-        <!-- Admin Name & Room ID -->
-        <input x-model="adminName" type="text" placeholder="Your Name"
-               class="input input-bordered w-full"/>
-        <input x-model="roomId" type="text" placeholder="Room ID"
-               class="input input-bordered w-full"/>
+                <input x-model="adminName" type="text" placeholder="Your Admin Name"
+                       class="input input-bordered w-full"/>
+                
+                <div class="space-y-4 p-4 border border-base-300 rounded-lg">
+                    <h2 class="text-2xl font-semibold">Create New Room</h2>
+                    <div class="space-y-2 text-left">
+                        <label class="font-semibold block mb-2">Select Prize Rules & Max Winners:</label>
+                        <template x-for="ruleKey in Object.keys(rules)" :key="ruleKey">
+                            <div class="flex items-center justify-between p-2 bg-base-200 rounded-md">
+                                <label :for="ruleKey" class="flex items-center cursor-pointer">
+                                    <input type="checkbox" :id="ruleKey" x-model="rules[ruleKey]" class="checkbox checkbox-primary mr-3"/>
+                                    <span x-text="ruleKey" class="capitalize"></span>
+                                </label>
+                                <input x-show="rules[ruleKey]" type="number" min="1" x-model.number="maxPrizes[ruleKey]"
+                                       class="input input-sm input-bordered w-20 text-center" />
+                            </div>
+                        </template>
+                    </div>
+                    <input x-model.number="maxTicketsPerPlayer" type="number" min="1"
+                           placeholder="Max Tickets per Player (e.g., 5)" class="input input-bordered w-full"/>
+                    <button @click="createRoom()" class="btn btn-primary w-full">Create Room</button>
+                </div>
+                
+                <div class="divider">OR</div>
 
-        <!-- Winning Rule Checkboxes -->
-        <div class="space-y-2 text-left">
-          <label class="font-semibold">Select Prize Rules:</label>
-          <template x-for="rule in Object.keys(rules)" :key="rule">
-            <div class="flex items-center">
-              <input type="checkbox" :id="rule" x-model="rules[rule]" class="checkbox mr-2"/>
-              <label :for="rule" x-text="rule"></label>
-              <input x-show="rules[rule]" type="number" min="1" x-model.number="maxPrizes[rule]"
-                     class="input input-sm input-bordered w-16 ml-4" />
+                <div class="space-y-4 p-4 border border-base-300 rounded-lg">
+                     <h2 class="text-2xl font-semibold">Join Existing Room</h2>
+                    <input x-model="roomIdToJoin" type="text" placeholder="Enter Room ID to Join/Rejoin"
+                           class="input input-bordered w-full"/>
+                    <button @click="joinRoom()" class="btn btn-secondary w-full">Join Room</button>
+                </div>
+
+                <div x-show="errorMsg" class="alert alert-error shadow-lg mt-4">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <span x-text="errorMsg"></span>
+                    <button @click="errorMsg=''" class="btn btn-sm btn-ghost ml-4">OK</button>
+                </div>
             </div>
-          </template>
         </div>
-
-        <!-- Max Tickets per Player -->
-        <input x-model.number="maxTickets" type="number" min="1"
-               placeholder="Max Tickets per Player" class="input input-bordered w-full"/>
-
-        <!-- Create / Join -->
-        <div class="flex space-x-4">
-          <button @click="createRoom()" class="btn btn-primary flex-1">Create</button>
-          <button @click="joinRoom()"   class="btn btn-secondary flex-1">Join</button>
-        </div>
-
-        <div x-show="errorMsg" class="alert alert-error shadow-lg">
-          <div><span x-text="errorMsg"></span>
-            <button @click="errorMsg=''" class="btn btn-sm btn-ghost ml-4">OK</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- BLOCK 3: DRAWER LAYOUT -->
-  <div x-show="connected" class="drawer drawer-mobile h-screen">
-    <input id="sidebar-toggle" type="checkbox" class="drawer-toggle"/>
-
-    <!-- MAIN CONTENT -->
-    <div class="drawer-content flex flex-col">
-
-      <!-- HEADER -->
-      <header class="flex items-center p-4 bg-white shadow">
-        <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
-               viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M4 6h16M4 12h16M4 18h16"/>
-          </svg>
-        </label>
-        <h1 class="text-2xl font-semibold flex-1">Room: <span x-text="roomId" class="font-mono"></span></h1>
-        <!-- QR Code -->
-        <canvas x-ref="qrCanvas" class="w-24 h-24 mr-4"></canvas>
-        <!-- Controls -->
-        <div class="flex space-x-2 items-center">
-          <button @click="start()"
-                  :disabled="gameState!=='stopped' || !hasRule"
-                  class="btn btn-primary"
-          >Start</button>
-
-          <!-- Manual Mode -->
-          <button @click="callNumber()"
-                  x-show="mode==='Manual' && gameState==='running'"
-                  class="btn btn-info"
-          >Call Next</button>
-
-          <!-- Auto Mode -->
-          <button @click="pause()"
-                  x-show="mode==='Auto' && gameState==='running'"
-                  class="btn btn-warning"
-          >Pause</button>
-          <button @click="resume()"
-                  x-show="mode==='Auto' && gameState==='paused'"
-                  class="btn btn-success"
-          >Resume</button>
-
-          <!-- Stop -->
-          <button @click="stop()"
-                  x-show="gameState==='running' || gameState==='paused'"
-                  class="btn btn-error"
-          >Stop</button>
-
-          <!-- Mode & Interval -->
-          <select x-model="mode" class="select select-bordered w-24">
-            <option>Manual</option>
-            <option>Auto</option>
-          </select>
-          <select x-model.number="interval"
-                  x-show="mode==='Auto'"
-                  class="select select-bordered w-24"
-          >
-            <option>3</option><option>5</option><option>7</option>
-          </select>
-        </div>
-      </header>
-
-      <!-- TABS CONTENT -->
-      <main class="p-4 overflow-auto flex-1 space-y-6">
-
-        <!-- Numbers Grid -->
-        <section x-show="currentTab==='Numbers'">
-          <h2 class="text-xl font-semibold mb-2">Number Grid</h2>
-          <div class="grid grid-cols-10 gap-2 bg-white p-2 rounded-lg shadow-inner">
-            <template x-for="n in 90" :key="n">
-              <div @click="toggleNumber(n)"
-                   class="p-2 border rounded cursor-pointer text-center"
-                   :class="called.includes(n)?'bg-primary text-white hover:bg-primary':'hover:bg-base-200'"
-              >
-                <span x-text="n"></span>
-              </div>
-            </template>
-          </div>
-        </section>
-
-        <!-- Players List -->
-        <section x-show="currentTab==='Players'">
-          <h2 class="text-xl font-semibold mb-2">Players</h2>
-          <ul class="list-disc list-inside bg-white p-4 rounded-lg shadow-inner">
-            <template x-for="p in players" :key="p">
-              <li x-text="p"></li>
-            </template>
-          </ul>
-        </section>
-
-        <!-- Ticket Requests -->
-        <section x-show="currentTab==='Ticket Requests'">
-          <h2 class="text-xl font-semibold mb-2">Ticket Requests</h2>
-          <template x-for="req in ticketRequests" :key="req.requestId">
-            <div class="flex justify-between items-center p-2 border-b bg-white rounded-lg shadow-inner mb-2">
-              <span x-text="req.playerName"></span>
-              <div class="space-x-2">
-                <button @click="approveRequest(req.requestId)" class="btn btn-sm btn-success">✔</button>
-                <button @click="rejectRequest(req.requestId)"  class="btn btn-sm btn-error">✖</button>
-              </div>
-            </div>
-          </template>
-        </section>
-
-        <!-- Prize Claims -->
-        <section x-show="currentTab==='Prize Claims'">
-          <h2 class="text-xl font-semibold mb-2">Prize Claims</h2>
-          <template x-for="c in prizeClaims" :key="c.claimId">
-            <div class="flex justify-between items-center p-2 border-b bg-white rounded-lg shadow-inner mb-2">
-              <span x-text="c.playerName + ' → ' + c.claimType"></span>
-              <div class="space-x-2">
-                <button @click="approveClaim(c.claimId)" class="btn btn-sm btn-success">✔</button>
-                <button @click="rejectClaim(c.claimId)"  class="btn btn-sm btn-error">✖</button>
-              </div>
-            </div>
-          </template>
-        </section>
-
-        <!-- Winners List -->
-        <section x-show="currentTab==='Winners'">
-          <h2 class="text-xl font-semibold mb-2">Winners</h2>
-          <template x-for="w in winners" :key="w.playerName + w.prize">
-            <div class="bg-white p-2 rounded-lg shadow-inner mb-2">
-              <span x-text="w.prize + ': ' + w.playerName"></span>
-            </div>
-          </template>
-        </section>
-
-      </main>
     </div>
 
-    <!-- SIDEBAR -->
-    <div class="drawer-side">
-      <label for="sidebar-toggle" class="drawer-overlay"></label>
-      <aside class="p-6 w-64 bg-base-300 rounded-r-lg">
-        <ul class="space-y-2">
-          <li><a href="#" @click.prevent="currentTab='Numbers'; $refs.sidebarToggle.checked=false"
-                 :class="currentTab==='Numbers'?'font-bold':''"
-                 class="block py-2 px-4 rounded hover:bg-base-200">Numbers</a></li>
-          <li><a href="#" @click.prevent="currentTab='Players'; $refs.sidebarToggle.checked=false"
-                 :class="currentTab==='Players'?'font-bold':''"
-                 class="block py-2 px-4 rounded hover:bg-base-200">Players</a></li>
-          <li><a href="#" @click.prevent="currentTab='Ticket Requests'; $refs.sidebarToggle.checked=false"
-                 :class="currentTab==='Ticket Requests'?'font-bold':''"
-                 class="block py-2 px-4 rounded hover:bg-base-200">Ticket Requests</a></li>
-          <li><a href="#" @click.prevent="currentTab='Prize Claims'; $refs.sidebarToggle.checked=false"
-                 :class="currentTab==='Prize Claims'?'font-bold':''"
-                 class="block py-2 px-4 rounded hover:bg-base-200">Prize Claims</a></li>
-          <li><a href="#" @click.prevent="currentTab='Winners'; $refs.sidebarToggle.checked=false"
-                 :class="currentTab==='Winners'?'font-bold':''"
-                 class="block py-2 px-4 rounded hover:bg-base-200">Winners</a></li>
-        </ul>
-      </aside>
-    </div>
-  </div>
+    <div x-show="connected" class="drawer lg:drawer-open h-screen">
+        <input id="sidebar-toggle-admin" type="checkbox" class="drawer-toggle" x-ref="sidebarToggleAdmin"/>
+        <div class="drawer-content flex flex-col h-full overflow-y-auto">
 
-  <!-- BLOCK 6: Alpine Component Script -->
-  <script>
-    function adminDashboard() {
-      return {
-        // State
+            <header class="sticky top-0 z-30 flex items-center p-4 bg-base-100 shadow-md space-x-2">
+                <label for="sidebar-toggle-admin" class="btn btn-ghost btn-square mr-2 lg:hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                </label>
+                <h1 class="text-xl sm:text-2xl font-semibold flex-1">Room: <span x-text="roomId" class="font-mono badge badge-neutral p-3"></span></h1>
+                <div class="hidden sm:block">
+                    <p class="text-sm">Admin: <span x-text="adminName" class="font-semibold"></span></p>
+                </div>
+                <div class="dropdown dropdown-end">
+                    <button class="btn btn-ghost btn-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                        </svg>
+                        QR
+                    </button>
+                    <div tabindex="0" class="dropdown-content z-[1] card card-compact w-40 bg-base-100 shadow mt-2 p-2">
+                        <canvas x-ref="qrCanvas" class="w-36 h-36 mx-auto"></canvas>
+                        <p class="text-xs text-center mt-1">Player Join Link</p>
+                    </div>
+                </div>
+            </header>
+            
+            <div class="p-4 space-y-2">
+                <template x-for="note in notifications" :key="note.id">
+                    <div class="alert shadow-lg text-sm" :class="`alert-${note.type || 'info'}`">
+                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span x-text="note.text"></span>
+                        <button @click="removeNotification(note.id)" class="btn btn-xs btn-ghost">✕</button>
+                    </div>
+                </template>
+            </div>
+
+            <section class="p-4">
+                <div class="bg-base-100 p-4 rounded-lg shadow grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
+                    <button @click="startGame()"
+                            :disabled="gameState!=='stopped' || !hasActiveRules"
+                            class="btn btn-primary col-span-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
+                        Start Game
+                    </button>
+
+                    <button @click="callNumber()"
+                            x-show="gameMode==='Manual' && gameState==='running'"
+                            class="btn btn-info col-span-1">
+                        Call Next Number
+                    </button>
+
+                    <button @click="pauseAutoCall()"
+                            x-show="gameMode==='Auto' && gameState==='running'"
+                            class="btn btn-warning col-span-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                        Pause Auto
+                    </button>
+                    <button @click="resumeAutoCall()"
+                            x-show="gameMode==='Auto' && gameState==='paused'"
+                            class="btn btn-success col-span-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
+                        Resume Auto
+                    </button>
+
+                    <button @click="stopGame()"
+                            x-show="gameState==='running' || gameState==='paused'"
+                            class="btn btn-error col-span-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 11-16 0 8 8 0 0116 0zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clip-rule="evenodd" /></svg>
+                        Stop Game
+                    </button>
+
+                    <select x-model="gameMode" class="select select-bordered w-full col-span-1 sm:col-span-1" :disabled="gameState === 'running' || gameState === 'paused'">
+                        <option value="Manual">Manual Mode</option>
+                        <option value="Auto">Auto Mode</option>
+                    </select>
+                    <select x-model.number="autoCallInterval"
+                            x-show="gameMode==='Auto'"
+                            class="select select-bordered w-full col-span-1 sm:col-span-1"
+                            :disabled="gameState === 'running' || gameState === 'paused'">
+                        <option value="3">3s Interval</option>
+                        <option value="5">5s Interval</option>
+                        <option value="7">7s Interval</option>
+                        <option value="10">10s Interval</option>
+                    </select>
+                </div>
+                 <div x-show="errorMsg" class="alert alert-error shadow-lg mt-4">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <span x-text="errorMsg"></span>
+                    <button @click="errorMsg=''" class="btn btn-sm btn-ghost ml-4">OK</button>
+                </div>
+            </section>
+
+            <main class="p-4 overflow-auto flex-1 space-y-6">
+                <section x-show="currentTab==='Numbers'" class="bg-base-100 p-4 rounded-lg shadow">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-xl font-semibold">Number Grid (<span x-text="calledNumbers.length"></span>/90)</h2>
+                        <div x-show="calledNumbers.length > 0" class="text-right">
+                            <p class="text-sm">Latest:</p>
+                            <span class="text-3xl font-bold badge badge-accent p-4" x-text="calledNumbers[calledNumbers.length-1]"></span>
+                        </div>
+                    </div>
+                    <div class="number-grid">
+                        <template x-for="n in Array.from({ length: 90 }, (_, i) => i + 1)" :key="n">
+                            <div @click="toggleNumberManually(n)"
+                                 class="number-cell"
+                                 :class="calledNumbers.includes(n) ? 'called' : ''">
+                                <span x-text="n"></span>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+                <section x-show="currentTab==='Players'" class="bg-base-100 p-4 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold mb-2">Players (<span x-text="players.length"></span>)</h2>
+                    <ul class="list-disc list-inside space-y-1">
+                        <template x-if="players.length === 0">
+                            <p class="text-base-content/70">No players have joined yet.</p>
+                        </template>
+                        <template x-for="p in players" :key="p.name">
+                            <li x-text="p.name + (p.ticketCount ? ` (${p.ticketCount} tickets)` : '')"></li>
+                        </template>
+                    </ul>
+                </section>
+
+                <section x-show="currentTab==='Ticket Requests'" class="bg-base-100 p-4 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold mb-2">Pending Ticket Requests (<span x-text="ticketRequests.length"></span>)</h2>
+                    <template x-if="ticketRequests.length === 0">
+                        <p class="text-base-content/70">No pending ticket requests.</p>
+                    </template>
+                    <div class="space-y-2">
+                        <template x-for="req in ticketRequests" :key="req.requestId">
+                            <div class="flex justify-between items-center p-3 bg-base-200 rounded-lg shadow-sm">
+                                <span x-text="req.playerName"></span>
+                                <div class="space-x-2">
+                                    <button @click="approveTicketRequest(req.requestId, true)" class="btn btn-sm btn-success">✔ Approve</button>
+                                    <button @click="approveTicketRequest(req.requestId, false)" class="btn btn-sm btn-error">✖ Reject</button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+                <section x-show="currentTab==='Prize Claims'" class="bg-base-100 p-4 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold mb-2">Pending Prize Claims (<span x-text="prizeClaims.length"></span>)</h2>
+                     <template x-if="prizeClaims.length === 0">
+                        <p class="text-base-content/70">No pending prize claims.</p>
+                    </template>
+                    <div class="space-y-2">
+                        <template x-for="c in prizeClaims" :key="c.claimId">
+                            <div class="flex justify-between items-center p-3 bg-base-200 rounded-lg shadow-sm">
+                                <div>
+                                    <span x-text="c.playerName" class="font-semibold"></span> claiming:
+                                    <span x-text="c.claimType" class="badge badge-outline badge-info ml-1"></span>
+                                    </div>
+                                <div class="space-x-2">
+                                    <button @click="verifySubmittedClaim(c.claimId, true)" class="btn btn-sm btn-success">✔ Approve</button>
+                                    <button @click="verifySubmittedClaim(c.claimId, false)" class="btn btn-sm btn-error">✖ Reject</button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+                <section x-show="currentTab==='Winners'" class="bg-base-100 p-4 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold mb-2">Winners</h2>
+                    <template x-if="winners.length === 0">
+                        <p class="text-base-content/70">No winners yet.</p>
+                    </template>
+                    <div class="space-y-2">
+                        <template x-for="w in winners" :key="w.playerName + w.prizeType">
+                            <div class="bg-base-200 p-3 rounded-lg shadow-sm">
+                                <span class="font-semibold capitalize" x-text="w.prizeType + ': '"></span>
+                                <span x-text="w.playerName" class="text-success font-bold"></span>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <div class="drawer-side z-40">
+            <label for="sidebar-toggle-admin" class="drawer-overlay"></label>
+            <aside class="p-6 w-64 bg-base-300 text-base-content rounded-r-lg shadow-xl">
+                 <h2 class="text-2xl font-bold mb-4">Admin Menu</h2>
+                <ul class="space-y-1 menu">
+                    <li><a @click.prevent="selectTab('Numbers')" :class="{'active': currentTab==='Numbers'}">Numbers Grid</a></li>
+                    <li><a @click.prevent="selectTab('Players')" :class="{'active': currentTab==='Players'}">Players</a></li>
+                    <li>
+                        <a @click.prevent="selectTab('Ticket Requests')" :class="{'active': currentTab==='Ticket Requests'}">
+                            Ticket Requests
+                            <span x-show="ticketRequests.length > 0" class="badge badge-secondary" x-text="ticketRequests.length"></span>
+                        </a>
+                    </li>
+                    <li>
+                        <a @click.prevent="selectTab('Prize Claims')" :class="{'active': currentTab==='Prize Claims'}">
+                            Prize Claims
+                             <span x-show="prizeClaims.length > 0" class="badge badge-warning" x-text="prizeClaims.length"></span>
+                        </a>
+                    </li>
+                    <li><a @click.prevent="selectTab('Winners')" :class="{'active': currentTab==='Winners'}">Winners</a></li>
+                </ul>
+            </aside>
+        </div>
+    </div>
+
+<script>
+function adminDashboard() {
+    return {
+        // Connection & Room State
         connected: false,
         roomId: '',
         adminName: '',
-        maxTickets: 5,
         errorMsg: '',
+        notifications: [], // { id, text, type }
+
+        // Room Setup State (for creation screen)
+        roomIdToJoin: '', // For joining an existing room
         rules: {
-          'Top Line': false,
-          'Two Lines': false,
-          'Full House': false
+            'Top Line': true,
+            'Middle Line': false,
+            'Bottom Line': false,
+            'Four Corners': true,
+            'Early Five': true,
+            'Full House': true,
+            // Add 'Corners' if it was intended as 'Four Corners' or a separate rule
         },
-        maxPrizes: {
-          'Top Line': 1,
-          'Two Lines': 1,
-          'Full House': 1
+        maxPrizes: { // Default max winners for each prize type
+            'Top Line': 1,
+            'Middle Line': 1,
+            'Bottom Line': 1,
+            'Four Corners': 1,
+            'Early Five': 1,
+            'Full House': 1,
         },
+        maxTicketsPerPlayer: 3,
+
+        // In-Game State
         currentTab: 'Numbers',
-        mode: 'Manual',
-        interval: 3,
-        gameState: 'stopped', // 'stopped' | 'running' | 'paused'
-        called: [],
-        players: [],
-        ticketRequests: [],
-        prizeClaims: [],
-        winners: [],
+        gameMode: 'Manual', // 'Manual' | 'Auto'
+        autoCallInterval: 5, // seconds
+        gameState: 'stopped', // 'stopped' | 'running' | 'paused' | 'finished'
+        calledNumbers: [],
+        players: [], // { name: string, ticketCount: int }
+        ticketRequests: [], // { requestId: string, playerName: string }
+        prizeClaims: [],    // { claimId: string, playerName: string, claimType: string, numbers?: [] }
+        winners: [],        // { playerName: string, prizeType: string }
+        
         socket: null,
 
         init() {
-          this.socket = io('https://tambola-backend.onrender.com');
-          this.socket.on('connect_error', () => this.errorMsg = 'Cannot reach server');
-          this.socket.on('room-created', data => {
-            this.roomId = data.roomId;
-            this.connected = true;
-            this.generateQR();
-          });
-          this.socket.on('player-joined', data => this.players = data.players);
-          this.socket.on('number-called', data => this.called = data.calledNumbers);
-          this.socket.on('ticket-requested', data =>
-            this.ticketRequests.push({ requestId: data.requestId, playerName: data.playerName })
-          );
-          this.socket.on('claim-submitted', data =>
-            this.prizeClaims.push({ claimId: data.claimId, playerName: data.playerName, claimType: data.claimType })
-          );
-          this.socket.on('claim-updated', data => {
-            if (data.approved) {
-              this.winners.push({ playerName: data.playerName, prize: data.claimType });
-            }
-          });
-        },
+            this.adminName = localStorage.getItem('tambolaAdminName') || '';
+            this.roomIdToJoin = new URLSearchParams(window.location.search).get('roomIdToJoin') || '';
 
-        // Computed
-        get hasRule() {
-          return Object.values(this.rules).some(Boolean);
-        },
+            this.socket = io((window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") ? "http://localhost:3000" : 'https://tambola-backend.onrender.com');
 
-        // Actions
-        createRoom() {
-          this.errorMsg = '';
-          if (!this.adminName) { this.errorMsg = 'Enter your name'; return; }
-          this.socket.emit('create-room',
-            { adminName: this.adminName, maxTicketsPerPlayer: this.maxTickets },
-            res => {
-              if (!res.success) this.errorMsg = res.error;
-            }
-          );
-        },
+            this.socket.on('connect', () => this.addNotification('Connected to server.', 'success'));
+            this.socket.on('connect_error', (err) => this.errorMsg = `Connection Error: ${err.message}`);
+            this.socket.on('disconnect', (reason) => {
+                this.addNotification(`Disconnected: ${reason}`, 'error');
+                // Potentially reset some state if admin was in a room
+                // this.connected = false; // This might be too abrupt, server should confirm room status
+            });
 
-        joinRoom() {
-          this.errorMsg = '';
-          if (!this.adminName || !this.roomId) {
-            this.errorMsg = 'Name & Room ID required'; return;
-          }
-          this.socket.emit('join-room',
-            { roomId: this.roomId.trim().toUpperCase(), playerName: this.adminName },
-            res => {
-              if (res.success) {
+            this.socket.on('room-created', data => { // When admin successfully creates a room
+                this.roomId = data.roomId;
                 this.connected = true;
+                this.gameState = 'stopped'; // Initial state from server
+                this.adminName = data.adminName; // Confirm admin name
+                localStorage.setItem('tambolaAdminName', this.adminName);
                 this.generateQR();
-              } else {
-                this.errorMsg = res.error;
-              }
+                this.addNotification(`Room ${data.roomId} created successfully! Share the QR code or Room ID.`, 'success');
+                // Update game settings based on what server confirms, if different from sent
+                if(data.rules) this.rules = data.rules;
+                if(data.maxPrizes) this.maxPrizes = data.maxPrizes;
+                if(data.maxTicketsPerPlayer) this.maxTicketsPerPlayer = data.maxTicketsPerPlayer;
+
+            });
+
+            this.socket.on('admin-rejoined', data => { // When admin successfully rejoins
+                this.roomId = data.roomId;
+                this.adminName = data.adminName;
+                this.connected = true;
+                this.gameState = data.gameState.state;
+                this.calledNumbers = data.gameState.calledNumbers || [];
+                this.players = data.players || [];
+                this.ticketRequests = data.ticketRequests || [];
+                this.prizeClaims = data.prizeClaims || [];
+                this.winners = data.gameState.winners || [];
+                this.rules = data.gameState.rules;
+                this.maxPrizes = data.gameState.maxPrizes;
+                this.gameMode = data.gameState.mode;
+                this.autoCallInterval = data.gameState.interval;
+                this.maxTicketsPerPlayer = data.maxTicketsPerPlayer;
+
+                this.generateQR();
+                this.addNotification(`Rejoined Room: ${this.roomId} as Admin.`, 'success');
+            });
+
+
+            this.socket.on('player-joined', data => { // data: { playerName, playersList }
+                this.players = data.playersList; // Server sends updated full list
+                this.addNotification(`${data.playerName} joined the room.`);
+            });
+            
+            this.socket.on('player-left', data => { // data: { playerName, playersList }
+                this.players = data.playersList;
+                this.addNotification(`${data.playerName} left the room.`, 'warning');
+            });
+
+            this.socket.on('number-called', data => { // data: { number, calledNumbers }
+                this.calledNumbers = data.calledNumbers;
+            });
+
+            this.socket.on('ticket-requested', data => { // data: { requestId, playerName }
+                if (!this.ticketRequests.find(req => req.requestId === data.requestId)) {
+                    this.ticketRequests.push(data);
+                }
+            });
+            
+            this.socket.on('ticket-request-resolved', data => { // data: { requestId, approved }
+                this.ticketRequests = this.ticketRequests.filter(r => r.requestId !== data.requestId);
+                this.addNotification(`Ticket request for ${data.playerName} was ${data.approved ? 'approved' : 'rejected'}.`, data.approved ? 'success' : 'warning');
+            });
+
+
+            this.socket.on('claim-submitted', data => { // data: { claimId, playerName, claimType }
+                 if (!this.prizeClaims.find(c => c.claimId === data.claimId)) {
+                    this.prizeClaims.push(data);
+                }
+            });
+            
+            this.socket.on('claim-verified', data => { // data: { claimId, playerName, claimType, approved }
+                this.prizeClaims = this.prizeClaims.filter(c => c.claimId !== data.claimId);
+                if (data.approved) {
+                    if (!this.winners.find(w => w.playerName === data.playerName && w.prizeType === data.claimType)) {
+                        this.winners.push({ playerName: data.playerName, prizeType: data.claimType });
+                    }
+                    this.addNotification(`Claim by ${data.playerName} for ${data.claimType} APPROVED!`, 'success');
+                } else {
+                    this.addNotification(`Claim by ${data.playerName} for ${data.claimType} REJECTED.`, 'warning');
+                }
+            });
+
+            this.socket.on('game-started', data => {
+                this.gameState = 'running';
+                this.calledNumbers = [];
+                this.winners = [];
+                this.prizeClaims = []; // Clear pending claims for new game
+                // Rules and mode are set by admin before start, server confirms them
+                this.rules = data.rules;
+                this.maxPrizes = data.maxPrizes;
+                this.gameMode = data.mode;
+                this.autoCallInterval = data.interval;
+                this.addNotification('Game started!', 'success');
+            });
+            this.socket.on('auto-paused', () => {
+                this.gameState = 'paused';
+                this.addNotification('Auto-calling paused.', 'info');
+            });
+            this.socket.on('auto-resumed', () => {
+                this.gameState = 'running';
+                this.addNotification('Auto-calling resumed.', 'info');
+            });
+            this.socket.on('auto-finished', () => {
+                this.gameState = 'finished'; // Or server sends 'game-summary' which also sets this
+                this.addNotification('All numbers drawn for Auto mode!', 'info');
+            });
+            this.socket.on('game-summary', data => { // data: { roomId, calledNumbers, winners }
+                this.gameState = 'finished';
+                this.calledNumbers = data.calledNumbers;
+                this.winners = data.winners;
+                this.addNotification('Game Over! Summary available.', 'success');
+            });
+            this.socket.on('room-error', data => { // Generic error from room operations
+                this.errorMsg = data.error;
+                this.addNotification(data.error, 'error');
+            });
+            this.socket.on('admin-error', data => { // Specific error for admin operations
+                this.errorMsg = data.error;
+                 this.addNotification(data.error, 'error');
+            });
+        },
+
+        get hasActiveRules() {
+            return Object.values(this.rules).some(Boolean);
+        },
+
+        createRoom() {
+            this.errorMsg = '';
+            if (!this.adminName.trim()) {
+                this.errorMsg = 'Admin name is required.'; return;
             }
-          );
+            if (!this.hasActiveRules) {
+                this.errorMsg = 'Select at least one prize rule.'; return;
+            }
+            if (this.maxTicketsPerPlayer < 1) {
+                this.errorMsg = 'Max tickets per player must be at least 1.'; return;
+            }
+            // Filter only active rules and their maxPrizes
+            const activeRules = {};
+            const activeMaxPrizes = {};
+            for (const key in this.rules) {
+                if (this.rules[key]) {
+                    activeRules[key] = true;
+                    activeMaxPrizes[key] = Number(this.maxPrizes[key]) || 1;
+                }
+            }
+
+            this.socket.emit('create-room', {
+                adminName: this.adminName.trim(),
+                rules: activeRules,
+                maxPrizes: activeMaxPrizes,
+                maxTicketsPerPlayer: Number(this.maxTicketsPerPlayer)
+            }, res => { // This ack is for the 'create-room' emit itself
+                if (!res.success) {
+                    this.errorMsg = res.error || 'Failed to create room.';
+                } else {
+                    // 'room-created' event will follow with full details
+                }
+            });
         },
 
-        // Inside your adminDashboard() return object:
+        joinRoom() { // For admin to join/rejoin an existing room
+            this.errorMsg = '';
+            if (!this.adminName.trim()) { this.errorMsg = 'Admin name is required.'; return; }
+            if (!this.roomIdToJoin.trim()) { this.errorMsg = 'Room ID is required to join.'; return; }
 
-start() {
-  if (!this.hasRule) {
-    this.errorMsg = 'Select at least one prize rule';
-    return;
-  }
-  const rid = this.roomId.trim().toUpperCase();
-  this.socket.emit('start-game',
-    {
-      roomId:    rid,
-      rules:     this.rules,
-      maxPrizes: this.maxPrizes,
-      mode:      this.mode,
-      interval:  this.interval
-    },
-    res => {
-      if (res.success) {
-        this.gameState = 'running';
-        this.notifications.push({ id: Date.now(), text: 'Game started!' });
-      } else {
-        this.errorMsg = res.error;
-      }
-    }
-  );
-},
-
-pause() {
-  const rid = this.roomId.trim().toUpperCase();
-  this.socket.emit('pause-auto', { roomId: rid }, res => {
-    if (res.success) {
-      this.gameState = 'paused';
-      this.notifications.push({ id: Date.now(), text: 'Auto-calling paused' });
-    } else {
-      this.errorMsg = res.error;
-    }
-  });
-},
-
-resume() {
-  const rid = this.roomId.trim().toUpperCase();
-  this.socket.emit('resume-auto', { roomId: rid }, res => {
-    if (res.success) {
-      this.gameState = 'running';
-      this.notifications.push({ id: Date.now(), text: 'Auto-calling resumed' });
-    } else {
-      this.errorMsg = res.error;
-    }
-  });
-},
-
-
-        stop() {
-          this.gameState = 'stopped';
-          // (Optionally emit end-game summary)
+            this.socket.emit('join-room', {
+                roomId: this.roomIdToJoin.trim().toUpperCase(),
+                playerName: this.adminName.trim(), // Server will identify as admin
+                isAdmin: true // Explicitly state this is an admin join attempt
+            }, res => {
+                if (res.success) {
+                    // Successful ack, wait for 'admin-rejoined' or 'room-error' events
+                    this.roomId = this.roomIdToJoin.trim().toUpperCase(); // Set current roomID
+                } else {
+                    this.errorMsg = res.error || 'Failed to join room as admin.';
+                }
+            });
+        },
+        
+        startGame() {
+            this.errorMsg = '';
+            if (!this.hasActiveRules) {
+                this.errorMsg = 'Select at least one prize rule to start the game.';
+                return;
+            }
+            const activeRules = {};
+            const activeMaxPrizes = {};
+            for (const key in this.rules) {
+                if (this.rules[key]) {
+                    activeRules[key] = true;
+                    activeMaxPrizes[key] = Number(this.maxPrizes[key]) || 1;
+                }
+            }
+            this.socket.emit('start-game', {
+                roomId: this.roomId,
+                rules: activeRules,
+                maxPrizes: activeMaxPrizes,
+                mode: this.gameMode,
+                interval: Number(this.autoCallInterval)
+            }, res => {
+                if (!res.success) this.errorMsg = res.error || 'Failed to start game.';
+                // 'game-started' event will update gameState
+            });
         },
 
-        approveRequest(id) {
-          const rid = this.roomId.trim().toUpperCase();
-          this.socket.emit('approve-ticket', { roomId: rid, requestId: id, approved: true });
-          this.ticketRequests = this.ticketRequests.filter(r => r.requestId !== id);
+        callNumber() { // Manual number call
+            if (this.gameMode === 'Manual' && this.gameState === 'running') {
+                this.socket.emit('manual-call-next', { roomId: this.roomId }, res => {
+                    if (!res.success) this.errorMsg = res.error || 'Failed to call next number.';
+                    // 'number-called' event updates the list
+                });
+            }
         },
-        rejectRequest(id) {
-          const rid = this.roomId.trim().toUpperCase();
-          this.socket.emit('approve-ticket', { roomId: rid, requestId: id, approved: false });
-          this.ticketRequests = this.ticketRequests.filter(r => r.requestId !== id);
+        pauseAutoCall() {
+            this.socket.emit('pause-auto', { roomId: this.roomId }, res => {
+                if (!res.success) this.errorMsg = res.error || 'Failed to pause.';
+                // 'auto-paused' event updates gameState
+            });
+        },
+        resumeAutoCall() {
+            this.socket.emit('resume-auto', { roomId: this.roomId }, res => {
+                if (!res.success) this.errorMsg = res.error || 'Failed to resume.';
+                // 'auto-resumed' event updates gameState
+            });
+        },
+        stopGame() {
+            this.socket.emit('stop-game', { roomId: this.roomId }, res => {
+                if (!res.success) this.errorMsg = res.error || 'Failed to stop game.';
+                // 'game-summary' event updates gameState and provides summary
+            });
         },
 
-        approveClaim(id) {
-          const rid = this.roomId.trim().toUpperCase();
-          this.socket.emit('verify-claim', { roomId: rid, claimId: id, approved: true });
-          this.prizeClaims = this.prizeClaims.filter(c => c.claimId !== id);
-        },
-        rejectClaim(id) {
-          const rid = this.roomId.trim().toUpperCase();
-          this.socket.emit('verify-claim', { roomId: rid, claimId: id, approved: false });
-          this.prizeClaims = this.prizeClaims.filter(c => c.claimId !== id);
+        approveTicketRequest(requestId, approvedStatus) {
+            this.socket.emit('approve-ticket', {
+                roomId: this.roomId,
+                requestId: requestId,
+                approved: approvedStatus
+            }, res => {
+                if (!res.success) this.errorMsg = res.error || 'Failed to process ticket request.';
+                // 'ticket-request-resolved' event updates UI lists
+            });
         },
 
-        toggleNumber(n) {
-          if (this.called.includes(n)) {
-            this.called = this.called.filter(x => x !== n);
-          } else {
-            this.called.push(n);
-          }
+        verifySubmittedClaim(claimId, approvedStatus) {
+            this.socket.emit('verify-claim', {
+                roomId: this.roomId,
+                claimId: claimId,
+                approved: approvedStatus
+            }, res => {
+                if (!res.success) this.errorMsg = res.error || 'Failed to verify claim.';
+                // 'claim-verified' event updates UI lists
+            });
+        },
+
+        toggleNumberManually(number) { // Admin manually toggles a number on the grid
+            if (this.gameState !== 'running' && this.gameState !== 'paused') {
+                this.addNotification("Game must be running or paused to manually toggle numbers.", "warning");
+                return;
+            }
+            const shouldBeCalled = !this.calledNumbers.includes(number);
+            this.socket.emit('admin-toggle-number', {
+                roomId: this.roomId,
+                number: number,
+                shouldBeCalled: shouldBeCalled
+            }, res => {
+                if (!res.success) {
+                    this.errorMsg = res.error || 'Failed to toggle number.';
+                    // 'number-called' event from server will be the source of truth for UI update.
+                }
+            });
         },
 
         generateQR() {
-          new QRious({
-            element: this.$refs.qrCanvas,
-            value: `${window.location.origin}?roomId=${this.roomId}`,
-            size: 128
-          });
+            this.$nextTick(() => {
+                if (this.$refs.qrCanvas && this.roomId) {
+                    const playerJoinURL = `${window.location.origin.replace('admin.html','index.html')}?roomId=${this.roomId}`;
+                    // Fallback for window.location.origin if it's not available or for local files
+                    const origin = window.location.origin && window.location.origin !== "null" ? window.location.origin : "http://localhost:PORT"; // Replace PORT if needed
+                    const playerPage = origin.includes('admin.html') ? origin.replace('admin.html', 'index.html') : (origin + '/index.html'); // Basic replacement
+                    const finalPlayerJoinURL = `${playerPage}?roomId=${this.roomId}`;
+
+                    new QRious({
+                        element: this.$refs.qrCanvas,
+                        value: finalPlayerJoinURL,
+                        size: 128,
+                        level: 'H' // High error correction
+                    });
+                }
+            });
+        },
+        
+        addNotification(text, type = 'info', duration = 5000) {
+            const id = Date.now();
+            this.notifications.push({ id, text, type });
+            setTimeout(() => {
+                this.removeNotification(id);
+            }, duration);
+        },
+        removeNotification(id) {
+            this.notifications = this.notifications.filter(n => n.id !== id);
+        },
+        selectTab(tabName) {
+            this.currentTab = tabName;
+            if (this.$refs.sidebarToggleAdmin) {
+                this.$refs.sidebarToggleAdmin.checked = false;
+            }
         }
-      }
     }
-  </script>
+}
+</script>
 </body>
 </html>
