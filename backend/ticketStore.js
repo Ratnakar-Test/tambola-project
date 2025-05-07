@@ -14,7 +14,7 @@ class TicketStore {
    */
   constructor(ticketsFilePath) {
     const fullPath = path.resolve(__dirname, ticketsFilePath);
-    this.tickets = JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
+    this.tickets = JSON.parse(fs.readFileSync(fullPath, 'utf-8')); 
     this.rooms = {}; // In-memory rooms state
   }
 
@@ -29,8 +29,21 @@ class TicketStore {
       calledNumbers: new Set(),        // Numbers drawn so far
       playerTickets: {},               // { playerName: [ticket, ...] }
       ticketRequests: [],              // [{ requestId, playerName }]
-      claims: []                       // [{ claimId, playerName, claimType, numbers, approved|null }]
+      claims: []                       // [{ claimId, playerName, claimType, numbers, approved:null|bool }]
     };
+  }
+
+  /**
+   * Reset a room back to its initial empty state.
+   * @param {string} roomId
+   */
+  resetRoom(roomId) {
+    const room = this.rooms[roomId];
+    if (!room) throw new Error('Room not found');
+    room.calledNumbers.clear();
+    room.playerTickets = {};
+    room.ticketRequests = [];
+    room.claims = [];
   }
 
   /**
@@ -50,17 +63,22 @@ class TicketStore {
   drawNumber(roomId) {
     const room = this.rooms[roomId];
     if (!room) throw new Error('Room not found');
+    // build full set of possible numbers
     const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
     const available = allNumbers.filter(n => !room.calledNumbers.has(n));
     if (available.length === 0) return null; // All numbers drawn
+    // pick and record
     const idx = Math.floor(Math.random() * available.length);
     const number = available[idx];
     room.calledNumbers.add(number);
-    return { number, calledNumbers: Array.from(room.calledNumbers) };
+    return {
+      number,
+      calledNumbers: Array.from(room.calledNumbers)
+    };
   }
 
   /**
-   * Enqueue a ticket request for approval by the admin.
+   * Enqueue a ticket request for admin approval.
    * @param {string} roomId
    * @param {string} playerName
    * @returns {string} requestId
@@ -78,23 +96,24 @@ class TicketStore {
    * @param {string} roomId
    * @param {string} requestId
    * @param {boolean} approved
-   * @returns {{approved: boolean, tickets?: Array}} 
+   * @returns {{approved: boolean, tickets?: Array}}
    */
   approveTicket(roomId, requestId, approved) {
     const room = this.rooms[roomId];
     if (!room) throw new Error('Room not found');
     const idx = room.ticketRequests.findIndex(r => r.requestId === requestId);
     if (idx === -1) throw new Error('Request not found');
+
     const { playerName } = room.ticketRequests.splice(idx, 1)[0];
     if (!approved) return { approved: false };
 
-    // Ensure player hasn't exceeded ticket limit
+    // enforce per-player limit
     const current = room.playerTickets[playerName] || [];
     if (current.length >= room.maxTicketsPerPlayer) {
       throw new Error('Ticket limit reached for player');
     }
 
-    // Assign next available ticket
+    // assign next ticket from the pool
     const ticket = this.tickets.shift();
     room.playerTickets[playerName] = [...current, ticket];
     return { approved: true, tickets: room.playerTickets[playerName] };
@@ -129,7 +148,35 @@ class TicketStore {
     const claim = room.claims.find(c => c.claimId === claimId);
     if (!claim) throw new Error('Claim not found');
     claim.approved = approved;
-    return { claimId, approved, playerName: claim.playerName, claimType: claim.claimType };
+    return {
+      claimId,
+      approved,
+      playerName: claim.playerName,
+      claimType: claim.claimType
+    };
+  }
+
+  /**
+   * Get a copy of a player’s tickets for a given room.
+   * @param {string} roomId
+   * @param {string} playerName
+   * @returns {Array}
+   */
+  getPlayerTickets(roomId, playerName) {
+    const room = this.rooms[roomId];
+    if (!room) throw new Error('Room not found');
+    return room.playerTickets[playerName] || [];
+  }
+
+  /**
+   * Get the list of numbers already called in a room.
+   * @param {string} roomId
+   * @returns {number[]}
+   */
+  getCalledNumbers(roomId) {
+    const room = this.rooms[roomId];
+    if (!room) throw new Error('Room not found');
+    return Array.from(room.calledNumbers);
   }
 }
 
