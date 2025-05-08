@@ -1,29 +1,37 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="cupcake">
-<head>
+<html lang="en" data-theme="cupcake"> <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tambola Admin - Advanced</title>
+    <title>Tambola Admin - Enhanced UI</title>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.2/dist/full.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            scroll-behavior: smooth; 
+        }
+        /* Tambola Board Styling */
         .tambola-board {
             display: grid;
-            grid-template-columns: repeat(10, 1fr);
-            gap: 0.5rem;
+            grid-template-columns: repeat(10, minmax(0, 1fr)); 
+            gap: 0.5rem; 
             max-width: 600px;
             margin: 1rem auto;
+            padding: 1rem; 
+            border-radius: 0.75rem; /* Slightly more rounded */
+            background-color: hsl(var(--b2) / 0.7); /* Use theme background-2 color */
+            border: 1px solid hsl(var(--b3));
         }
         .tambola-board .number-cell {
-            @apply border rounded-md p-2 text-center text-sm sm:text-base font-semibold;
-            transition: all 0.3s ease;
+            @apply border border-base-300 rounded-md p-1 aspect-square flex items-center justify-center text-xs sm:text-sm font-semibold bg-base-100 hover:bg-base-300 transition-all duration-200 ease-in-out cursor-default shadow; 
+            min-width: 30px; 
         }
         .tambola-board .number-cell.drawn {
-            @apply bg-primary text-primary-content scale-110;
+            @apply bg-primary text-primary-content scale-110 ring-2 ring-primary ring-offset-base-100 ring-offset-2 transform transition-transform duration-300 shadow-lg; 
         }
+        /* Fixed Bottom Nav */
         .floating-nav-container {
             position: fixed;
             bottom: 0;
@@ -31,10 +39,28 @@
             right: 0;
             z-index: 1000;
         }
-        main { padding-bottom: 80px; }
-        .admin-section { @apply mb-8 p-4 bg-base-100 rounded-box shadow-lg; }
-        .admin-section h3 { @apply text-xl font-semibold mb-3 text-center border-b pb-2; }
-        .list-item { @apply p-2 border-b flex justify-between items-center; }
+        /* Main content padding */
+        main { padding-bottom: 80px; } 
+        /* Card styling for sections */
+        .admin-section { @apply card bg-base-100 shadow-xl mb-6 border border-base-300/50; } 
+        .admin-section .card-body { @apply p-4 sm:p-6; } 
+        .admin-section h3 { @apply card-title text-xl justify-center mb-4 border-b pb-2 border-base-300; } 
+        /* List styling */
+        .list-item { @apply p-3 border-b border-base-200 flex flex-wrap justify-between items-center gap-2 hover:bg-base-200/50 transition-colors duration-150; } 
+        .list-item span:first-child { @apply flex-grow break-words mr-2 flex items-center gap-2; } /* Added flex for avatar */
+        .list-item .btn-group { @apply flex-shrink-0; } 
+        /* Loading spinner initially hidden */
+        .loading-spinner { display: none; }
+        .btn.loading .loading-spinner, .btn.loading.btn-xs .loading-spinner { display: inline-block; width: 1rem; height: 1rem;} /* Adjust spinner size */
+        .btn.loading.btn-sm .loading-spinner { width: 0.875rem; height: 0.875rem;}
+        /* Hide text span when button is loading */
+        .btn.loading > span:not(.loading-spinner) { display: none; } 
+        /* Ensure icons size correctly */
+        .btn svg { width: 1.1em; height: 1.1em;}
+        .btn-sm svg { width: 1em; height: 1em;}
+        .btn-xs svg { width: 0.9em; height: 0.9em;}
+        /* Collapse styling */
+        .collapse-title { font-weight: 600; }
     </style>
 </head>
 <body class="bg-base-200 min-h-screen flex flex-col">
@@ -49,117 +75,197 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-6 h-6 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                     </label>
                 </div>
-                <div class="flex-1 px-2 mx-2 font-bold text-xl">Tambola Admin Panel <span id="adminRoomDisplay" class="text-sm ml-2 badge badge-info hidden"></span></div>
+                <div class="flex-1 px-2 mx-2 font-bold text-lg sm:text-xl">Tambola Admin <span id="adminRoomDisplay" class="text-sm ml-2 badge badge-info hidden"></span></div>
                 <div class="flex-none hidden lg:block">
-                    <ul class="menu menu-horizontal">
-                        <li><a href="/" class="font-semibold" target="_blank">Player View</a></li>
-                        <li><button id="resetGameBtnTop" class="btn btn-sm btn-outline btn-warning" onclick="resetGame()">Reset SERVER</button></li>
+                    <ul class="menu menu-horizontal px-1 items-center">
+                        <li>
+                            <div class="dropdown dropdown-end">
+                                <div tabindex="0" role="button" class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Change Theme">
+                                    <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block h-5 w-5 stroke-current md:h-6 md:w-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h8a2 2 0 002-2v-4a2 2 0 00-2-2h-8a2 2 0 00-2 2v4a2 2 0 002 2z"></path></svg>
+                                    <span class="hidden md:inline">Theme</span>
+                                    <svg width="12px" height="12px" class="ml-1 hidden h-3 w-3 fill-current opacity-60 sm:inline-block" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048"><path d="M1799 349l242 241-1017 1017L7 590l242-241 775 775 775-775z"></path></svg>
+                                </div>
+                                <ul tabindex="0" id="theme-dropdown" class="dropdown-content z-[51] p-2 shadow-2xl bg-base-200 rounded-box w-52 max-h-60 overflow-y-auto border border-base-300">
+                                    <li><input type="radio" name="theme-dropdown" class="theme-controller btn btn-sm btn-block btn-ghost justify-start" aria-label="Default" value="default"/></li>
+                                     </ul>
+                            </div>
+                        </li>
+                        <li><a href="/" class="font-semibold tooltip tooltip-bottom" data-tip="Open Player View in new tab" target="_blank">Player View</a></li>
+                        <li><button id="resetGameBtnTop" class="btn btn-sm btn-outline btn-warning tooltip tooltip-bottom" data-tip="Reset ALL rooms and server data!" onclick="showResetModal()">
+                                <span class="loading loading-spinner loading-xs hidden"></span>
+                                <span>Reset SERVER</span>
+                            </button>
+                        </li>
                     </ul>
                 </div>
             </div>
 
             <main class="container mx-auto p-4 flex-grow">
                 <section class="admin-section">
-                    <h3>Game Room Setup</h3>
-                    <div class="form-control sm:flex-row gap-2 items-end">
-                        <div class="flex-grow">
-                            <label class="label" for="roomIdInput"><span class="label-text">Game Room ID</span></label>
-                            <input type="text" id="roomIdInput" placeholder="Enter or Create Room ID" class="input input-bordered w-full" value="ROOM1"/>
+                    <div class="card-body">
+                        <h3>Game Room Setup</h3>
+                        <div class="form-control">
+                             <label class="label" for="roomIdInput"><span class="label-text font-medium">Game Room ID</span></label>
+                            <div class="input-group w-full"> 
+                                <input type="text" id="roomIdInput" placeholder="Enter or Create Room ID" class="input input-bordered w-full focus:ring focus:ring-accent focus:ring-opacity-50" value="ROOM1"/>
+                                <button id="connectRoomBtn" class="btn btn-accent" onclick="connectToRoom()">
+                                    <span class="loading loading-spinner loading-sm hidden"></span> 
+                                    <span>Connect</span> 
+                                </button>
+                            </div>
                         </div>
-                        <button id="connectRoomBtn" class="btn btn-accent sm:w-auto w-full" onclick="connectToRoom()">Connect to Room</button>
-                    </div>
-                    <div id="qrCodeCanvasContainer" class="mt-4 text-center hidden">
-                        <p class="mb-2 font-semibold">Player Join QR Code:</p>
-                        <div id="qrCodeCanvas" class="mx-auto border rounded-md inline-block"></div> <p id="playerJoinLink" class="text-sm mt-1 break-all"></p>
+                        <div id="qrCodeCanvasContainer" class="mt-4 text-center hidden p-4 bg-base-200 rounded-md"> 
+                            <p class="mb-2 font-semibold">Player Join QR Code:</p>
+                            <div id="qrCodeCanvas" class="mx-auto border border-base-300 rounded-md inline-block bg-white p-1"></div> 
+                            <p class="text-sm mt-2 break-all"><a id="playerJoinLink" href="#" target="_blank" class="link link-hover link-primary"></a></p>
+                        </div>
                     </div>
                 </section>
 
                 <div id="gameControlsSection" class="hidden">
                     <section class="admin-section">
-                        <h3>Game Configuration</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="label"><span class="label-text">Number Calling Mode</span></label>
-                                <select id="modeSelector" class="select select-bordered w-full" onchange="toggleModeControls()">
-                                    <option value="manual" selected>Manual</option>
-                                    <option value="auto">Auto</option>
-                                </select>
+                         <div class="card-body">
+                            <h3>Game Configuration</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6"> 
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-medium">Number Calling Mode</span></label>
+                                    <div class="flex gap-4 pt-2">
+                                        <label class="label cursor-pointer gap-2">
+                                            <input type="radio" name="mode-radio" id="modeManual" value="manual" class="radio radio-primary" checked onchange="toggleModeControls()"/>
+                                            <span class="label-text">Manual</span> 
+                                        </label>
+                                        <label class="label cursor-pointer gap-2">
+                                            <input type="radio" name="mode-radio" id="modeAuto" value="auto" class="radio radio-primary" onchange="toggleModeControls()"/>
+                                            <span class="label-text">Auto</span> 
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="form-control">
+                                    <label class="label" for="intervalSelector"><span class="label-text font-medium">Auto-Call Interval</span></label>
+                                    <select id="intervalSelector" class="select select-bordered w-full" disabled>
+                                        <option value="3000">3 seconds</option>
+                                        <option value="5000" selected>5 seconds</option>
+                                        <option value="7000">7 seconds</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div>
-                                <label class="label"><span class="label-text">Auto-Call Interval (seconds)</span></label>
-                                <select id="intervalSelector" class="select select-bordered w-full" disabled>
-                                    <option value="3000">3 seconds</option>
-                                    <option value="5000" selected>5 seconds</option>
-                                    <option value="7000">7 seconds</option>
-                                </select>
+                        </div>
+                    </section>
+
+                    <div class="collapse collapse-arrow bg-base-100 shadow-xl border border-base-300/50 mb-6 admin-section">
+                        <input type="checkbox" id="rules-collapse" /> 
+                        <div class="collapse-title text-xl font-medium">
+                           Winning Rules & Max Winners
+                        </div>
+                        <div class="collapse-content">
+                            <div id="winningRulesConfig" class="space-y-1 pt-2"> 
+                                </div>
+                            <p id="ruleValidationError" class="text-error text-sm mt-2"></p>
+                        </div>
+                    </div>
+
+                    <section class="admin-section">
+                         <div class="card-body">
+                            <h3 class="mb-0">Game Controls</h3> 
+                             <div id="currentNumberDisplay" class="text-center my-6 p-6 bg-gradient-to-br from-secondary to-accent text-secondary-content rounded-box shadow-lg max-w-xs mx-auto transition-transform duration-300 ease-out">
+                                <h2 class="text-xl font-semibold mb-2 opacity-80">Current Number:</h2>
+                                <p id="currentNumber" class="text-7xl font-bold tracking-tight">-</p> 
+                            </div>
+                            <div class="flex flex-wrap justify-center gap-2 sm:gap-4 mb-6">
+                                <button id="startGameBtn" class="btn btn-success btn-wide tooltip" data-tip="Start new game with selected rules" onclick="startGame()">
+                                     <span class="loading loading-spinner loading-sm hidden"></span>
+                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                     <span>Start Game</span>
+                                </button>
+                                <button id="callNextBtn" class="btn btn-primary tooltip" data-tip="Draw next number (Manual Mode)" onclick="drawNextNumber()">
+                                     <span class="loading loading-spinner loading-sm hidden"></span>
+                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
+                                     <span>Call Next</span>
+                                </button>
+                                <button id="pauseGameBtn" class="btn btn-warning btn-outline tooltip" data-tip="Pause automatic number calling" onclick="pauseGame()" disabled>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    Pause Auto
+                                </button>
+                                <button id="resumeGameBtn" class="btn btn-info btn-outline tooltip" data-tip="Resume automatic number calling" onclick="resumeGame()" disabled>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
+                                    Resume Auto
+                                </button>
+                                <button id="stopGameBtn" class="btn btn-error btn-wide tooltip" data-tip="End current game session" onclick="stopGame()" disabled>
+                                     <span class="loading loading-spinner loading-sm hidden"></span>
+                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12H3m18 0a9 9 0 11-18 0 9 9 0 0118 0zM12 9v6" transform="rotate(45 12 12)" /></svg>
+                                     <span>Stop Game</span>
+                                </button>
+                            </div>
+                           
+                            <div class="text-center my-4 text-lg font-medium stats shadow bg-base-200 stats-vertical sm:stats-horizontal"> 
+                                <div class="stat">
+                                    <div class="stat-title">Status</div>
+                                    <div id="statusText" class="stat-value text-base sm:text-lg">Not Connected</div>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-title">Numbers Left</div>
+                                    <div id="numbersLeftText" class="stat-value text-base sm:text-lg">90</div>
+                                </div>
+                            </div>
+                            <div id="gameOverMessage" class="alert alert-error shadow-lg hidden justify-center my-4">
+                                <div>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    <span class="font-bold text-xl">GAME OVER!</span>
+                                </div>
                             </div>
                         </div>
                     </section>
 
                     <section class="admin-section">
-                        <h3>Winning Rules & Max Winners per Prize</h3>
-                        <div id="winningRulesConfig" class="space-y-3">
+                         <div class="card-body">
+                            <h3>Tambola Board (1-90)</h3>
+                            <div id="tambolaBoard" class="tambola-board"></div>
+                        </div>
+                    </section>
+
+                    <section class="admin-section">
+                        <div class="card-body">
+                            <h3>Drawn Numbers (<span id="drawnCount">0</span>/90)</h3>
+                            <div id="drawnNumbersList" class="p-4 bg-base-200 rounded-box shadow-inner min-h-[60px] flex flex-wrap gap-2 justify-center items-center">
+                                <span class="italic text-base-content/60">No numbers drawn yet.</span>
                             </div>
-                        <p id="ruleValidationError" class="text-error text-sm mt-2"></p>
-                    </section>
-
-                    <section class="admin-section">
-                        <h3>Game Controls</h3>
-                        <div class="flex flex-wrap justify-center gap-2 sm:gap-4 mb-6">
-                            <button id="startGameBtn" class="btn btn-success btn-wide" onclick="startGame()">Start Game in Room</button>
-                            <button id="callNextBtn" class="btn btn-primary" onclick="drawNextNumber()">Call Next</button>
-                            <button id="pauseGameBtn" class="btn btn-warning" onclick="pauseGame()" disabled>Pause Auto</button>
-                            <button id="resumeGameBtn" class="btn btn-info" onclick="resumeGame()" disabled>Resume Auto</button>
-                            <button id="stopGameBtn" class="btn btn-error btn-wide" onclick="stopGame()" disabled>Stop Game in Room</button>
-                        </div>
-                        <div id="currentNumberDisplay" class="text-center my-8 p-6 bg-base-100 rounded-box shadow-lg max-w-xs mx-auto">
-                            <h2 class="text-xl font-semibold mb-2">Current Number:</h2>
-                            <p id="currentNumber" class="text-6xl font-bold text-secondary">-</p>
-                        </div>
-                        <div id="gameStatus" class="text-center my-4 text-lg font-medium">
-                            Status: <span id="statusText">Not Connected</span> | Numbers Left: <span id="numbersLeftText">90</span>
-                        </div>
-                        <div id="gameOverMessage" class="text-center my-4 text-2xl font-bold text-error hidden">GAME OVER!</div>
-                    </section>
-
-                    <section class="admin-section">
-                        <h3>Tambola Board (1-90)</h3>
-                        <div id="tambolaBoard" class="tambola-board bg-base-100 p-4 rounded-box shadow"></div>
-                    </section>
-
-                    <section class="admin-section">
-                        <h3>Drawn Numbers (<span id="drawnCount">0</span>/90)</h3>
-                        <div id="drawnNumbersList" class="p-4 bg-base-100 rounded-box shadow min-h-[50px] flex flex-wrap gap-2 justify-center items-center">
-                            <span class="italic text-gray-500">No numbers drawn yet.</span>
                         </div>
                     </section>
 
                     <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <section class="admin-section">
-                            <h3>Connected Players (<span id="playerCount">0</span>)</h3>
-                            <div id="playerList" class="max-h-60 overflow-y-auto">
-                                <p class="italic text-gray-500 p-2">No players connected yet.</p>
+                             <div class="card-body">
+                                <h3>Connected Players <span id="playerCountBadge" class="badge badge-neutral ml-2">0</span></h3>
+                                <div id="playerList" class="max-h-60 overflow-y-auto">
+                                    <p class="italic text-base-content/60 p-2">No players connected yet.</p>
+                                </div>
                             </div>
                         </section>
 
                         <section class="admin-section">
-                            <h3>Ticket Requests (<span id="ticketRequestCount">0</span>)</h3>
-                            <div id="ticketRequestList" class="max-h-60 overflow-y-auto">
-                                <p class="italic text-gray-500 p-2">No pending ticket requests.</p>
+                             <div class="card-body">
+                                <h3>Ticket Requests <span id="ticketRequestCountBadge" class="badge badge-warning ml-2">0</span></h3>
+                                <div id="ticketRequestList" class="max-h-60 overflow-y-auto">
+                                    <p class="italic text-base-content/60 p-2">No pending ticket requests.</p>
+                                </div>
                             </div>
                         </section>
 
                         <section class="admin-section">
-                            <h3>Pending Claims (<span id="claimCount">0</span>)</h3>
-                            <div id="claimList" class="max-h-60 overflow-y-auto">
-                                <p class="italic text-gray-500 p-2">No pending claims.</p>
+                             <div class="card-body">
+                                <h3>Pending Claims <span id="claimCountBadge" class="badge badge-warning ml-2">0</span></h3>
+                                <div id="claimList" class="max-h-60 overflow-y-auto">
+                                    <p class="italic text-base-content/60 p-2">No pending claims.</p>
+                                </div>
                             </div>
                         </section>
                     </div>
-                    <section class="admin-section">
-                        <h3>Approved Winners</h3>
-                        <div id="winnersList" class="max-h-60 overflow-y-auto">
-                             <p class="italic text-gray-500 p-2">No winners declared yet.</p>
+                     <section class="admin-section md:col-span-2 lg:col-span-3"> 
+                         <div class="card-body">
+                            <h3>Approved Winners</h3>
+                            <div id="winnersList" class="max-h-60 overflow-y-auto">
+                                 <p class="italic text-base-content/60 p-2">No winners declared yet.</p>
+                            </div>
                         </div>
                     </section>
                 </div> 
@@ -168,61 +274,143 @@
         
         <div class="drawer-side z-[60]"> 
             <label for="my-drawer-3" aria-label="close sidebar" class="drawer-overlay"></label> 
-            <ul class="menu p-4 w-80 min-h-full bg-base-200">
-                <li class="menu-title">Admin Menu</li>
-                <li><a href="/" target="_blank">Player View</a></li>
-                <li><button class="btn btn-sm btn-outline btn-warning w-full mt-2" onclick="resetGame()">Reset ENTIRE SERVER</button></li>
-                <li><button class="btn btn-sm btn-outline btn-error w-full mt-2" onclick="stopGame()">Stop Game in Current Room</button></li>
-                <li class="mt-4"><div class="divider"></div></li>
-                <li><a onclick="document.getElementById('my-drawer-3').checked = false;">Close Menu</a></li>
+            <ul class="menu p-4 w-80 min-h-full bg-base-200 text-base-content">
+                <li class="menu-title"><span>Admin Menu</span></li>
+                <li><a href="/" target="_blank">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    Player View
+                </a></li>
+                <li><button class="btn btn-sm btn-outline btn-error w-full mt-2 justify-start" onclick="stopGame()">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12H3m18 0a9 9 0 11-18 0 9 9 0 0118 0zM12 9v6" transform="rotate(45 12 12)" /></svg>
+                    Stop Game (Current Room)
+                </button></li>
+                <li><button id="resetGameBtnSidebar" class="btn btn-sm btn-outline btn-warning w-full mt-2 justify-start" onclick="showResetModal()"> 
+                    <span class="loading loading-spinner loading-xs hidden"></span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    <span>Reset ENTIRE SERVER</span>
+                </button></li>
+                <li class="mt-auto"><div class="divider"></div></li>
+                <li><a onclick="document.getElementById('my-drawer-3').checked = false;">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    Close Menu
+                </a></li>
             </ul>
         </div>
     </div>
 
     <div class="floating-nav-container btm-nav lg:hidden">
-        <button id="floatStartBtn" class="text-success" onclick="startGame()">
+        <button id="floatStartBtn" class="text-success tooltip tooltip-top" data-tip="Start Game" onclick="startGame()">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             <span class="btm-nav-label">Start</span>
         </button>
-        <button id="floatCallNextBtn" class="text-primary" onclick="drawNextNumber()">
+        <button id="floatCallNextBtn" class="text-primary tooltip tooltip-top" data-tip="Call Next Number" onclick="drawNextNumber()">
              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
             <span class="btm-nav-label">Call Next</span>
         </button>
-        <button id="floatStopBtn" class="text-error" onclick="stopGame()">
+        <button id="floatStopBtn" class="text-error tooltip tooltip-top" data-tip="Stop Game" onclick="stopGame()">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12H3m18 0a9 9 0 11-18 0 9 9 0 0118 0zM12 9v6" transform="rotate(45 12 12)" /></svg>
             <span class="btm-nav-label">Stop</span>
         </button>
     </div>
 
+    <dialog id="reset_modal" class="modal modal-bottom sm:modal-middle">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg text-error">Confirm Server Reset!</h3>
+            <p class="py-4">Are you absolutely sure you want to reset the ENTIRE server? This will delete ALL rooms, players, and game progress. This action cannot be undone.</p>
+            <div class="modal-action">
+                <button class="btn btn-warning" onclick="confirmReset()">
+                    <span class="loading loading-spinner loading-xs hidden"></span>
+                    <span>Yes, Reset Server</span>
+                </button>
+                 <button class="btn btn-ghost" onclick="document.getElementById('reset_modal').close()">Cancel</button>
+            </div>
+        </div>
+         <form method="dialog" class="modal-backdrop">
+            <button>close</button> </form>
+    </dialog>
+
+
     <script>
-        // !!! IMPORTANT: Set your Render Backend URL here !!!
+        // !!! URLs - MAKE SURE THESE ARE CORRECT !!!
         const API_BASE_URL = 'https://tambola-backend.onrender.com'; 
-        
-        // !!! IMPORTANT: Set your Netlify Frontend URL here for QR Code !!!
         const FRONTEND_BASE_URL = 'https://mytambola.netlify.app'; 
 
-        // DOM Elements
+        // --- Theme Controller ---
+        const themes = [ "light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter", "dim", "nord", "sunset", ];
+        const themeDropdown = document.getElementById('theme-dropdown');
+        const htmlTag = document.documentElement;
+        const currentTheme = localStorage.getItem('tambolaAdminTheme') || 'cupcake'; // Default theme
+
+        // Populate theme dropdown
+        themes.forEach(theme => {
+            const li = document.createElement('li');
+            // Use button role for better accessibility and styling control
+            li.innerHTML = `<button role="radio" aria-checked="${theme === currentTheme}" aria-label="${capitalizeFirstLetter(theme)}" data-set-theme="${theme}" class="theme-controller btn btn-sm btn-block btn-ghost justify-start font-medium">${capitalizeFirstLetter(theme)}</button>`;
+            themeDropdown.appendChild(li);
+        });
+
+        // Set initial theme
+        htmlTag.setAttribute('data-theme', currentTheme);
+        
+        // Add event listener for theme change using event delegation
+        themeDropdown.addEventListener('click', (event) => {
+            const button = event.target.closest('.theme-controller');
+            if (button) {
+                const selectedTheme = button.getAttribute('data-set-theme');
+                if (selectedTheme) {
+                    htmlTag.setAttribute('data-theme', selectedTheme);
+                    localStorage.setItem('tambolaAdminTheme', selectedTheme);
+                    // Update aria-checked state for accessibility
+                    themeDropdown.querySelectorAll('.theme-controller').forEach(btn => {
+                        btn.setAttribute('aria-checked', btn.getAttribute('data-set-theme') === selectedTheme);
+                    });
+                }
+            }
+        });
+
+
+        // --- DOM Elements (Game Related) ---
         const roomIdInput = document.getElementById('roomIdInput');
         const connectRoomBtn = document.getElementById('connectRoomBtn');
+        const connectRoomBtnSpinner = connectRoomBtn.querySelector('.loading-spinner');
+        const connectRoomBtnText = connectRoomBtn.querySelector('span:not(.loading-spinner)'); 
         const adminRoomDisplay = document.getElementById('adminRoomDisplay');
         const qrCodeCanvasContainer = document.getElementById('qrCodeCanvasContainer');
-        const qrCodeCanvas = document.getElementById('qrCodeCanvas'); // This is now a div
+        const qrCodeCanvas = document.getElementById('qrCodeCanvas'); 
         const playerJoinLink = document.getElementById('playerJoinLink');
         const gameControlsSection = document.getElementById('gameControlsSection');
 
-        const modeSelector = document.getElementById('modeSelector');
+        // Mode selection elements
+        const modeManualRadio = document.getElementById('modeManual');
+        const modeAutoRadio = document.getElementById('modeAuto');
         const intervalSelector = document.getElementById('intervalSelector');
+
         const winningRulesConfigEl = document.getElementById('winningRulesConfig');
         const ruleValidationError = document.getElementById('ruleValidationError');
         
         const startGameBtn = document.getElementById('startGameBtn');
+        const startGameBtnSpinner = startGameBtn.querySelector('.loading-spinner');
+        const startGameBtnText = startGameBtn.querySelector('span:not(.loading-spinner)');
         const callNextBtn = document.getElementById('callNextBtn');
+        const callNextBtnSpinner = callNextBtn.querySelector('.loading-spinner');
+        const callNextBtnText = callNextBtn.querySelector('span:not(.loading-spinner)');
         const pauseGameBtn = document.getElementById('pauseGameBtn');
         const resumeGameBtn = document.getElementById('resumeGameBtn');
         const stopGameBtn = document.getElementById('stopGameBtn');
+        const stopGameBtnSpinner = stopGameBtn.querySelector('.loading-spinner');
+        const stopGameBtnText = stopGameBtn.querySelector('span:not(.loading-spinner)');
         const resetGameBtnTop = document.getElementById('resetGameBtnTop');
+        const resetGameBtnSidebar = document.getElementById('resetGameBtnSidebar'); 
+        const resetGameBtnSidebarSpinner = resetGameBtnSidebar.querySelector('.loading-spinner');
+        const resetGameBtnSidebarText = resetGameBtnSidebar.querySelector('span:not(.loading-spinner)');
+        const resetModal = document.getElementById('reset_modal');
+        const resetModalConfirmBtn = resetModal.querySelector('.btn-warning');
+        const resetModalConfirmBtnSpinner = resetModalConfirmBtn.querySelector('.loading-spinner');
+        const resetModalConfirmBtnText = resetModalConfirmBtn.querySelector('span:not(.loading-spinner)');
+
 
         const currentNumberEl = document.getElementById('currentNumber');
+        const currentNumberDisplay = document.getElementById('currentNumberDisplay');
         const tambolaBoard = document.getElementById('tambolaBoard');
         const drawnNumbersListEl = document.getElementById('drawnNumbersList');
         const drawnCountEl = document.getElementById('drawnCount');
@@ -231,23 +419,31 @@
         const gameOverMessageEl = document.getElementById('gameOverMessage');
         
         const playerListEl = document.getElementById('playerList');
-        const playerCountEl = document.getElementById('playerCount');
+        const playerCountBadgeEl = document.getElementById('playerCountBadge'); // Updated ID
         const ticketRequestListEl = document.getElementById('ticketRequestList');
-        const ticketRequestCountEl = document.getElementById('ticketRequestCount');
+        const ticketRequestCountBadgeEl = document.getElementById('ticketRequestCountBadge'); // Updated ID
         const claimListEl = document.getElementById('claimList');
-        const claimCountEl = document.getElementById('claimCount');
+        const claimCountBadgeEl = document.getElementById('claimCountBadge'); // Updated ID
         const winnersListEl = document.getElementById('winnersList');
 
         const floatStartBtn = document.getElementById('floatStartBtn');
         const floatCallNextBtn = document.getElementById('floatCallNextBtn');
         const floatStopBtn = document.getElementById('floatStopBtn');
 
-        // Game State
+        // --- Game State ---
         let currentRoomId = null; 
         let autoCallIntervalId = null;
         let isGamePaused = false;
         let serverGameState = {}; 
         let pollingAdminIntervalId = null;
+        let isConnecting = false;
+        let isStartingGame = false;
+        let isDrawingNumber = false;
+        let isStoppingGame = false;
+        let isResettingServer = false;
+        let isApprovingTicket = {}; 
+        let isProcessingClaim = {}; 
+
 
         const defaultWinningRules = {
             fullHouse: { name: "Full House", maxWinners: 1, enabled: true },
@@ -258,12 +454,13 @@
             corners: { name: "Corners (4)", maxWinners: 1, enabled: true }
         };
 
+        // --- Initialization ---
         function initAdminUI() {
-             if (!API_BASE_URL || API_BASE_URL === 'YOUR_RENDER_BACKEND_URL_HERE') { // Added safety check
+             if (!API_BASE_URL || API_BASE_URL === 'YOUR_RENDER_BACKEND_URL_HERE') { 
                 alert("CRITICAL: API_BASE_URL is not set correctly in the frontend JavaScript. Please check admin.html.");
                 connectRoomBtn.disabled = true;
             }
-             if (!FRONTEND_BASE_URL || FRONTEND_BASE_URL === 'YOUR_NETLIFY_FRONTEND_URL_HERE') { // Added safety check
+             if (!FRONTEND_BASE_URL || FRONTEND_BASE_URL === 'YOUR_NETLIFY_FRONTEND_URL_HERE') { 
                 alert("CRITICAL: FRONTEND_BASE_URL is not set correctly in the frontend JavaScript. Please check admin.html.");
                 connectRoomBtn.disabled = true;
             }
@@ -276,6 +473,7 @@
                 tambolaBoard.appendChild(cell);
             }
             renderWinningRulesConfig();
+            updateButtonStates(); 
         }
         initAdminUI();
 
@@ -285,125 +483,107 @@
             for (const key in defaultWinningRules) {
                 const rule = defaultWinningRules[key];
                 const div = document.createElement('div');
+                div.classList.add('form-control'); 
                 div.innerHTML = `
-                    <label class="cursor-pointer label justify-start gap-2">
-                        <input type="checkbox" id="rule${capitalizeFirstLetter(key)}" class="checkbox checkbox-primary" data-rule="${key}" onchange="toggleMaxPrizeInput('${key}')" ${rule.enabled ? 'checked' : ''} />
-                        <span class="label-text">${rule.name}</span>
+                    <label class="label cursor-pointer gap-4 py-1"> 
+                        <span class="label-text font-medium">${rule.name}</span> 
+                        <input type="checkbox" id="rule${capitalizeFirstLetter(key)}" class="toggle toggle-primary toggle-sm" data-rule="${key}" onchange="toggleMaxPrizeInput('${key}')" ${rule.enabled ? 'checked' : ''} /> 
                     </label>
-                    <input type="number" id="max${capitalizeFirstLetter(key)}" class="input input-sm input-bordered w-20 ml-4" value="${rule.maxWinners}" min="1" ${!rule.enabled ? 'disabled' : ''} />
+                    <label class="label pt-0 pb-1"> 
+                         <span class="label-text-alt">Max Winners:</span>
+                         <input type="number" id="max${capitalizeFirstLetter(key)}" class="input input-xs input-bordered w-20 ml-auto" value="${rule.maxWinners}" min="1" ${!rule.enabled ? 'disabled' : ''} /> 
+                    </label>
+                     <div class="divider my-0"></div> 
                 `;
                 winningRulesConfigEl.appendChild(div);
             }
         }
 
-
+        // --- Network & API Calls ---
         async function connectToRoom() {
+            if (isConnecting) return;
+            isConnecting = true;
+            connectRoomBtn.disabled = true;
+            connectRoomBtnSpinner.classList.remove('hidden');
+            connectRoomBtnText.classList.add('hidden'); 
+
             const newRoomId = roomIdInput.value.trim();
             if (!newRoomId) {
                 alert("Please enter a Room ID.");
+                isConnecting = false;
+                connectRoomBtn.disabled = false;
+                connectRoomBtnSpinner.classList.add('hidden');
+                connectRoomBtnText.classList.remove('hidden');
                 return;
             }
+            
             currentRoomId = newRoomId; 
             
-            roomIdInput.disabled = true;
-            connectRoomBtn.disabled = true;
-            connectRoomBtn.textContent = "Connected";
-            adminRoomDisplay.textContent = `Room: ${currentRoomId}`;
-            adminRoomDisplay.classList.remove('hidden');
-            gameControlsSection.classList.remove('hidden');
-            statusTextEl.textContent = "Ready to Start";
-            
-            // Use the configured FRONTEND_BASE_URL for the player join link
-            const playerUrl = `${FRONTEND_BASE_URL}/?roomId=${encodeURIComponent(currentRoomId)}`; 
-            playerJoinLink.textContent = playerUrl;
-            playerJoinLink.href = playerUrl; // Make it a clickable link too
             try {
-                qrCodeCanvas.innerHTML = ''; 
-                const qr = qrcode(0, 'L'); 
-                qr.addData(playerUrl);
-                qr.make();
-                qrCodeCanvas.innerHTML = qr.createImgTag(4, 8); 
-                qrCodeCanvasContainer.classList.remove('hidden');
-            } catch (e) {
-                console.error("QR Code generation failed:", e);
-                qrCodeCanvasContainer.innerHTML = "<p class='text-error'>QR Code generation failed.</p>";
-                qrCodeCanvasContainer.classList.remove('hidden');
-            }
-            
-            await fetchAdminData(); 
-            updateButtonStates();
+                await fetchAdminData(); 
 
-            if(pollingAdminIntervalId) clearInterval(pollingAdminIntervalId);
-            pollingAdminIntervalId = setInterval(fetchAdminData, 7000); 
-        }
+                if (currentRoomId) { 
+                    roomIdInput.disabled = true;
+                    adminRoomDisplay.textContent = `Room: ${currentRoomId}`;
+                    adminRoomDisplay.classList.remove('hidden');
+                    gameControlsSection.classList.remove('hidden');
+                    statusTextEl.textContent = serverGameState.gameStarted ? "In Progress" : "Ready to Start";
+                    
+                    const playerUrl = `${FRONTEND_BASE_URL}/?roomId=${encodeURIComponent(currentRoomId)}`; 
+                    playerJoinLink.textContent = playerUrl;
+                    playerJoinLink.href = playerUrl; 
+                    qrCodeCanvas.innerHTML = ''; 
+                    const qr = qrcode(0, 'L'); 
+                    qr.addData(playerUrl);
+                    qr.make();
+                    qrCodeCanvas.innerHTML = qr.createImgTag(4, 8); 
+                    qrCodeCanvasContainer.classList.remove('hidden');
+                    
+                    updateButtonStates();
 
-        function toggleModeControls() {
-            const isAutoMode = modeSelector.value === 'auto';
-            intervalSelector.disabled = !isAutoMode || (serverGameState && serverGameState.gameStarted);
-            if (!isAutoMode && autoCallIntervalId) { 
-                clearInterval(autoCallIntervalId);
-                autoCallIntervalId = null;
-                isGamePaused = false; 
-            }
-            updateButtonStates(); 
-        }
-        
-        function toggleMaxPrizeInput(ruleKey) {
-            const checkbox = document.getElementById(`rule${capitalizeFirstLetter(ruleKey)}`);
-            const input = document.getElementById(`max${capitalizeFirstLetter(ruleKey)}`);
-            if (input) {
-                input.disabled = !checkbox.checked || (serverGameState && serverGameState.gameStarted);
-                if (!checkbox.checked) input.value = defaultWinningRules[ruleKey]?.maxWinners || "1";
-            }
-        }
-        
-        function capitalizeFirstLetter(string) {
-            if (!string) return '';
-            return string.charAt(0).toUpperCase() + string.slice(1);
-        }
-
-        function getSelectedRules() {
-            const rules = {};
-            const ruleCheckboxes = winningRulesConfigEl.querySelectorAll('input[type="checkbox"]');
-            let oneRuleSelected = false;
-            ruleCheckboxes.forEach(cb => {
-                const ruleKey = cb.dataset.rule;
-                const maxWinnersInput = document.getElementById(`max${capitalizeFirstLetter(ruleKey)}`);
-                if (cb.checked) {
-                    oneRuleSelected = true;
-                    rules[ruleKey] = {
-                        enabled: true,
-                        maxWinners: parseInt(maxWinnersInput.value) || 1
-                    };
+                    if(pollingAdminIntervalId) clearInterval(pollingAdminIntervalId);
+                    pollingAdminIntervalId = setInterval(fetchAdminData, 7000); 
                 } else {
-                     rules[ruleKey] = { 
-                        enabled: false,
-                        maxWinners: parseInt(maxWinnersInput.value) || 1
-                    };
+                    // Error message handled within fetchAdminData if room not found
+                    roomIdInput.disabled = false; 
                 }
-            });
-            if (!oneRuleSelected) {
-                ruleValidationError.textContent = "At least one winning rule must be selected to start.";
-                return null;
-            }
-            ruleValidationError.textContent = "";
-            return rules;
-        }
 
+            } catch (error) {
+                 console.error("Error during connectToRoom:", error);
+                 alert(`Error connecting to room: ${error.message}`);
+                 currentRoomId = null; 
+                 roomIdInput.disabled = false;
+                 adminRoomDisplay.classList.add('hidden');
+                 gameControlsSection.classList.add('hidden');
+            } finally {
+                isConnecting = false;
+                connectRoomBtn.disabled = !!currentRoomId; 
+                connectRoomBtnText.textContent = currentRoomId ? "Connected" : "Connect"; 
+                connectRoomBtnText.classList.remove('hidden');
+                connectRoomBtnSpinner.classList.add('hidden');
+            }
+        }
 
         async function fetchAdminData() { 
             if (!currentRoomId) {
-                updateAdminUI({ message: "Not connected to any room."}); 
-                return;
+                 updateAdminUI({ message: "Not connected to any room."}); 
+                 return; 
             }
             try {
-                const response = await fetch(`${API_BASE_URL}/api/admin/state?roomId=${currentRoomId}`); // USE API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/admin/state?roomId=${currentRoomId}`); 
                 if (!response.ok) {
-                    const errText = await response.text();
-                    if (response.status === 404) {
-                         throw new Error(`Room '${currentRoomId}' not found on backend.`);
+                    const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
+                    if (response.status === 404 || errorData.message?.includes("not found")) {
+                        console.warn(`Room ${currentRoomId} not found on backend. Resetting admin UI.`);
+                        if (pollingAdminIntervalId) clearInterval(pollingAdminIntervalId);
+                        pollingAdminIntervalId = null;
+                        currentRoomId = null; 
+                        serverGameState = {};
+                        updateAdminUI({ message: "Room not found. Please connect again."}); 
+                    } else {
+                        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                     }
-                    throw new Error(`HTTP error! status: ${response.status}, ${errText}`);
+                    return; 
                 }
                 serverGameState = await response.json();
                 updateAdminUI(serverGameState);
@@ -413,139 +593,31 @@
             }
         }
 
-        function updateAdminUI(state) {
-            serverGameState = state; 
-            if (state.message && !state.roomId) { 
-                statusTextEl.textContent = state.message;
-                currentNumberEl.textContent = '-';
-                drawnNumbersListEl.innerHTML = `<span class="italic text-gray-500">Not connected.</span>`;
-                playerListEl.innerHTML = `<p class="italic text-gray-500 p-2">Not connected.</p>`;
-                ticketRequestListEl.innerHTML = `<p class="italic text-gray-500 p-2">Not connected.</p>`;
-                claimListEl.innerHTML = `<p class="italic text-gray-500 p-2">Not connected.</p>`;
-                winnersListEl.innerHTML = `<p class="italic text-gray-500 p-2">Not connected.</p>`;
-                gameControlsSection.classList.add('hidden'); 
-                roomIdInput.disabled = false;
-                connectRoomBtn.disabled = false;
-                connectRoomBtn.textContent = "Connect to Room";
-                adminRoomDisplay.classList.add('hidden');
-                if (pollingAdminIntervalId) clearInterval(pollingAdminIntervalId); 
-                pollingAdminIntervalId = null;
-                return;
-            }
-
-
-            currentNumberEl.textContent = state.currentNumber || '-';
-
-            document.querySelectorAll('.tambola-board .number-cell').forEach(cell => cell.classList.remove('drawn'));
-            (state.drawnNumbers || []).forEach(num => {
-                const cell = document.getElementById(`cell-${num}`);
-                if (cell) cell.classList.add('drawn');
-            });
-
-            drawnCountEl.textContent = state.drawnNumbers?.length || 0;
-            drawnNumbersListEl.innerHTML = (state.drawnNumbers && state.drawnNumbers.length > 0) ? 
-                state.drawnNumbers.map(num => `<span class="badge badge-lg badge-neutral">${num}</span>`).join(' ') :
-                `<span class="italic text-gray-500">No numbers drawn yet.</span>`;
-
-            if (state.gameOver) {
-                statusTextEl.textContent = "Game Over";
-                gameOverMessageEl.classList.remove('hidden');
-                if (autoCallIntervalId) clearInterval(autoCallIntervalId);
-                autoCallIntervalId = null;
-            } else if (state.gameStarted) {
-                statusTextEl.textContent = `In Progress (Mode: ${modeSelector.value})`;
-                gameOverMessageEl.classList.add('hidden');
-            } else {
-                 statusTextEl.textContent = currentRoomId ? "Ready to Start" : "Not Connected";
-                gameOverMessageEl.classList.add('hidden');
-            }
-            numbersLeftTextEl.textContent = state.numbersLeft !== undefined ? state.numbersLeft : 90;
-
-            playerCountEl.textContent = state.players?.length || 0;
-            playerListEl.innerHTML = (state.players && state.players.length > 0) ?
-                state.players.map(player => `<div class="list-item">${player.name} (ID: ...${player.id.slice(-4)}, Tickets: ${player.ticketCount})</div>`).join('') :
-                `<p class="italic text-gray-500 p-2">No players connected.</p>`;
-
-            ticketRequestCountEl.textContent = state.ticketRequests?.length || 0;
-            ticketRequestListEl.innerHTML = (state.ticketRequests && state.ticketRequests.length > 0) ?
-                state.ticketRequests.map(req => `
-                    <div class="list-item">
-                        <span>${req.playerName} (PlayerID: ...${req.playerId.slice(-4)})</span>
-                        <button class="btn btn-xs btn-outline btn-success" onclick="approveTicket('${req.requestId}')">Approve</button>
-                    </div>`).join('') :
-                `<p class="italic text-gray-500 p-2">No pending ticket requests.</p>`;
-
-            claimCountEl.textContent = state.claims?.length || 0;
-            claimListEl.innerHTML = (state.claims && state.claims.length > 0) ?
-                state.claims.map(claim => `
-                    <div class="list-item">
-                        <span>${capitalizeFirstLetter(claim.prizeType)} by ${claim.playerName} (Ticket: ...${claim.ticketId.slice(-6)})</span>
-                        <div>
-                            <button class="btn btn-xs btn-outline btn-success mr-1" onclick="processClaim('${claim.claimId}', 'accept')">Accept</button>
-                            <button class="btn btn-xs btn-outline btn-error" onclick="processClaim('${claim.claimId}', 'reject')">Reject</button>
-                        </div>
-                    </div>`).join('') :
-                `<p class="italic text-gray-500 p-2">No pending claims.</p>`;
-            
-            winnersListEl.innerHTML = ''; 
-            if (state.winners && Object.keys(state.winners).length > 0) {
-                let winnersHtml = '';
-                for (const prize in state.winners) {
-                    if (state.winners[prize].length > 0) {
-                        winnersHtml += `<div class="p-2 border-b"><strong>${capitalizeFirstLetter(prize.replace(/([A-Z])/g, ' $1'))}:</strong> ${state.winners[prize].map(w => `${w.playerName} (Ticket ...${w.ticketId.slice(-6)})`).join(', ')}</div>`;
-                    }
-                }
-                winnersListEl.innerHTML = winnersHtml || '<p class="italic text-gray-500 p-2">No winners declared yet.</p>';
-            } else {
-                winnersListEl.innerHTML = '<p class="italic text-gray-500 p-2">No winners declared yet.</p>';
-            }
-            
-            const gameCanBeConfigured = !state.gameStarted || state.gameOver;
-            modeSelector.disabled = !gameCanBeConfigured;
-            intervalSelector.disabled = !gameCanBeConfigured || modeSelector.value !== 'auto';
-            winningRulesConfigEl.querySelectorAll('input').forEach(input => input.disabled = !gameCanBeConfigured);
-
-            updateButtonStates();
-        }
-        
-        function updateButtonStates() {
-            const gameStarted = serverGameState.gameStarted;
-            const gameOver = serverGameState.gameOver;
-            const isAuto = modeSelector.value === 'auto';
-            const isConnected = !!currentRoomId;
-
-            startGameBtn.disabled = !isConnected || gameStarted || gameOver;
-            floatStartBtn.disabled = !isConnected || gameStarted || gameOver;
-
-            callNextBtn.disabled = !isConnected || isAuto || !gameStarted || gameOver;
-            floatCallNextBtn.disabled = !isConnected || isAuto || !gameStarted || gameOver;
-            
-            pauseGameBtn.disabled = !isConnected || !isAuto || !gameStarted || gameOver || isGamePaused;
-            resumeGameBtn.disabled = !isConnected || !isAuto || !gameStarted || gameOver || !isGamePaused;
-
-            stopGameBtn.disabled = !isConnected || !gameStarted || gameOver;
-            floatStopBtn.disabled = !isConnected || !gameStarted || gameOver;
-            
-            resetGameBtnTop.disabled = false; 
-        }
-
-
         async function startGame() {
-            if (!currentRoomId) {
-                alert("Not connected to a room. Cannot start game.");
-                return;
-            }
+            if (isStartingGame || !currentRoomId) return;
+            isStartingGame = true;
+            startGameBtn.disabled = true;
+            startGameBtnSpinner.classList.remove('hidden');
+            startGameBtnText.classList.add('hidden');
+
+
             const selectedRules = getSelectedRules();
-            if (!selectedRules) return;
+            if (!selectedRules) {
+                isStartingGame = false;
+                startGameBtn.disabled = false;
+                startGameBtnSpinner.classList.add('hidden');
+                startGameBtnText.classList.remove('hidden');
+                return; 
+            }
 
             try {
-                const response = await fetch(`${API_BASE_URL}/api/admin/start-game`, { // USE API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/admin/start-game`, { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         roomId: currentRoomId, 
                         rules: selectedRules,
-                        mode: modeSelector.value 
+                        mode: modeManualRadio.checked ? 'manual' : 'auto' 
                     })
                 });
                 if (!response.ok) {
@@ -554,36 +626,28 @@
                      throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 await fetchAdminData(); 
-                if (modeSelector.value === 'auto' && !isGamePaused && serverGameState.gameStarted && !serverGameState.gameOver) {
+                if (modeAutoRadio.checked && !isGamePaused && serverGameState.gameStarted && !serverGameState.gameOver) {
                     startAutoCalling();
                 }
             } catch (error) {
                 console.error("Failed to start game:", error);
+                await fetchAdminData(); 
+            } finally {
+                isStartingGame = false;
+                startGameBtnSpinner.classList.add('hidden');
+                startGameBtnText.classList.remove('hidden');
             }
-        }
-        
-        function startAutoCalling() {
-            if (autoCallIntervalId) clearInterval(autoCallIntervalId); 
-            const interval = parseInt(intervalSelector.value);
-            autoCallIntervalId = setInterval(async () => {
-                if (serverGameState.gameOver || isGamePaused || !serverGameState.gameStarted) {
-                    clearInterval(autoCallIntervalId);
-                    autoCallIntervalId = null;
-                    updateButtonStates(); 
-                    return;
-                }
-                await drawNextNumber(); 
-            }, interval);
-            isGamePaused = false; 
-            updateButtonStates();
         }
 
         async function drawNextNumber() {
-            if (!currentRoomId || serverGameState.gameOver || !serverGameState.gameStarted) return;
-            try {
-                if (modeSelector.value === 'manual') callNextBtn.disabled = true;
+            if (isDrawingNumber || !currentRoomId || serverGameState.gameOver || !serverGameState.gameStarted) return;
+            isDrawingNumber = true;
+            callNextBtn.disabled = true; 
+            callNextBtnSpinner.classList.remove('hidden');
+            callNextBtnText.classList.add('hidden');
 
-                const response = await fetch(`${API_BASE_URL}/api/admin/draw-number`, { // USE API_BASE_URL
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/admin/draw-number`, { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ roomId: currentRoomId }) 
@@ -592,68 +656,79 @@
                      const errorData = await response.json();
                      alert(`Error drawing number: ${errorData.message}`);
                      if (errorData.gameOver) { 
-                         serverGameState.gameOver = true;
+                         serverGameState.gameOver = true; 
                      }
-                     throw new Error(`HTTP error! status: ${response.status}, Message: ${errorData.message}`);
+                     await fetchAdminData(); 
+                     console.error(`Draw number error: ${response.status}, Message: ${errorData.message}`);
+                } else {
+                    await fetchAdminData(); 
                 }
-                await fetchAdminData(); 
             } catch (error) {
-                console.error("Failed to draw number:", error);
+                console.error("Failed to draw number (network/fetch issue):", error);
                 await fetchAdminData();
-            } 
-        }
-
-        function pauseGame() {
-            if (modeSelector.value === 'auto' && autoCallIntervalId) {
-                clearInterval(autoCallIntervalId);
-                autoCallIntervalId = null;
-                isGamePaused = true;
-                statusTextEl.textContent = `Paused (Mode: Auto, Room: ${currentRoomId})`;
-                updateButtonStates();
+            } finally {
+                 isDrawingNumber = false;
+                 callNextBtnSpinner.classList.add('hidden');
+                 callNextBtnText.classList.remove('hidden');
             }
         }
 
-        function resumeGame() {
-             if (modeSelector.value === 'auto' && isGamePaused && serverGameState.gameStarted && !serverGameState.gameOver) {
-                isGamePaused = false;
-                startAutoCalling(); 
-                statusTextEl.textContent = `In Progress (Mode: Auto, Room: ${currentRoomId})`;
-            }
-        }
-        
         async function stopGame() {
-            if (!currentRoomId || !serverGameState.gameStarted) {
-                 alert("Game not started in the current room or not connected.");
-                 return;
-            }
+            if (isStoppingGame || !currentRoomId || !serverGameState.gameStarted) return;
+            
             if (!confirm(`Are you sure you want to stop the game in room ${currentRoomId}?`)) return;
+
+            isStoppingGame = true;
+            stopGameBtn.disabled = true;
+            stopGameBtnSpinner.classList.remove('hidden');
+            stopGameBtnText.classList.add('hidden');
+
+
             try {
-                const response = await fetch(`${API_BASE_URL}/api/admin/stop-game`, { // USE API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/admin/stop-game`, { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ roomId: currentRoomId })
                 });
                 if (!response.ok) throw new Error(await response.text());
-                await fetchAdminData();
+                await fetchAdminData(); 
                  if (autoCallIntervalId) clearInterval(autoCallIntervalId);
                 autoCallIntervalId = null;
                 isGamePaused = false;
             } catch (error) {
                 console.error("Failed to stop game:", error);
                 alert("Error stopping game: " + error.message);
+                await fetchAdminData();
+            } finally {
+                isStoppingGame = false;
+                stopGameBtnSpinner.classList.add('hidden');
+                stopGameBtnText.classList.remove('hidden');
             }
         }
         
-        async function resetGame() { 
-            if (!confirm("DANGER! This will reset THE ENTIRE SERVER, deleting all rooms and game progress. Are you absolutely sure?")) {
-                return;
-            }
+        function showResetModal() {
+            if (isResettingServer) return; 
+            resetModal.showModal();
+        }
+
+        async function confirmReset() { 
+            if (isResettingServer) return;
+           
+            isResettingServer = true;
+            resetGameBtnTop.disabled = true; 
+            resetGameBtnSidebar.disabled = true;
+            resetModalConfirmBtn.disabled = true;
+            resetModalConfirmBtnSpinner?.classList.remove('hidden'); 
+            resetModalConfirmBtnText?.classList.add('hidden');
+
             try {
-                const response = await fetch(`${API_BASE_URL}/api/admin/reset-game`, { method: 'POST' }); // USE API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/admin/reset-game`, { method: 'POST' }); 
                 if (!response.ok) throw new Error(await response.text());
                 
                 if (autoCallIntervalId) clearInterval(autoCallIntervalId);
+                if (pollingAdminIntervalId) clearInterval(pollingAdminIntervalId);
                 autoCallIntervalId = null;
+                pollingAdminIntervalId = null;
                 isGamePaused = false;
                 currentRoomId = null; 
                 serverGameState = {}; 
@@ -661,7 +736,7 @@
                 roomIdInput.disabled = false;
                 roomIdInput.value = "ROOM1"; 
                 connectRoomBtn.disabled = false;
-                connectRoomBtn.textContent = "Connect to Room";
+                connectRoomBtnText.textContent = "Connect"; 
                 adminRoomDisplay.classList.add('hidden');
                 adminRoomDisplay.textContent = '';
                 gameControlsSection.classList.add('hidden');
@@ -672,20 +747,30 @@
                 renderWinningRulesConfig(); 
 
                 updateAdminUI({ message: "Server has been reset. Connect to a room."}); 
-                if(pollingAdminIntervalId) clearInterval(pollingAdminIntervalId);
-                pollingAdminIntervalId = null;
                 alert("Server reset successfully!");
+                resetModal.close(); 
 
             } catch (error) {
                 console.error("Failed to reset server:", error);
                 alert("Error resetting server: " + error.message);
+            } finally {
+                isResettingServer = false;
+                resetGameBtnTop.disabled = false; 
+                resetGameBtnSidebar.disabled = false;
+                resetModalConfirmBtn.disabled = false;
+                resetModalConfirmBtnSpinner?.classList.add('hidden');
+                resetModalConfirmBtnText?.classList.remove('hidden');
             }
         }
 
         async function approveTicket(requestId) {
-            if (!currentRoomId) { alert("Not connected to a room."); return; }
+             if (isApprovingTicket[requestId] || !currentRoomId) return; 
+             isApprovingTicket[requestId] = true;
+             const button = document.querySelector(`button[onclick="approveTicket('${requestId}')"]`);
+             if(button) button.classList.add("loading", "btn-disabled"); 
+             
             try {
-                const response = await fetch(`${API_BASE_URL}/api/admin/approve-ticket`, { // USE API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/admin/approve-ticket`, { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ requestId, roomId: currentRoomId })
@@ -698,13 +783,22 @@
                 await fetchAdminData(); 
             } catch (error) {
                 console.error("Failed to approve ticket:", error);
+                if(button) button.classList.remove("loading", "btn-disabled"); 
+            } finally {
+                isApprovingTicket[requestId] = false;
             }
         }
 
         async function processClaim(claimId, action) { 
-            if (!currentRoomId) { alert("Not connected to a room."); return; }
+            if (isProcessingClaim[claimId] || !currentRoomId) return;
+            isProcessingClaim[claimId] = true;
+            const acceptButton = document.querySelector(`button[onclick="processClaim('${claimId}', 'accept')"]`);
+            const rejectButton = document.querySelector(`button[onclick="processClaim('${claimId}', 'reject')"]`);
+            if(acceptButton) acceptButton.classList.add("loading", "btn-disabled");
+            if(rejectButton) rejectButton.classList.add("loading", "btn-disabled");
+
             try {
-                const response = await fetch(`${API_BASE_URL}/api/admin/process-claim`, { // USE API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/admin/process-claim`, { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ claimId, action, roomId: currentRoomId })
@@ -717,9 +811,212 @@
                 await fetchAdminData(); 
             } catch (error) {
                 console.error("Failed to process claim:", error);
+                 if(acceptButton) acceptButton.classList.remove("loading", "btn-disabled");
+                 if(rejectButton) rejectButton.classList.remove("loading", "btn-disabled");
+            } finally {
+                 isProcessingClaim[claimId] = false;
             }
         }
-        updateButtonStates(); 
+
+        // --- UI Update & State Management ---
+        function updateAdminUI(state) {
+            serverGameState = state; 
+            if (state.message && !state.roomId) { 
+                statusTextEl.textContent = state.message;
+                currentNumberEl.textContent = '-';
+                drawnNumbersListEl.innerHTML = `<span class="italic text-base-content/60">Not connected.</span>`;
+                playerListEl.innerHTML = `<p class="italic text-base-content/60 p-2">Not connected.</p>`;
+                playerCountBadgeEl.textContent = '0'; 
+                ticketRequestListEl.innerHTML = `<p class="italic text-base-content/60 p-2">Not connected.</p>`;
+                ticketRequestCountBadgeEl.textContent = '0';
+                claimListEl.innerHTML = `<p class="italic text-base-content/60 p-2">Not connected.</p>`;
+                claimCountBadgeEl.textContent = '0';
+                winnersListEl.innerHTML = `<p class="italic text-base-content/60 p-2">Not connected.</p>`;
+                gameControlsSection.classList.add('hidden'); 
+                roomIdInput.disabled = false;
+                connectRoomBtn.disabled = false;
+                connectRoomBtnText.textContent = "Connect"; 
+                adminRoomDisplay.classList.add('hidden');
+                if (pollingAdminIntervalId) clearInterval(pollingAdminIntervalId); 
+                pollingAdminIntervalId = null;
+                updateButtonStates(); 
+                return;
+            }
+
+            // Update displays based on received state
+            const oldNumber = currentNumberEl.textContent;
+            currentNumberEl.textContent = state.currentNumber || '-';
+            if (state.currentNumber && String(state.currentNumber) !== oldNumber) { 
+                currentNumberDisplay.classList.add('scale-110');
+                setTimeout(() => currentNumberDisplay.classList.remove('scale-110'), 300);
+            }
+
+
+            document.querySelectorAll('.tambola-board .number-cell').forEach(cell => cell.classList.remove('drawn'));
+            (state.drawnNumbers || []).forEach(num => {
+                const cell = document.getElementById(`cell-${num}`);
+                if (cell) cell.classList.add('drawn');
+            });
+
+            drawnCountEl.textContent = state.drawnNumbers?.length || 0;
+            drawnNumbersListEl.innerHTML = (state.drawnNumbers && state.drawnNumbers.length > 0) ? 
+                state.drawnNumbers.map(num => `<span class="badge badge-lg badge-neutral shadow-sm">${num}</span>`).join(' ') :
+                `<span class="italic text-base-content/60">No numbers drawn yet.</span>`;
+
+            if (state.gameOver) {
+                statusTextEl.textContent = "Game Over";
+                gameOverMessageEl.classList.remove('hidden');
+                if (autoCallIntervalId) clearInterval(autoCallIntervalId);
+                autoCallIntervalId = null;
+            } else if (state.gameStarted) {
+                statusTextEl.textContent = `In Progress`; 
+                gameOverMessageEl.classList.add('hidden');
+            } else {
+                 statusTextEl.textContent = currentRoomId ? "Ready" : "Not Connected";
+                gameOverMessageEl.classList.add('hidden');
+            }
+            numbersLeftTextEl.textContent = state.numbersLeft !== undefined ? state.numbersLeft : 90;
+
+            // Update Player List with Avatars
+            playerCountBadgeEl.textContent = state.players?.length || 0;
+            playerListEl.innerHTML = (state.players && state.players.length > 0) ?
+                state.players.map(player => {
+                    const initials = player.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() || 'P';
+                    return `<div class="list-item text-sm">
+                                <div class="avatar placeholder mr-2">
+                                    <div class="bg-neutral-focus text-neutral-content rounded-full w-6 h-6 ring ring-primary ring-offset-base-100 ring-offset-1">
+                                        <span class="text-xs">${initials}</span> 
+                                    </div>
+                                </div> 
+                                ${player.name} <span class="badge badge-ghost badge-sm ml-auto">Tickets: ${player.ticketCount}</span>
+                            </div>`;
+                }).join('') :
+                `<p class="italic text-base-content/60 p-2">No players connected.</p>`;
+
+            // Update Ticket Requests
+            ticketRequestCountBadgeEl.textContent = state.ticketRequests?.length || 0;
+            ticketRequestListEl.innerHTML = (state.ticketRequests && state.ticketRequests.length > 0) ?
+                state.ticketRequests.map(req => `
+                    <div class="list-item">
+                        <span>${req.playerName} <span class="text-xs opacity-60">(ID: ...${req.playerId.slice(-4)})</span></span>
+                        <button class="btn btn-xs btn-outline btn-success ${isApprovingTicket[req.requestId] ? 'loading btn-disabled' : ''}" onclick="approveTicket('${req.requestId}')">Approve</button>
+                    </div>`).join('') :
+                `<p class="italic text-base-content/60 p-2">No pending ticket requests.</p>`;
+
+            // Update Claims
+            claimCountBadgeEl.textContent = state.claims?.length || 0;
+            claimListEl.innerHTML = (state.claims && state.claims.length > 0) ?
+                state.claims.map(claim => `
+                    <div class="list-item">
+                        <span><span class="font-semibold">${capitalizeFirstLetter(claim.prizeType)}</span> by ${claim.playerName} <span class="text-xs opacity-60">(Tkt: ...${claim.ticketId.slice(-6)})</span></span>
+                        <div class="btn-group">
+                            <button class="btn btn-xs btn-outline btn-success mr-1 ${isProcessingClaim[claim.claimId] ? 'loading btn-disabled' : ''}" onclick="processClaim('${claim.claimId}', 'accept')">Accept</button>
+                            <button class="btn btn-xs btn-outline btn-error ${isProcessingClaim[claim.claimId] ? 'loading btn-disabled' : ''}" onclick="processClaim('${claim.claimId}', 'reject')">Reject</button>
+                        </div>
+                    </div>`).join('') :
+                `<p class="italic text-base-content/60 p-2">No pending claims.</p>`;
+            
+            // Update Winners
+            winnersListEl.innerHTML = ''; 
+            if (state.winners && Object.keys(state.winners).length > 0) {
+                let winnersHtml = '';
+                for (const prize in state.winners) {
+                     if (state.winners[prize] && state.winners[prize].length > 0) { 
+                        winnersHtml += `<div class="p-2 border-b border-base-200">
+                                            <strong class="text-primary">${capitalizeFirstLetter(prize.replace(/([A-Z])/g, ' $1'))}:</strong> 
+                                            <span class="text-sm">${state.winners[prize].map(w => `${w.playerName} (Tkt: ...${w.ticketId.slice(-6)})`).join(', ')}</span>
+                                        </div>`;
+                    }
+                }
+                 winnersListEl.innerHTML = winnersHtml || '<p class="italic text-base-content/60 p-2">No winners declared yet.</p>'; // Fallback if only empty arrays exist
+            } else {
+                winnersListEl.innerHTML = '<p class="italic text-base-content/60 p-2">No winners declared yet.</p>';
+            }
+            
+            // Update Config UI Disabled State
+            const gameCanBeConfigured = !state.gameStarted || state.gameOver;
+            modeManualRadio.disabled = !gameCanBeConfigured;
+            modeAutoRadio.disabled = !gameCanBeConfigured;
+            intervalSelector.disabled = !gameCanBeConfigured || !modeAutoRadio.checked; // Disable if manual or cannot configure
+            winningRulesConfigEl.querySelectorAll('input').forEach(input => input.disabled = !gameCanBeConfigured);
+
+            updateButtonStates();
+        }
+        
+        function updateButtonStates() {
+            const gameStarted = serverGameState.gameStarted;
+            const gameOver = serverGameState.gameOver;
+            const isAuto = modeAutoRadio.checked; // Check radio button state
+            const isConnected = !!currentRoomId;
+
+            // Main Control Buttons
+            startGameBtn.disabled = !isConnected || gameStarted || gameOver || isStartingGame;
+            callNextBtn.disabled = !isConnected || isAuto || !gameStarted || gameOver || isDrawingNumber;
+            pauseGameBtn.disabled = !isConnected || !isAuto || !gameStarted || gameOver || isGamePaused;
+            resumeGameBtn.disabled = !isConnected || !isAuto || !gameStarted || gameOver || !isGamePaused;
+            stopGameBtn.disabled = !isConnected || !gameStarted || gameOver || isStoppingGame;
+            resetGameBtnTop.disabled = isResettingServer; 
+            resetGameBtnSidebar.disabled = isResettingServer; 
+
+             // Floating Nav Buttons (mirror main buttons)
+            floatStartBtn.disabled = startGameBtn.disabled;
+            floatCallNextBtn.disabled = callNextBtn.disabled;
+            floatStopBtn.disabled = stopGameBtn.disabled;
+        }
+
+        // --- Auto Calling Logic ---
+        function startAutoCalling() {
+            if (autoCallIntervalId) clearInterval(autoCallIntervalId); 
+            const interval = parseInt(intervalSelector.value);
+            autoCallIntervalId = setInterval(async () => {
+                 if (!serverGameState.gameStarted || serverGameState.gameOver || isGamePaused) {
+                    clearInterval(autoCallIntervalId);
+                    autoCallIntervalId = null;
+                    updateButtonStates(); 
+                    return;
+                }
+                await drawNextNumber(); 
+            }, interval);
+            isGamePaused = false; 
+            updateButtonStates();
+        }
+
+        function pauseGame() {
+            if (modeAutoRadio.checked && autoCallIntervalId) {
+                clearInterval(autoCallIntervalId);
+                autoCallIntervalId = null;
+                isGamePaused = true;
+                statusTextEl.textContent = `Paused (Auto Mode)`;
+                updateButtonStates();
+            }
+        }
+
+        function resumeGame() {
+             if (modeAutoRadio.checked && isGamePaused && serverGameState.gameStarted && !serverGameState.gameOver) {
+                isGamePaused = false;
+                startAutoCalling(); 
+                statusTextEl.textContent = `In Progress`; // Update status text
+            }
+        }
+        
+        // --- Mode Selection ---
+        function toggleModeControls() {
+            const isAuto = modeAutoRadio.checked;
+            intervalSelector.disabled = !isAuto || (serverGameState && serverGameState.gameStarted); // Also disable if game started
+             if (!isAuto && autoCallIntervalId) { // Stop auto-calling if switching to manual
+                clearInterval(autoCallIntervalId);
+                autoCallIntervalId = null;
+                isGamePaused = false; 
+            }
+            updateButtonStates(); // Update button states based on new mode
+        }
+
+        // --- Utility ---
+        function capitalizeFirstLetter(string) {
+            if (!string) return '';
+            return string.charAt(0).toUpperCase() + string.slice(1);
+        }
+        
     </script>
 </body>
 </html>
