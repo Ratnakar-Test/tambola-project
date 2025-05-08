@@ -20,8 +20,8 @@
             max-width: 600px;
             margin: 1rem auto;
             padding: 1rem; 
-            border-radius: 0.75rem; /* Slightly more rounded */
-            background-color: hsl(var(--b2) / 0.7); /* Use theme background-2 color */
+            border-radius: 0.75rem; 
+            background-color: hsl(var(--b2) / 0.7); 
             border: 1px solid hsl(var(--b3));
         }
         .tambola-board .number-cell {
@@ -47,11 +47,11 @@
         .admin-section h3 { @apply card-title text-xl justify-center mb-4 border-b pb-2 border-base-300; } 
         /* List styling */
         .list-item { @apply p-3 border-b border-base-200 flex flex-wrap justify-between items-center gap-2 hover:bg-base-200/50 transition-colors duration-150; } 
-        .list-item span:first-child { @apply flex-grow break-words mr-2 flex items-center gap-2; } /* Added flex for avatar */
+        .list-item span:first-child { @apply flex-grow break-words mr-2 flex items-center gap-2; } 
         .list-item .btn-group { @apply flex-shrink-0; } 
         /* Loading spinner initially hidden */
         .loading-spinner { display: none; }
-        .btn.loading .loading-spinner, .btn.loading.btn-xs .loading-spinner { display: inline-block; width: 1rem; height: 1rem;} /* Adjust spinner size */
+        .btn.loading .loading-spinner, .btn.loading.btn-xs .loading-spinner { display: inline-block; width: 1rem; height: 1rem;} 
         .btn.loading.btn-sm .loading-spinner { width: 0.875rem; height: 0.875rem;}
         /* Hide text span when button is loading */
         .btn.loading > span:not(.loading-spinner) { display: none; } 
@@ -86,8 +86,7 @@
                                     <svg width="12px" height="12px" class="ml-1 hidden h-3 w-3 fill-current opacity-60 sm:inline-block" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048"><path d="M1799 349l242 241-1017 1017L7 590l242-241 775 775 775-775z"></path></svg>
                                 </div>
                                 <ul tabindex="0" id="theme-dropdown" class="dropdown-content z-[51] p-2 shadow-2xl bg-base-200 rounded-box w-52 max-h-60 overflow-y-auto border border-base-300">
-                                    <li><input type="radio" name="theme-dropdown" class="theme-controller btn btn-sm btn-block btn-ghost justify-start" aria-label="Default" value="default"/></li>
-                                     </ul>
+                                    </ul>
                             </div>
                         </li>
                         <li><a href="/" class="font-semibold tooltip tooltip-bottom" data-tip="Open Player View in new tab" target="_blank">Player View</a></li>
@@ -342,6 +341,7 @@
         const currentTheme = localStorage.getItem('tambolaAdminTheme') || 'cupcake'; // Default theme
 
         // Populate theme dropdown
+        themeDropdown.innerHTML = ''; // Clear any default/placeholder items first
         themes.forEach(theme => {
             const li = document.createElement('li');
             // Use button role for better accessibility and styling control
@@ -364,6 +364,10 @@
                     themeDropdown.querySelectorAll('.theme-controller').forEach(btn => {
                         btn.setAttribute('aria-checked', btn.getAttribute('data-set-theme') === selectedTheme);
                     });
+                    // Close dropdown after selection (optional)
+                    if (document.activeElement instanceof HTMLElement) {
+                        document.activeElement.blur();
+                    }
                 }
             }
         });
@@ -419,11 +423,11 @@
         const gameOverMessageEl = document.getElementById('gameOverMessage');
         
         const playerListEl = document.getElementById('playerList');
-        const playerCountBadgeEl = document.getElementById('playerCountBadge'); // Updated ID
+        const playerCountBadgeEl = document.getElementById('playerCountBadge'); 
         const ticketRequestListEl = document.getElementById('ticketRequestList');
-        const ticketRequestCountBadgeEl = document.getElementById('ticketRequestCountBadge'); // Updated ID
+        const ticketRequestCountBadgeEl = document.getElementById('ticketRequestCountBadge'); 
         const claimListEl = document.getElementById('claimList');
-        const claimCountBadgeEl = document.getElementById('claimCountBadge'); // Updated ID
+        const claimCountBadgeEl = document.getElementById('claimCountBadge'); 
         const winnersListEl = document.getElementById('winnersList');
 
         const floatStartBtn = document.getElementById('floatStartBtn');
@@ -581,15 +585,19 @@
                         serverGameState = {};
                         updateAdminUI({ message: "Room not found. Please connect again."}); 
                     } else {
-                        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                        // For other errors, show message but don't disconnect automatically
+                        console.error(`Fetch Error: ${errorData.message || response.status}`);
+                        statusTextEl.textContent = `Error fetching state: ${errorData.message || response.status}`;
+                        // Don't throw here, allow polling to potentially recover
                     }
                     return; 
                 }
                 serverGameState = await response.json();
                 updateAdminUI(serverGameState);
-            } catch (error) {
-                console.error("Failed to fetch admin game state:", error);
-                statusTextEl.textContent = `Error fetching state: ${error.message}`;
+            } catch (error) { // Catch network errors
+                console.error("Failed to fetch admin game state (Network Error):", error);
+                statusTextEl.textContent = `Network Error fetching state. Retrying...`;
+                // Don't disconnect on temporary network errors
             }
         }
 
