@@ -338,7 +338,8 @@
             </div>
         </div>
          <form method="dialog" class="modal-backdrop">
-            <button>close</button> </form>
+            <button>close</button> 
+        </form>
     </dialog>
 
 
@@ -350,7 +351,7 @@
         // --- Theme Controller ---
         const themes = [ "light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter", "dim", "nord", "sunset", ];
         const themeDropdownDesktop = document.getElementById('theme-dropdown-desktop');
-        const themeDropdownMobile = document.getElementById('theme-dropdown-mobile');
+        const themeDropdownMobile = document.getElementById('theme-dropdown-mobile'); // Get mobile dropdown
         const htmlTag = document.documentElement;
         const currentTheme = localStorage.getItem('tambolaAdminTheme') || 'cupcake'; // Default theme
 
@@ -359,6 +360,7 @@
             dropdownElement.innerHTML = ''; // Clear existing options
             themes.forEach(theme => {
                 const li = document.createElement('li');
+                // Use button role for better accessibility and styling control
                 li.innerHTML = `<button role="radio" aria-checked="${theme === currentTheme}" aria-label="${capitalizeFirstLetter(theme)}" data-set-theme="${theme}" class="theme-controller btn btn-sm btn-block btn-ghost justify-start font-medium">${capitalizeFirstLetter(theme)}</button>`;
                 dropdownElement.appendChild(li);
             });
@@ -366,7 +368,7 @@
 
         // Populate both dropdowns
         populateThemeOptions(themeDropdownDesktop);
-        populateThemeOptions(themeDropdownMobile);
+        populateThemeOptions(themeDropdownMobile); // Populate mobile dropdown
 
         // Set initial theme
         htmlTag.setAttribute('data-theme', currentTheme);
@@ -385,11 +387,11 @@
                     });
                      // Close sidebar if theme changed from there
                     const drawerCheckbox = document.getElementById('my-drawer-3');
-                    if (drawerCheckbox && drawerCheckbox.checked) {
+                    if (drawerCheckbox && drawerCheckbox.checked && event.currentTarget === themeDropdownMobile) { // Close only if changed from mobile
                          drawerCheckbox.checked = false;
                     }
                     // Close desktop dropdown if theme changed from there
-                    if (document.activeElement instanceof HTMLElement && document.activeElement.closest('.dropdown')) {
+                    if (document.activeElement instanceof HTMLElement && event.currentTarget === themeDropdownDesktop && document.activeElement.closest('.dropdown')) {
                         document.activeElement.blur();
                     }
                 }
@@ -398,7 +400,7 @@
 
         // Add event listeners using event delegation
         themeDropdownDesktop?.addEventListener('click', handleThemeChange);
-        themeDropdownMobile?.addEventListener('click', handleThemeChange);
+        themeDropdownMobile?.addEventListener('click', handleThemeChange); // Add listener for mobile
 
 
         // --- DOM Elements (Game Related) ---
@@ -549,15 +551,14 @@
                 return;
             }
             
-            // Stop existing polling if connecting to a new room
             if (pollingAdminIntervalId) clearInterval(pollingAdminIntervalId);
             pollingAdminIntervalId = null;
-            currentRoomId = newRoomId; // Set room ID before first fetch
+            currentRoomId = newRoomId; 
             
             try {
-                await fetchAdminData(); // Attempt to fetch state for the new room
+                await fetchAdminData(); 
 
-                if (currentRoomId) { // Check if fetch was successful (currentRoomId wasn't nulled by error)
+                if (currentRoomId) { 
                     roomIdInput.disabled = true;
                     adminRoomDisplay.textContent = `Room: ${currentRoomId}`;
                     adminRoomDisplay.classList.remove('hidden');
@@ -576,10 +577,8 @@
                     
                     updateButtonStates();
 
-                    // Start polling *after* successful connection and state fetch
                     pollingAdminIntervalId = setInterval(fetchAdminData, 7000); 
                 } else {
-                    // Error message handled within fetchAdminData if room not found
                     roomIdInput.disabled = false; 
                 }
 
@@ -601,8 +600,13 @@
 
         async function fetchAdminData() { 
             if (!currentRoomId) {
-                 // Do not reset UI here, just skip fetch if not connected
-                 // console.log("fetchAdminData: No currentRoomId, skipping fetch.");
+                 // If polling is running but we lost connection, clear interval and update UI
+                 if (pollingAdminIntervalId) {
+                     console.log("Polling stopped: No currentRoomId.");
+                     clearInterval(pollingAdminIntervalId);
+                     pollingAdminIntervalId = null;
+                     updateAdminUI({ message: "Disconnected. Please connect again." });
+                 }
                  return; 
             }
             console.log(`Polling for room: ${currentRoomId}`); // DEBUG LOG
@@ -615,7 +619,6 @@
                     const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
                     console.error("Fetch Error Data:", errorData); // DEBUG LOG
                     
-                    // Only reset UI if error indicates room/session is invalid (e.g., 404, 401)
                     if (response.status === 404 || response.status === 401 || errorData.message?.includes("not found")) {
                         console.warn(`Room ${currentRoomId} invalid or session expired. Resetting admin UI.`);
                         if (pollingAdminIntervalId) clearInterval(pollingAdminIntervalId);
@@ -624,18 +627,17 @@
                         serverGameState = {};
                         updateAdminUI({ message: "Room disconnected or not found. Please connect again."}); 
                     } else {
-                        // For other errors (like 500, network issues), just log and show status
-                        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                         // For other errors, just show in status, don't disconnect
+                         statusTextEl.textContent = `Error fetching state: ${errorData.message || response.status}. Retrying...`;
                     }
                     return; 
                 }
                 serverGameState = await response.json();
                 console.log("Fetched state:", serverGameState); // DEBUG LOG
                 updateAdminUI(serverGameState);
-            } catch (error) { // Catch network errors or errors thrown above
-                console.error("Failed to fetch admin game state:", error);
-                statusTextEl.textContent = `Error fetching state: ${error.message}. Retrying...`;
-                // Don't reset UI on temporary errors, allow polling to retry
+            } catch (error) { // Catch network errors
+                console.error("Failed to fetch admin game state (Network Error):", error);
+                statusTextEl.textContent = `Network Error fetching state. Retrying...`;
             }
         }
 
@@ -866,16 +868,9 @@
 
         // --- UI Update & State Management ---
         function updateAdminUI(state) {
-            // Only update serverGameState if the response contains a valid roomId (or if it's a reset message)
-            if (state.roomId || state.message?.includes("reset")) {
-                 serverGameState = state; 
-            } else if (!state.message) { // If it's an empty or invalid state object, log warning but don't update
-                console.warn("Received potentially invalid state object, retaining previous state:", state);
-                return; // Avoid updating UI with bad state
-            }
-           
             if (state.message && !state.roomId) { 
-                // This block handles explicit "disconnected" or error states sent from the server
+                // Handle explicit "disconnected" or error states sent from the server
+                serverGameState = {}; // Clear local state
                 statusTextEl.textContent = state.message;
                 currentNumberEl.textContent = '-';
                 drawnNumbersListEl.innerHTML = `<span class="italic text-base-content/60">Not connected.</span>`;
@@ -896,6 +891,17 @@
                 updateButtonStates(); 
                 return;
             }
+
+            // Only update serverGameState if the response seems valid (has a roomId)
+             if (state.roomId) {
+                 serverGameState = state; 
+             } else {
+                 console.warn("Received state without roomId, retaining previous state:", state);
+                 // Potentially update only parts of the UI if some data is still useful?
+                 // For now, we avoid updating if the core identifier (roomId) is missing.
+                 updateButtonStates(); // Still update buttons based on possibly stale state
+                 return; 
+             }
 
             // --- Update UI based on valid state ---
             const oldNumber = currentNumberEl.textContent;
@@ -1074,4 +1080,3 @@
     </script>
 </body>
 </html>
-
