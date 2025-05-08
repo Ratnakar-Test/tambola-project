@@ -59,16 +59,21 @@ function resetRoomState(roomId) {
 function fullResetServerState() { 
     console.log("Resetting ALL rooms and server state...");
     gameState.activeRooms.clear();
-    ticketStore.clearAllTickets(); // Clear tickets from the store
+    if (ticketStore.clearAllTickets) { // Check if function exists before calling
+        ticketStore.clearAllTickets(); // Clear tickets from the store
+    } else {
+        console.warn("ticketStore.clearAllTickets function not found. Tickets may not be cleared.");
+    }
 }
 
 
-app.use(express.json());
+app.use(express.json()); // Middleware for parsing JSON bodies, should be early
 // Serve static files from the 'frontend' directory
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 // --- Helper Functions ---
 function generateId() {
+    // Simple ID generator
     return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 }
 
@@ -87,9 +92,15 @@ app.get('/admin', (req, res) => {
 
 // POST /api/player/join-game
 app.post('/api/player/join-game', (req, res) => {
+    // ***** DEBUG LOG *****
+    console.log(`--- SERVER HIT: POST /api/player/join-game ---`);
+    console.log("Request Body:", req.body);
+    // *********************
+
     const { playerName, roomId, playerId: existingPlayerId } = req.body;
 
     if (!playerName || !roomId) {
+        console.error("/api/player/join-game: Missing playerName or roomId");
         return res.status(400).json({ message: "Player name and Room ID are required." });
     }
 
@@ -109,7 +120,7 @@ app.post('/api/player/join-game', (req, res) => {
         room.players.set(playerId, player);
         console.log(`New player ${playerName} (ID: ${playerId}) joined room ${roomId}.`);
     } else {
-        player.name = playerName; 
+        player.name = playerName; // Allow name update on rejoin
         console.log(`Player ${playerName} (ID: ${playerId}) re-joined room ${roomId}.`);
     }
     
@@ -138,6 +149,9 @@ app.post('/api/player/join-game', (req, res) => {
 // GET /api/player/state - Player gets current game state (player-specific)
 app.get('/api/player/state', (req, res) => {
     const { playerId, roomId } = req.query;
+     // ***** DEBUG LOG *****
+    // console.log(`--- SERVER HIT: GET /api/player/state --- Query:`, req.query);
+    // *********************
 
     if (!playerId || !roomId) {
         return res.status(400).json({ message: "Player ID and Room ID are required." });
@@ -169,29 +183,22 @@ app.get('/api/player/state', (req, res) => {
 // GET /api/admin/state - Admin gets current game state (for a specific room)
 app.get('/api/admin/state', (req, res) => {
     const adminViewingRoomId = req.query.roomId; 
+    // console.log(`--- SERVER HIT: GET /api/admin/state --- Query:`, req.query);
     let roomToReport = null;
 
     if (adminViewingRoomId && gameState.activeRooms.has(adminViewingRoomId)) {
         roomToReport = getRoomState(adminViewingRoomId);
     } else if (gameState.activeRooms.size > 0 && !adminViewingRoomId) {
-        // If admin client doesn't specify, and there's at least one room,
-        // this implies admin might not have "connected" to a room yet via UI.
-        // Send a generic "no room selected" or list of rooms.
-        // For now, if only one room exists, default to it.
         if (gameState.activeRooms.size === 1) {
              roomToReport = gameState.activeRooms.values().next().value;
         } else {
-            // It's better for admin client to always specify the room it's interested in.
-            // console.log("Admin state request: No specific room ID provided by client, or multiple rooms exist.");
-            // Sending a default "not connected" like state.
              return res.json({ 
                 message: "Please connect to a specific room in the admin panel to see its state.", 
                 gameStarted: false, drawnNumbers: [], players: [], ticketRequests: [], claims: [], winners: {},
-                availableRooms: Array.from(gameState.activeRooms.keys()) // Optionally send list of rooms
+                availableRooms: Array.from(gameState.activeRooms.keys()) 
             });
         }
     }
-
 
     if (!roomToReport) {
         return res.json({ 
@@ -229,6 +236,7 @@ app.get('/api/admin/state', (req, res) => {
 
 // POST /api/admin/start-game - Admin starts the game
 app.post('/api/admin/start-game', (req, res) => {
+    console.log(`--- SERVER HIT: POST /api/admin/start-game --- Body:`, req.body);
     const { roomId, rules, mode } = req.body;
 
     if (!roomId) return res.status(400).json({ message: "Room ID is required to start a game." });
@@ -252,6 +260,7 @@ app.post('/api/admin/start-game', (req, res) => {
 
 // POST /api/admin/draw-number
 app.post('/api/admin/draw-number', (req, res) => {
+    console.log(`--- SERVER HIT: POST /api/admin/draw-number --- Body:`, req.body);
     const { roomId } = req.body; 
     let room;
     if (roomId && gameState.activeRooms.has(roomId)) {
@@ -287,6 +296,7 @@ app.post('/api/admin/draw-number', (req, res) => {
 
 // POST /api/admin/stop-game
 app.post('/api/admin/stop-game', (req, res) => {
+    console.log(`--- SERVER HIT: POST /api/admin/stop-game --- Body:`, req.body);
     const { roomId } = req.body; 
     let room;
      if (roomId && gameState.activeRooms.has(roomId)) {
@@ -305,6 +315,7 @@ app.post('/api/admin/stop-game', (req, res) => {
 
 // POST /api/admin/reset-game - Admin resets the ENTIRE SERVER state
 app.post('/api/admin/reset-game', (req, res) => {
+    console.log(`--- SERVER HIT: POST /api/admin/reset-game ---`);
     fullResetServerState();
     console.log("Full game server state reset by admin.");
     res.json({ message: "Tambola server has been completely reset." });
@@ -313,6 +324,7 @@ app.post('/api/admin/reset-game', (req, res) => {
 
 // POST /api/player/request-ticket
 app.post('/api/player/request-ticket', (req, res) => {
+    console.log(`--- SERVER HIT: POST /api/player/request-ticket --- Body:`, req.body);
     const { playerId, playerName, roomId } = req.body; 
     if (!playerId || !roomId || !playerName) {
         return res.status(400).json({ message: "Player ID, Player Name, and Room ID are required." });
@@ -335,7 +347,7 @@ app.post('/api/player/request-ticket', (req, res) => {
     const newRequest = {
         requestId: generateId(),
         playerId: playerId,
-        playerName: player.name, // Use name from player object for consistency
+        playerName: player.name, 
         roomId: roomId,
         timestamp: Date.now(),
         approved: false
@@ -347,6 +359,7 @@ app.post('/api/player/request-ticket', (req, res) => {
 
 // POST /api/admin/approve-ticket
 app.post('/api/admin/approve-ticket', (req, res) => {
+    console.log(`--- SERVER HIT: POST /api/admin/approve-ticket --- Body:`, req.body);
     const { requestId, roomId } = req.body; 
     if (!roomId) return res.status(400).json({message: "Room ID is required to approve a ticket."});
     
@@ -359,7 +372,7 @@ app.post('/api/admin/approve-ticket', (req, res) => {
     const request = room.ticketRequests[requestIndex];
     const player = room.players.get(request.playerId);
 
-    if (!player) { // Should not happen if request is valid
+    if (!player) { 
         return res.status(404).json({ message: "Player associated with request not found." });
     }
     if (player.tickets.length >= 5) {
@@ -386,6 +399,7 @@ app.post('/api/admin/approve-ticket', (req, res) => {
 
 // POST /api/player/claim-prize
 app.post('/api/player/claim-prize', (req, res) => {
+    console.log(`--- SERVER HIT: POST /api/player/claim-prize --- Body:`, req.body);
     const { playerId, ticketId, prizeType, playerNumbers, roomId } = req.body;
 
     if (!playerId || !ticketId || !prizeType || !playerNumbers || !roomId) {
@@ -424,7 +438,7 @@ app.post('/api/player/claim-prize', (req, res) => {
 
     const drawnNumbersSet = new Set(room.drawnNumbers);
     const claimedNumbersSet = new Set(playerNumbers.map(n => parseInt(n)));
-    let isValidClaim = true;
+    // let isValidClaim = true; // Not strictly needed if returning early on fail
 
     for (const num of claimedNumbersSet) {
         if (!drawnNumbersSet.has(num)) {
@@ -434,21 +448,19 @@ app.post('/api/player/claim-prize', (req, res) => {
             return res.status(400).json({ message: `Invalid claim: Number ${num} not on your ticket.`});
         }
     }
-    // Add specific prize logic validation here (e.g. check all numbers for full house, line numbers, etc.)
-    // This needs to be robust. Example for fullHouse:
+    
     if (prizeType === 'fullHouse') {
         if (claimedNumbersSet.size !== ticket.numbers.length || !ticket.numbers.every(n => claimedNumbersSet.has(n))) {
             return res.status(400).json({ message: `Full House claim numbers do not match all numbers on ticket.` });
         }
     }
-    // Example for firstLine (assuming ticket.rows[0] contains the numbers for the first line)
     else if (prizeType === 'firstLine') {
         const firstLineNumbers = ticket.rows[0].filter(n => n !== null);
         if (claimedNumbersSet.size !== firstLineNumbers.length || !firstLineNumbers.every(n => claimedNumbersSet.has(n))) {
              return res.status(400).json({ message: `First Line claim numbers do not match.` });
         }
     }
-    // Add similar checks for secondLine, thirdLine, earlyFive, corners
+    // TODO: Add specific server-side validation for: secondLine, thirdLine, earlyFive, corners
 
 
     const newClaim = {
@@ -467,6 +479,7 @@ app.post('/api/player/claim-prize', (req, res) => {
 
 // POST /api/admin/process-claim
 app.post('/api/admin/process-claim', (req, res) => {
+    console.log(`--- SERVER HIT: POST /api/admin/process-claim --- Body:`, req.body);
     const { claimId, action, roomId } = req.body; 
     
     if (!roomId) return res.status(400).json({message: "Room ID is required to process a claim."});
@@ -475,7 +488,6 @@ app.post('/api/admin/process-claim', (req, res) => {
     let claimToProcess = null;
     let playerOfClaim = null;
 
-    // Iterate through players in the specific room to find the claim
     for (const player of room.players.values()) {
         const foundClaim = player.claims.find(c => c.claimId === claimId && c.status === 'pending');
         if (foundClaim) {
