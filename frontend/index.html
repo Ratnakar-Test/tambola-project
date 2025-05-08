@@ -1,120 +1,640 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Tambola Player Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.1/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Tailwind config (optional, DaisyUI provides defaults)
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+          }
+        },
+        plugins: [require("daisyui")],
+        daisyui: {
+            themes: ["light", "dark", "cupcake"], // Include themes you might use
+        },
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
-        /* ... (keep existing styles) ... */
+        /* Original and Enhanced Styles */
+        body { font-family: 'Inter', sans-serif; }
+        .tambola-ticket-grid {
+            display: grid;
+            grid-template-columns: repeat(9, minmax(0, 1fr)); /* Ensure 9 columns */
+            gap: 0.25rem; /* Reduced gap slightly */
+        }
+        .tambola-ticket-cell {
+            border: 1px solid hsl(var(--bc) / 0.2); /* Use DaisyUI border color */
+            border-radius: 0.375rem; /* rounded-md */
+            /* padding: 0.5rem; p-2 */
+            aspect-ratio: 1 / 1; /* Make cells square-ish */
+            min-height: 2.5rem; /* Ensure minimum height */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.3s, color 0.3s, transform 0.1s;
+            font-weight: 600; /* Slightly bolder */
+            font-size: 0.875rem; /* text-sm */
+            line-height: 1; /* Ensure number fits */
+        }
+        .tambola-ticket-cell:active {
+            transform: scale(0.95); /* Click effect */
+        }
+        .tambola-ticket-cell.marked {
+            background-color: hsl(var(--p)); /* Use DaisyUI primary color */
+            color: hsl(var(--pc)); /* Use DaisyUI primary content color */
+            font-weight: 700;
+            box-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.1);
+        }
+        .tambola-ticket-cell.empty {
+            background-color: hsl(var(--b2)); /* Use DaisyUI base-200 */
+            border-color: hsl(var(--b3)); /* Use DaisyUI base-300 */
+            cursor: default;
+            box-shadow: none;
+            transform: none;
+        }
+        .bottom-nav-padding {
+            /* Adjust padding based on the actual height of your fixed bottom nav */
+            /* Measure nav height + some extra space */
+            padding-bottom: 6rem; /* Example: 80px nav height + 16px padding */
+        }
+         /* Style for fixed bottom nav to prevent content overlap */
+        .fixed-bottom-nav {
+            box-shadow: 0 -2px 6px -1px rgb(0 0 0 / 0.1), 0 -4px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        /* Ensure drawer content has space for fixed header/footer */
+        .drawer-content {
+             /* Add padding-top if header is fixed/sticky */
+             /* padding-top: 4rem; */ /* Adjust based on header height */
+        }
     </style>
 </head>
 <body x-data="playerDashboard()" x-init="init()" class="bg-base-200 flex flex-col min-h-screen">
+
+    <div x-show="!connected" class="hero min-h-screen bg-gradient-to-br from-primary to-secondary">
+        <div class="hero-content text-center text-primary-content">
+            <div class="max-w-md w-full bg-base-100/90 backdrop-blur-md p-8 rounded-xl shadow-xl ring-1 ring-base-content/10 space-y-4">
+                <h1 class="text-5xl font-extrabold mb-6 drop-shadow-lg text-base-content">Join Tambola</h1>
+                <input x-model="playerName" @keyup.enter="joinRoom()" type="text" placeholder="Your Name"
+                       class="input input-bordered input-primary w-full bg-base-100/95 text-base-content"/>
+                <input x-model="roomId" @keyup.enter="joinRoom()" type="text" placeholder="Room ID"
+                       class="input input-bordered input-primary w-full bg-base-100/95 text-base-content"/>
+                <button @click="joinRoom()" class="btn btn-wide btn-accent transform hover:scale-105 transition duration-150 ease-in-out">
+                    Join Game
+                </button>
+                <div x-show="errorMsg" x-transition class="alert alert-error shadow-lg mt-4">
+                    <div class="flex-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span x-text="errorMsg"></span>
+                    </div>
+                    <button @click="errorMsg=''" class="btn btn-sm btn-ghost">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="connected" class="drawer lg:drawer-open flex-1 overflow-hidden">
+        <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" x-ref="sidebarToggle"/>
+        <div class="drawer-content flex flex-col overflow-y-auto bg-base-200">
+
+            <header class="sticky top-0 z-30 flex flex-col p-4 bg-base-100 shadow-md space-y-2">
+                <div class="flex items-center">
+                    <label for="sidebar-toggle" class="btn btn-ghost btn-square mr-2 lg:hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    </label>
+                    <h1 class="text-xl md:text-2xl font-semibold flex-1">Tambola: <span x-text="playerName" class="font-bold text-primary"></span></h1>
+                    <div class="text-sm">Room: <span x-text="roomId" class="font-mono badge badge-outline badge-secondary"></span></div>
+                </div>
+                <div class="max-h-32 overflow-y-auto space-y-1 pr-1">
+                     <template x-for="note in notifications" :key="note.id">
+                        <div x-transition.opacity.duration.500ms
+                             class="alert shadow-sm text-xs md:text-sm p-2 md:p-3"
+                             :class="{ 'alert-info': note.type === 'info', 'alert-success': note.type === 'success', 'alert-warning': note.type === 'warning', 'alert-error': note.type === 'error' }">
+                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-4 h-4 md:w-6 md:h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span class="flex-1" x-text="note.text"></span>
+                            <button @click="removeNotification(note.id)" class="btn btn-xs btn-ghost">✕</button>
+                        </div>
+                    </template>
+                </div>
+            </header>
+
+            <main class="p-4 space-y-6 flex-1 bottom-nav-padding">
+
+                <div class="bg-base-100 p-4 rounded-lg shadow-lg">
+                    <h3 class="text-lg font-semibold mb-2">Called Numbers (<span x-text="called.length"></span>/90)</h3>
+                    <div class="bg-base-200 p-3 rounded-lg shadow-inner overflow-x-auto whitespace-nowrap flex items-center min-h-[3.5rem]">
+                        <template x-if="called.length === 0">
+                            <span class="text-base-content/50 italic">Waiting for game to start...</span>
+                        </template>
+                        <template x-for="n in called" :key="n">
+                            <span class="badge badge-neutral inline-block mr-2 p-3 text-sm font-semibold" x-text="n"></span>
+                        </template>
+                    </div>
+                    <div class="mt-4 text-center" x-show="called.length > 0">
+                        <h3 class="text-md font-semibold mb-1">Latest Number</h3>
+                        <span class="text-4xl md:text-5xl font-bold badge badge-secondary p-4 md:p-6 shadow-md"
+                              x-text="called[called.length-1] || '-'"></span>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-xl font-semibold mb-3">Your Tickets (<span x-text="tickets.length"></span> / <span x-text="maxTicketsPerPlayer"></span>)</h2>
+                    <div class="overflow-x-auto pb-4 -mx-4 px-4"> {/* Allow overflow scroll */}
+                        <div class="flex gap-4 min-w-max"> {/* Ensure content doesn't wrap */}
+                            <template x-if="tickets.length === 0 && connected">
+                                <div class="bg-base-100 p-6 rounded-lg shadow text-center flex-shrink-0 w-64">
+                                    <p class="mb-4">You don't have any tickets yet.</p>
+                                    <button class="btn btn-primary btn-sm" @click="showAddModal=true" :disabled="waitingTicket || tickets.length >= maxTicketsPerPlayer || gameState === 'finished'">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" /></svg>
+                                        Request Ticket
+                                    </button>
+                                </div>
+                            </template>
+                            <template x-for="(ticket, index) in tickets" :key="ticket.id">
+                                <div class="bg-base-100 p-3 md:p-4 rounded-lg shadow-md flex-shrink-0 w-[280px] sm:w-[340px]"> {/* Fixed width */}
+                                    <h4 class="font-semibold mb-2 text-center text-sm">Ticket #<span x-text="index + 1"></span></h4>
+                                    <div class="tambola-ticket-grid">
+                                        <template x-for="(row, rIndex) in ticket.grid" :key="rIndex">
+                                            <template x-for="(cell, cIndex) in row" :key="`${rIndex}-${cIndex}`">
+                                                <div class="tambola-ticket-cell"
+                                                     :class="{ 'marked': isMarked(ticket.id, cell), 'empty': !cell }"
+                                                     x-text="cell || ''"
+                                                     @click="cell && toggleMark(ticket.id, cell)">
+                                                </div>
+                                            </template>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <div x-show="menu==='Home'" class="bg-base-100 p-4 rounded-lg shadow">
+                     <h3 class="text-xl font-semibold mb-2">Game Status</h3>
+                     <div class="flex items-center space-x-2">
+                        <span class="loading loading-ring loading-sm" x-show="gameState === 'running' || gameState === 'paused'"></span>
+                        <span class="font-semibold capitalize" :class="{'text-success': gameState === 'running', 'text-warning': gameState === 'paused', 'text-info': gameState === 'stopped', 'text-error': gameState === 'finished'}" x-text="gameState"></span>
+                     </div>
+                     <p class="mt-2 text-sm text-base-content/80" x-show="gameState === 'stopped'">Waiting for the admin to start the game.</p>
+                     <p class="mt-2 text-sm text-base-content/80" x-show="gameState === 'running'">Game is live! Mark your numbers or use Auto-Mark.</p>
+                     <p class="mt-2 text-sm text-base-content/80" x-show="gameState === 'paused'">Game paused by admin. Waiting to resume...</p>
+                     <p class="mt-2 text-sm text-base-content/80" x-show="gameState === 'finished'">Game has finished. Check 'My Claims' or the summary below.</p>
+
+                     <div x-show="gameSummary" class="mt-4 border-t pt-4">
+                        <h4 class="font-semibold mb-2">Game Summary:</h4>
+                        <p class="text-sm">Total Numbers Called: <span class="font-bold" x-text="gameSummary.calledNumbers.length"></span></p>
+                        <h5 class="font-semibold mt-2 mb-1">Winners:</h5>
+                        <ul class="list-disc list-inside text-sm space-y-1" x-show="gameSummary.winners.length > 0">
+                             <template x-for="winner in gameSummary.winners" :key="winner.playerName + winner.prizeType">
+                                 <li><span class="font-semibold capitalize" x-text="winner.prizeType + ':'"></span> <span class="text-success" x-text="winner.playerName"></span></li>
+                             </template>
+                        </ul>
+                         <p class="text-sm text-base-content/70" x-show="gameSummary.winners.length === 0">No winners were declared in this game.</p>
+                    </div>
+                </div>
+                <div x-show="menu==='My Claims'" class="bg-base-100 p-4 rounded-lg shadow">
+                    <h3 class="text-xl font-semibold">My Claims</h3>
+                    <template x-if="myClaims.length">
+                        <ul class="list-disc list-inside space-y-1 mt-2">
+                            <template x-for="c in myClaims" :key="c.claimId">
+                                <li>
+                                    <span x-text="c.prizeType"></span> &rarr;
+                                    <span class="font-semibold badge badge-sm"
+                                          :class="{ 'badge-success': c.status === 'Approved', 'badge-error': c.status === 'Rejected', 'badge-warning': c.status === 'Pending' }"
+                                          x-text="c.status || 'Pending'">
+                                    </span>
+                                </li>
+                            </template>
+                        </ul>
+                    </template>
+                    <p x-show="!myClaims.length" class="text-base-content/70 mt-2 italic">You haven't made any claims yet.</p>
+                </div>
+                <div x-show="menu==='History'" class="bg-base-100 p-4 rounded-lg shadow">
+                    <h3 class="text-xl font-semibold">History</h3>
+                    <p class="text-base-content/70 italic">Game history feature is not yet implemented.</p>
+                </div>
+                <div x-show="menu==='Settings'" class="bg-base-100 p-4 rounded-lg shadow">
+                    <h3 class="text-xl font-semibold">Settings</h3>
+                     <p class="text-base-content/70 italic">Settings feature is not yet implemented.</p>
+                </div>
+            </main>
+
+            <nav class="fixed bottom-0 left-0 w-full bg-base-100 border-t border-base-300 p-3 flex justify-around items-center z-50 fixed-bottom-nav">
+                <button class="btn btn-primary btn-sm sm:btn-md flex-1 mx-1" @click="showAddModal=true" :disabled="waitingTicket || tickets.length >= maxTicketsPerPlayer || gameState === 'finished' || gameState === 'stopped'">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1 hidden sm:inline" viewBox="0 0 20 20" fill="currentColor"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" /><path fill-rule="evenodd" d="M4 5a2 2 0 012-2h8a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 011-1h2a1 1 0 110 2H8a1 1 0 01-1-1zm-1 4a1 1 0 100 2h6a1 1 0 100-2H6z" clip-rule="evenodd" /></svg>
+                    Add Ticket
+                </button>
+                <button class="btn btn-secondary btn-sm sm:btn-md flex-1 mx-1" @click="showClaimModal=true" :disabled="tickets.length === 0 || gameState !== 'running'">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1 hidden sm:inline" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 2a1 1 0 011 1v1h1V3a1 1 0 112 0v1h2V3a1 1 0 112 0v1h1a1 1 0 011 1v3H3V3a1 1 0 011-1zm0 14h10V8H5v8zm0-9a1 1 0 00-1 1v8a1 1 0 001 1h10a1 1 0 001-1V8a1 1 0 00-1-1H5z" clip-rule="evenodd" /></svg>
+                    Claim Prize
+                </button>
+                <div class="flex-1 mx-1 flex items-center justify-center">
+                    <label class="mr-2 text-sm sm:text-base whitespace-nowrap">Auto-Mark:</label>
+                    <input type="checkbox" class="toggle toggle-accent toggle-sm sm:toggle-md" x-model="autoMark" @change="autoChanged()" :disabled="gameState !== 'running'"/>
+                </div>
+            </nav>
+
+            <div x-show="showAddModal" class="modal modal-open modal-bottom sm:modal-middle" @click.away="showAddModal = waitingTicket ? showAddModal : false">
+                <div class="modal-box relative"> {/* Added relative for close button positioning */}
+                    <button @click="showAddModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" :disabled="waitingTicket">✕</button>
+                    <h3 class="font-bold text-lg mb-4">Request New Ticket</h3>
+                    <p class="mb-2 text-sm" x-show="tickets.length >= maxTicketsPerPlayer">You have reached the maximum of <span x-text="maxTicketsPerPlayer"></span> tickets.</p>
+                    <div class="mb-2 h-8 flex items-center" x-show="waitingTicket"> {/* Fixed height */}
+                        <span class="loading loading-dots loading-md text-info mr-2"></span>
+                        <span class="text-info italic">Waiting for admin approval...</span>
+                    </div>
+                     <div x-show="errorMsg && !waitingTicket" class="text-error text-sm mb-3" x-text="errorMsg"></div>
+                    <div class="modal-action mt-4"> {/* Use modal-action for button alignment */}
+                        <button class="btn btn-primary" @click="confirmRequestTicket()" :disabled="waitingTicket || tickets.length >= maxTicketsPerPlayer">Confirm Request</button>
+                    </div>
+                </div>
+            </div>
+
+            <div x-show="showClaimModal" class="modal modal-open modal-bottom sm:modal-middle" @click.away="showClaimModal = false">
+                <div class="modal-box relative">
+                    <button @click="showClaimModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+                    <h3 class="font-bold text-lg mb-4">Claim Prize</h3>
+                    <p class="text-xs text-base-content/70 mb-3">Select the prize you want to claim based on your marked numbers.</p>
+                    <div class="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                        <template x-for="prize in prizeTypes" :key="prize">
+                            <button
+                                class="btn btn-outline btn-block justify-start"
+                                :class="selectedPrize===prize ? 'btn-active btn-primary' : ''"
+                                @click="selectedPrize=prize"
+                                x-text="prize">
+                            </button>
+                        </template>
+                    </div>
+                    <div x-show="claimErrorMsg" class="alert alert-warning text-sm p-2 mb-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        <span x-text="claimErrorMsg"></span>
+                        <button @click="claimErrorMsg=''" class="btn btn-xs btn-ghost">OK</button>
+                    </div>
+                    <div class="modal-action mt-4">
+                        <button class="btn btn-success" @click="submitClaim()" :disabled="!selectedPrize">Submit Claim</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="drawer-side z-40">
+            <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
+            <aside class="p-4 w-64 min-h-full bg-gradient-to-b from-primary to-secondary text-primary-content shadow-xl">
+                 <h2 class="text-2xl font-bold mb-4 px-4">Menu</h2>
+                <ul class="menu space-y-1"> {/* Use DaisyUI menu for better styling */}
+                    <li><a @click.prevent="selectMenu('Home')" :class="{'active': menu==='Home'}">Home</a></li>
+                    <li><a @click.prevent="selectMenu('My Claims')" :class="{'active': menu==='My Claims'}">My Claims</a></li>
+                    <li><a @click.prevent="selectMenu('History')" :class="{'active': menu==='History'}">History</a></li>
+                    <li><a @click.prevent="selectMenu('Settings')" :class="{'active': menu==='Settings'}">Settings</a></li>
+                </ul>
+            </aside>
+        </div>
+    </div>
+
     <script>
-function playerDashboard() {
-    return {
-        // ... (keep existing state properties) ...
-        
-        socket: null,
+        function playerDashboard() {
+            return {
+                // State
+                roomId: '',
+                playerName: '',
+                connected: false,
+                errorMsg: '', // General errors
+                notifications: [], // { id, text, type }
+                called: [],
+                tickets: [], // { id, grid, marks }
+                maxTicketsPerPlayer: 3, // Default, will be updated by server if possible
+                menu: 'Home',
+                showAddModal: false,
+                showClaimModal: false,
+                waitingTicket: false,
+                autoMark: true,
+                selectedPrize: null,
+                prizeTypes: ['Top Line', 'Middle Line', 'Bottom Line', 'Four Corners', 'Early Five', 'Full House'], // Default, updated by server
+                claimErrorMsg: '', // Claim modal specific errors
 
-        init() {
-            // ... (keep existing init setup like URL parsing) ...
+                // Game-state
+                gameState: 'stopped',
+                gameSummary: null,
+                myClaims: [], // { claimId, playerName, prizeType, status }
 
-            console.log("Initializing player dashboard..."); // Log init start
+                socket: null,
 
-            // Socket connection
-            const socketUrl = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-                              ? "http://localhost:3000"
-                              : 'https://tambola-backend.onrender.com'; // Replace with your actual Render URL if different
-            console.log(`Attempting to connect to Socket.IO server at: ${socketUrl}`);
-            this.socket = io(socketUrl, {
-                // Optional: Add transports for robustness, though defaults are usually fine
-                // transports: ['websocket', 'polling']
-            });
+                init() {
+                    console.log("Initializing player dashboard...");
+                    // Get Room ID from URL
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const roomIdFromUrl = urlParams.get('roomId');
+                    if (roomIdFromUrl) this.roomId = roomIdFromUrl.trim().toUpperCase();
+                    // Get Player Name from Local Storage
+                    this.playerName = localStorage.getItem('tambolaPlayerName') || '';
 
-            // --- Socket Event Handlers ---
-            this.socket.on('connect', () => {
-                console.log(`Socket connected successfully! ID: ${this.socket.id}`); // Log success
-                this.addNotification('Connected to server.', 'success');
-                // Clear connection errors on successful connect
-                this.errorMsg = '';
-                // If previously connected and in a room, try to rejoin (or prompt user)
-                // Rejoining logic needs careful implementation on both client and server
-            });
+                    const socketUrl = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+                                      ? "http://localhost:3000" // Your local backend URL
+                                      : 'https://tambola-backend.onrender.com'; // Your deployed backend URL
+                    console.log(`Connecting to Socket.IO server: ${socketUrl}`);
 
-            this.socket.on('connect_error', (err) => {
-                // Log the full error object for details
-                console.error('Socket Connection Error:', err);
-                this.errorMsg = `Connection Error: ${err.message}. Server may be down or unreachable.`;
-                this.connected = false; // Ensure state reflects disconnection
-                this.addNotification('Connection failed. Please check server status and refresh.', 'error', 10000); // Longer duration
-            });
+                    this.socket = io(socketUrl, {
+                        // Consider adding reconnection options if needed
+                        // reconnectionAttempts: 5,
+                        // reconnectionDelay: 1000,
+                    });
 
-            this.socket.on('disconnect', (reason) => {
-                // Log the reason for disconnect - THIS IS IMPORTANT
-                console.error(`Socket disconnected. Reason: "${reason}"`);
-                this.addNotification(`Disconnected: ${reason}. Attempting to reconnect...`, 'error');
-                this.connected = false;
-                // Consider if you need to reset game state here, e.g., clear tickets if rejoin isn't handled
-                // this.tickets = [];
-                // this.called = [];
-                // this.gameState = 'stopped';
-            });
+                    this.setupSocketListeners();
+                },
 
-            // ... (keep existing application-specific event handlers like 'player-joined', 'number-called', etc.) ...
-            
-             this.socket.on('player-joined', data => {
-                if (data.playerName !== this.playerName) {
-                    this.addNotification(`${data.playerName} joined the room.`);
-                }
-                 console.log('Event received: player-joined', data);
-            });
-            
-            this.socket.on('player-left', data => {
-                 this.addNotification(`${data.playerName} left the room.`);
-                 console.log('Event received: player-left', data);
-            });
+                setupSocketListeners() {
+                    this.socket.on('connect', () => {
+                        console.log(`Socket connected! ID: ${this.socket.id}`);
+                        this.addNotification('Connected.', 'success', 2000);
+                        this.errorMsg = ''; // Clear connection errors
+                        // If we have room details, attempt to rejoin automatically
+                        if (this.roomId && this.playerName && !this.connected) {
+                             console.log(`Attempting to re-join room ${this.roomId} as ${this.playerName} after reconnect.`);
+                             this.joinRoom(true); // Pass a flag indicating it's a rejoin attempt
+                        }
+                    });
 
-            this.socket.on('number-called', data => {
-                this.called = data.calledNumbers;
-                if (this.autoMark) {
+                    this.socket.on('connect_error', (err) => {
+                        console.error('Socket Connection Error:', err);
+                        this.errorMsg = `Connection Error: ${err.message}. Server might be down.`;
+                        this.connected = false;
+                        this.addNotification('Connection failed. Please refresh later.', 'error', 10000);
+                    });
+
+                    this.socket.on('disconnect', (reason) => {
+                        console.error(`Socket disconnected. Reason: "${reason}"`);
+                        // Don't show reconnecting message if closed by client
+                        if (reason !== "io client disconnect") {
+                            this.addNotification(`Disconnected: ${reason}. Trying to reconnect...`, 'error');
+                        }
+                        this.connected = false;
+                        // Resetting state might be too disruptive, let rejoin handle it
+                    });
+
+                    // --- Application Specific Listeners ---
+                    this.socket.on('player-joined-state', data => { // On successful join/rejoin
+                        console.log('Event received: player-joined-state', data);
+                        this.gameState = data.gameState?.state || 'stopped';
+                        this.called = data.calledNumbers || [];
+                        this.maxTicketsPerPlayer = data.maxTicketsPerPlayer || this.maxTicketsPerPlayer;
+                        this.prizeTypes = data.prizeTypes || this.prizeTypes;
+                        if (data.tickets) {
+                             this.tickets = data.tickets.map((ticketGrid, index) => ({
+                                id: `t${Date.now()}${index}`, // Assign unique ID
+                                grid: ticketGrid,
+                                marks: this.called.filter(num => ticketGrid.flat().includes(num)) // Pre-mark based on current called numbers
+                            }));
+                            if(this.autoMark) this.applyAutoMark(); // Ensure marks consistent with autoMark
+                        }
+                        this.connected = true; // Mark as connected AFTER processing state
+                    });
+
+                    this.socket.on('player-joined', data => {
+                        console.log('Event received: player-joined', data);
+                        if (data.playerName !== this.playerName) {
+                            this.addNotification(`${data.playerName} joined.`);
+                        }
+                    });
+
+                    this.socket.on('player-left', data => {
+                        console.log('Event received: player-left', data);
+                        this.addNotification(`${data.playerName} left.`, 'warning');
+                    });
+
+                    this.socket.on('number-called', data => {
+                        console.log('Event received: number-called', data);
+                        this.called = data.calledNumbers || [];
+                        if (this.autoMark) this.applyAutoMark();
+                    });
+
+                    this.socket.on('ticket-updated', data => { // Received when *my* ticket request is approved
+                        console.log('Event received: ticket-updated', data);
+                        if (data.playerName === this.playerName) {
+                            this.waitingTicket = false;
+                            // Assuming server sends the *new* tickets only or the full updated list
+                            // Let's assume it sends the full updated list for simplicity here
+                             this.tickets = data.tickets.map((ticketGrid, index) => ({
+                                id: `t${Date.now()}${index}`, // Assign unique ID
+                                grid: ticketGrid,
+                                marks: [] // Reset marks for new tickets, then apply auto-mark
+                            }));
+                            if(this.autoMark) this.applyAutoMark();
+                            this.addNotification('New ticket(s) received!', 'success');
+                        }
+                    });
+
+                    this.socket.on('ticket-request-response', data => { // Direct response to *my* request
+                        console.log('Event received: ticket-request-response', data);
+                        this.waitingTicket = false;
+                        if (!data.approved) {
+                            this.errorMsg = data.error || 'Ticket request rejected.';
+                            this.addNotification(this.errorMsg, 'error');
+                        } else {
+                             this.addNotification('Ticket request approved by admin.', 'info');
+                             // Expecting 'ticket-updated' to follow with the actual ticket
+                        }
+                    });
+
+                    this.socket.on('claim-updated', data => { // Update for *my* claim
+                         console.log('Event received: claim-updated', data);
+                         const myClaimIndex = this.myClaims.findIndex(c => c.claimId === data.claimId);
+                         if (myClaimIndex !== -1) {
+                            this.myClaims[myClaimIndex].status = data.approved ? 'Approved' : 'Rejected';
+                             this.addNotification(`Your claim for ${data.claimType} was ${data.approved ? 'Approved!' : 'Rejected'}.`, data.approved ? 'success' : 'error');
+                         }
+                         // This event could also be used for room-wide notifications if needed
+                    });
+
+                     this.socket.on('winner-announced', data => { // Announcement for *any* winner
+                         console.log('Event received: winner-announced', data);
+                         if (data.playerName !== this.playerName) {
+                             this.addNotification(`${data.playerName} won ${data.prizeType}!`, 'info');
+                         }
+                     });
+
+
+                    // Game state changes
+                    this.socket.on('game-started', data => {
+                        console.log('Event received: game-started', data);
+                        this.gameState = 'running'; this.called = []; this.gameSummary = null; this.myClaims = []; /* Clear claims for new game */
+                        this.addNotification('Game started!', 'success'); });
+                    this.socket.on('auto-paused', data => {
+                        console.log('Event received: auto-paused', data);
+                        this.gameState = 'paused'; this.addNotification(data?.message || 'Auto-calling paused.', 'warning'); });
+                    this.socket.on('auto-resumed', () => {
+                        console.log('Event received: auto-resumed');
+                        this.gameState = 'running'; this.addNotification('Auto-calling resumed.', 'info'); });
+                    this.socket.on('auto-finished', () => {
+                        console.log('Event received: auto-finished');
+                        this.addNotification('All numbers drawn!', 'info'); /* gameState updated by summary */ });
+                    this.socket.on('game-summary', data => {
+                        console.log('Event received: game-summary', data);
+                        this.gameState = 'finished'; this.gameSummary = data; this.called = data.calledNumbers || [];
+                        this.addNotification('Game Over!', 'success'); });
+
+                    // Error handling
+                    this.socket.on('room-error', data => {
+                         console.error('Room Error from Server:', data.error);
+                         this.errorMsg = data.error; this.addNotification(data.error, 'error'); });
+                    this.socket.on('server-error', data => {
+                         console.error('Generic Server Error:', data.message);
+                         this.errorMsg = data.message; this.addNotification(data.message, 'error'); });
+                },
+
+                // --- UI Actions ---
+                joinRoom(isRejoin = false) {
+                    this.errorMsg = '';
+                    if (!this.playerName.trim() || !this.roomId.trim()) {
+                        this.errorMsg = 'Name & Room ID required.'; return;
+                    }
+                    localStorage.setItem('tambolaPlayerName', this.playerName.trim());
+                    console.log(`${isRejoin ? 'Rejoining' : 'Joining'} room ${this.roomId} as ${this.playerName}`);
+
+                    this.socket.emit('join-room',
+                        { roomId: this.roomId.trim().toUpperCase(), playerName: this.playerName.trim(), isAdmin: false },
+                        (res) => { // Ack from server
+                            if (res.success) {
+                                console.log(`Successfully ${isRejoin ? 'rejoined' : 'joined'} room ${this.roomId}. Waiting for state...`);
+                                // State update will come via 'player-joined-state' event
+                                if (!isRejoin) { // Only add join notification on initial join
+                                     this.addNotification(`Joined Room: ${this.roomId}`, 'success');
+                                }
+                            } else {
+                                console.error(`Failed to join room ${this.roomId}: ${res.error}`);
+                                this.errorMsg = res.error || 'Failed to join room.';
+                                this.connected = false; // Ensure not marked connected if join fails
+                            }
+                        }
+                    );
+                },
+
+                confirmRequestTicket() {
+                    if (this.tickets.length >= this.maxTicketsPerPlayer) {
+                        this.addNotification("Max tickets reached.", "warning");
+                        this.showAddModal = false; return;
+                    }
+                    if (this.gameState !== 'running' && this.gameState !== 'stopped') {
+                         this.addNotification("Cannot request tickets now.", "warning");
+                         this.showAddModal = false; return;
+                    }
+                    this.waitingTicket = true;
+                    this.errorMsg = '';
+                    console.log(`Requesting ticket for ${this.playerName} in room ${this.roomId}`);
+
+                    this.socket.emit('request-ticket',
+                        { roomId: this.roomId, playerName: this.playerName },
+                        (res) => { // Ack for the request emit
+                            if (!res.success) {
+                                this.waitingTicket = false;
+                                this.errorMsg = res.error || "Failed to send request.";
+                                this.addNotification(this.errorMsg, 'error');
+                                // Keep modal open to show error? Or close? Let's close.
+                                this.showAddModal = false;
+                            } else {
+                                this.addNotification('Ticket request sent.', 'info');
+                                // Keep modal open while waitingTicket is true
+                            }
+                        }
+                    );
+                    // Don't close modal immediately, wait for response or user cancel
+                },
+
+                submitClaim() {
+                    this.claimErrorMsg = '';
+                    if (!this.selectedPrize) { this.claimErrorMsg = 'Select a prize.'; return; }
+                    if (this.gameState !== 'running') { this.claimErrorMsg = 'Game not running.'; return; }
+                    if (this.tickets.length === 0) { this.claimErrorMsg = 'You have no tickets.'; return; }
+
+                    console.log(`Submitting claim for ${this.selectedPrize} by ${this.playerName}`);
+                    const claimPayload = { roomId: this.roomId, playerName: this.playerName, claimType: this.selectedPrize };
+
+                    this.socket.emit('submit-claim', claimPayload, (res) => { // Ack for submit emit
+                        if (res.success) {
+                            // Add to myClaims optimistically, server validation passed
+                            const newClaim = { claimId: res.claimId, playerName: this.playerName, prizeType: this.selectedPrize, status: 'Pending' };
+                            this.myClaims.push(newClaim);
+                            this.addNotification(`Claim for ${this.selectedPrize} submitted.`, 'info');
+                            this.showClaimModal = false;
+                            this.selectedPrize = null;
+                        } else {
+                            this.claimErrorMsg = res.error || 'Failed to submit claim.';
+                            // Keep modal open to show error
+                        }
+                    });
+                },
+
+                isMarked(ticketId, number) {
+                    if (!number) return false;
+                    if (this.autoMark) return this.called.includes(number);
+                    const ticket = this.tickets.find(t => t.id === ticketId);
+                    return ticket ? ticket.marks.includes(number) : false;
+                },
+
+                toggleMark(ticketId, number) {
+                    if (this.autoMark || this.gameState !== 'running') return;
+                    const ticket = this.tickets.find(t => t.id === ticketId);
+                    if (ticket && number) {
+                        const markIndex = ticket.marks.indexOf(number);
+                        if (markIndex > -1) {
+                            ticket.marks.splice(markIndex, 1);
+                        } else {
+                            if (this.called.includes(number)) {
+                                ticket.marks.push(number);
+                            } else {
+                                this.addNotification(`${number} not called yet!`, 'warning', 2000);
+                            }
+                        }
+                    }
+                },
+
+                applyAutoMark() {
+                    if (this.autoMark) {
+                        this.tickets.forEach(ticket => {
+                            ticket.marks = ticket.grid.flat().filter(num => num && this.called.includes(num));
+                        });
+                    }
+                    // If turning autoMark OFF, clear existing marks? Or leave them?
+                    // Current behavior: leaves them. User must unmark manually.
+                },
+
+                autoChanged() {
                     this.applyAutoMark();
-                }
-                console.log('Event received: number-called', data);
-            });
-            
-            // ... other handlers ...
+                    this.addNotification(`Auto-marking ${this.autoMark ? 'ON' : 'OFF'}.`, 'info', 2000);
+                },
 
-             this.socket.on('room-error', data => {
-                console.error('Room Error from Server:', data.error);
-                this.errorMsg = data.error;
-                this.addNotification(data.error, 'error');
-            });
-             this.socket.on('server-error', data => {
-                console.error('Generic Server Error:', data.message);
-                this.errorMsg = data.message;
-                this.addNotification(data.message, 'error');
-            });
+                addNotification(text, type = 'info', duration = 4000) {
+                    const id = Date.now() + Math.random(); // Add random to prevent collision
+                     // Limit number of notifications shown?
+                    const MAX_NOTIFICATIONS = 5;
+                    if(this.notifications.length >= MAX_NOTIFICATIONS) {
+                        this.notifications.shift(); // Remove oldest
+                    }
 
+                    this.notifications.push({ id, text, type });
+                    setTimeout(() => { this.removeNotification(id); }, duration);
+                },
+                removeNotification(id) {
+                    this.notifications = this.notifications.filter(n => n.id !== id);
+                },
 
-        }, // End init()
-
-        // ... (keep existing methods like joinRoom, confirmRequestTicket, submitClaim, etc.) ...
-
-        addNotification(text, type = 'info', duration = 5000) {
-            const id = Date.now();
-            // Avoid duplicate notifications if possible
-            if (!this.notifications.some(n => n.text === text && n.type === type)) {
-                 this.notifications.push({ id, text, type });
-                 setTimeout(() => {
-                    this.removeNotification(id);
-                 }, duration);
+                selectMenu(menuItem) {
+                    this.menu = menuItem;
+                    if (this.$refs.sidebarToggle) this.$refs.sidebarToggle.checked = false;
+                },
             }
-        },
-        removeNotification(id) {
-             this.notifications = this.notifications.filter(n => n.id !== id);
-        },
-
-        // ... (keep other methods)
-
-    } // End return
-} // End playerDashboard()
-</script>
+        }
+    </script>
 </body>
 </html>
