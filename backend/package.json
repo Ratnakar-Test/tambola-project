@@ -1,20 +1,22 @@
-{
-  "name": "tambola-game-backend",
-  "version": "1.0.0",
-  "description": "Backend server for the Tambola game.",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [
-    "tambola",
-    "game",
-    "express"
-  ],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "express": "^4.19.2"
-  }
-}
+    {
+      "name": "tambola-game-backend",
+      "version": "1.0.0",
+      "description": "Backend server for the Tambola game.",
+      "main": "server.js",
+      "scripts": {
+        "start": "node server.js",
+        "test": "echo \"Error: no test specified\" && exit 1"
+      },
+      "keywords": [
+        "tambola",
+        "game",
+        "express"
+      ],
+      "author": "",
+      "license": "ISC",
+      "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^4.19.2"
+      }
+    }
+    
