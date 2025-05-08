@@ -205,6 +205,9 @@
     </div>
 
     <script>
+        // !!! IMPORTANT: Set your Render Backend URL here !!!
+        const API_BASE_URL = 'https://tambola-backend.onrender.com'; 
+
         // DOM Elements
         const joinGameSection = document.getElementById('joinGameSection');
         const gameAreaDisplay = document.getElementById('gameAreaDisplay');
@@ -240,67 +243,70 @@
         let currentPlayerId = localStorage.getItem('tambolaPlayerId');
         let currentPlayerName = localStorage.getItem('tambolaPlayerName');
         let currentRoomId = localStorage.getItem('tambolaRoomId');
-        let playerTickets = []; // Array of ticket objects { id: 't1', rows: [...], numbers: [...], marked: new Set() }
+        let playerTickets = []; 
         let activeTicketIndex = 0;
         let isAutoMarkEnabled = true;
-        let serverGameState = {}; // Store general game state from server
+        let serverGameState = {}; 
         let pollingIntervalId = null;
         let lastKnownDrawnNumbersCount = 0;
-        let isJoining = false; // Flag to prevent multiple join attempts
-        let isRequestingTicket = false; // Flag for ticket request
-        let isSubmittingClaim = false; // Flag for claim submission
+        let isJoining = false; 
+        let isRequestingTicket = false; 
+        let isSubmittingClaim = false; 
 
 
         // Initialization
         window.onload = () => {
+            if (!API_BASE_URL || API_BASE_URL === 'YOUR_RENDER_BACKEND_URL_HERE') { // Added safety check
+                alert("CRITICAL: API_BASE_URL is not set correctly in the frontend JavaScript. Please check index.html.");
+                joinGameBtn.disabled = true;
+                addTicketBtn.disabled = true;
+                submitClaimBtn.disabled = true;
+                showToast("Frontend configuration error: API_BASE_URL not set.", "error");
+            }
+
             const urlParams = new URLSearchParams(window.location.search);
             const roomIdFromUrl = urlParams.get('roomId');
             if (roomIdFromUrl) {
                 roomIdInputPlayer.value = roomIdFromUrl;
             }
 
-            // Attempt to load autoMark preference from localStorage
             if (localStorage.getItem('tambolaAutoMark') !== null) {
                 isAutoMarkEnabled = localStorage.getItem('tambolaAutoMark') === 'true';
                 autoMarkCheckbox.checked = isAutoMarkEnabled;
             } else {
-                 isAutoMarkEnabled = autoMarkCheckbox.checked; // Default to checkbox state if not in local storage
+                 isAutoMarkEnabled = autoMarkCheckbox.checked; 
             }
 
 
             if (currentPlayerId && currentRoomId && currentPlayerName) {
                 playerNameInput.value = currentPlayerName;
                 roomIdInputPlayer.value = currentRoomId;
-                joinGame(true); // Pass a flag to indicate it's a re-join attempt
+                joinGame(true); 
             }
         };
         
-        function showToast(message, type = 'info') { // type: info, success, error, warning
+        function showToast(message, type = 'info') { 
             const toast = document.createElement('div');
-            // Ensure correct DaisyUI class mapping
-            let alertClass = 'alert-info'; // Default
+            let alertClass = 'alert-info'; 
             if (type === 'success') alertClass = 'alert-success';
             else if (type === 'error') alertClass = 'alert-error';
             else if (type === 'warning') alertClass = 'alert-warning';
             
-            toast.classList.add('toast-message', 'alert', alertClass); // Add base 'alert' class
+            toast.classList.add('toast-message', 'alert', alertClass); 
             toast.innerHTML = `<span>${message}</span>`;
             toastContainer.appendChild(toast);
             
-            // Trigger animation
             setTimeout(() => toast.classList.add('show'), 10);
-
-            // Auto-dismiss
             setTimeout(() => {
                 toast.classList.remove('show');
-                setTimeout(() => toast.remove(), 500);
+                setTimeout(() => toast.remove(), 5000);
             }, 5000);
         }
 
         async function joinGame(isRejoin = false) {
             if (isJoining) return; 
             isJoining = true;
-            joinGameBtn.disabled = true; // Disable button
+            joinGameBtn.disabled = true; 
             joinGameBtn.classList.add('loading'); 
 
             const name = playerNameInput.value.trim();
@@ -323,29 +329,36 @@
             }
 
             try {
-                const response = await fetch('/api/player/join-game', {
+                const response = await fetch(`${API_BASE_URL}/api/player/join-game`, { // USE API_BASE_URL
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         playerName: name, 
                         roomId: roomId, 
-                        playerId: isRejoin ? currentPlayerId : null // Send existing ID if rejoining
+                        playerId: isRejoin ? currentPlayerId : null 
                     }) 
                 });
 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    joinErrorText.textContent = errorData.message || "Failed to join game.";
+                    let errorMsg = "Failed to join game. Server returned: " + response.status;
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.message || errorMsg;
+                    } catch (e) {
+                        console.warn("Response from server on join error was not JSON. Status: " + response.status);
+                        const textError = await response.text(); 
+                        errorMsg = `Failed to join. Server status: ${response.status}. Response: ${textError.substring(0,100)}...`;
+                    }
+                    joinErrorText.textContent = errorMsg;
                     if (!isRejoin) { 
                         localStorage.removeItem('tambolaPlayerId');
                         localStorage.removeItem('tambolaPlayerName');
                     }
-                    return; // Exit after handling error
+                    return; 
                 }
 
                 const data = await response.json();
                 currentPlayerId = data.playerId;
-                // Use player name from server response if available and different, or stick to input
                 currentPlayerName = data.gameState && data.gameState.playerName ? data.gameState.playerName : name; 
                 currentRoomId = data.gameState && data.gameState.roomId ? data.gameState.roomId : roomId;
 
@@ -365,17 +378,16 @@
                 if (data.gameState) {
                     updatePlayerFullState(data.gameState);
                 } else {
-                    // This case should ideally not happen if server always returns gameState on successful join
                     await fetchPlayerFullState(); 
                 }
                 
                 if (pollingIntervalId) clearInterval(pollingIntervalId);
-                pollingIntervalId = setInterval(fetchPlayerFullState, 4000); // Poll for updates
+                pollingIntervalId = setInterval(fetchPlayerFullState, 4000); 
 
-            } catch (error) {
-                console.error("Error joining game:", error);
-                joinErrorText.textContent = "An error occurred. Please try again.";
-                 if (!isRejoin) { // Only clear if it was a fresh failed attempt
+            } catch (error) { 
+                console.error("Error joining game (network or fetch issue):", error);
+                joinErrorText.textContent = "An error occurred (e.g. network issue or backend not reachable). Please try again.";
+                 if (!isRejoin) { 
                     localStorage.removeItem('tambolaPlayerId');
                     localStorage.removeItem('tambolaPlayerName');
                  }
@@ -389,12 +401,11 @@
         async function fetchPlayerFullState() {
             if (!currentPlayerId || !currentRoomId) return;
             try {
-                const response = await fetch(`/api/player/state?playerId=${currentPlayerId}&roomId=${currentRoomId}`);
+                const response = await fetch(`${API_BASE_URL}/api/player/state?playerId=${currentPlayerId}&roomId=${currentRoomId}`); // USE API_BASE_URL
                 if (!response.ok) {
                     if (response.status === 401 || response.status === 403 || response.status === 404) { 
-                        // 404 could mean room or player is gone from server perspective
-                        const errorData = await response.json().catch(() => ({message: "Session invalid. Please rejoin."}));
-                        showToast(errorData.message || "Session invalid. Please rejoin.", "error");
+                        const errorData = await response.json().catch(() => ({message: "Session invalid or room/player not found. Please rejoin."}));
+                        showToast(errorData.message, "error");
                         logoutAndResetUI();
                     } else {
                          const errorText = await response.text();
@@ -406,7 +417,7 @@
                 updatePlayerFullState(state);
             } catch (error) {
                 console.error("Failed to fetch player game state:", error);
-                showToast("Connection issue. Trying to maintain current state.", "warning");
+                showToast("Connection issue. Attempting to maintain current state.", "warning");
             }
         }
         
@@ -415,12 +426,7 @@
             pollingIntervalId = null;
             
             localStorage.removeItem('tambolaPlayerId');
-            // Keep name and room ID in inputs for easy rejoin attempt
-            // localStorage.removeItem('tambolaPlayerName'); 
-            // localStorage.removeItem('tambolaRoomId');
-
-            currentPlayerId = null; // Effectively logs out
-            // currentPlayerName and currentRoomId remain in inputs
+            currentPlayerId = null; 
             
             playerTickets = [];
             activeTicketIndex = 0;
@@ -429,9 +435,8 @@
             
             joinGameSection.classList.remove('hidden');
             gameAreaDisplay.classList.add('hidden');
-            roomDisplay.classList.add('hidden'); // Hide room display in navbar
+            roomDisplay.classList.add('hidden'); 
             
-            // Clear dynamic content
             ticketTabsContainer.innerHTML = '';
             ticketGridsContainer.innerHTML = `<p id="noTicketsText" class="text-center italic p-4">You have no tickets yet. Request one!</p>`;
             drawnNumbersListPlayerEl.innerHTML = `<span class="italic text-gray-500">Waiting for game to start...</span>`;
@@ -440,7 +445,6 @@
             statusTextPlayerEl.textContent = "Not Connected";
             gameOverMessagePlayerEl.classList.add('hidden');
 
-
             showToast("You have been disconnected. Please join again.", "info");
         }
 
@@ -448,7 +452,7 @@
         function updatePlayerFullState(state) {
             if (!state || !state.roomId) { 
                 console.warn("Received invalid state from server:", state);
-                if (state && state.message && state.message.includes("Player not found")) {
+                if (state && state.message && state.message.toLowerCase().includes("player not found")) {
                     logoutAndResetUI();
                 }
                 return;
@@ -478,11 +482,9 @@
                     if (playerTickets.length > 0) ticketsStructureChanged = true; 
                 }
                 
-                // Only re-render if structure changed OR if there are tickets but no grid for current active one
-                if (ticketsStructureChanged || (playerTickets.length > 0 && !document.getElementById(`ticket-grid-${playerTickets[activeTicketIndex]?.id}`))) {
+                if (ticketsStructureChanged || (playerTickets.length > 0 && playerTickets[activeTicketIndex] && !document.getElementById(`ticket-grid-${playerTickets[activeTicketIndex].id}`))) {
                     renderTickets();
                 } else if (playerTickets.length === 0 && ticketGridsContainer.innerHTML.includes('ticket-grid-wrapper')) {
-                    // If client has tickets displayed but server says no tickets, clear display
                     renderTickets();
                 }
 
@@ -490,7 +492,7 @@
                 playerTickets = []; 
                 renderTickets(); 
             } else if (playerTickets.length === 0 && ticketGridsContainer.innerHTML.includes('ticket-grid-wrapper')) {
-                 renderTickets(); // Ensure "no tickets" message is shown if grids were there but now no tickets
+                 renderTickets(); 
             }
 
             updateTicketStatusText();
@@ -528,7 +530,7 @@
             
             if (state.myClaims) {
                 state.myClaims.forEach(claim => {
-                    if (!claim || !claim.claimId) return; // Skip if claim is malformed
+                    if (!claim || !claim.claimId) return; 
                     const localClaimKey = `claim-${claim.claimId}-confetti`;
                     if (claim.status === 'accepted' && !localStorage.getItem(localClaimKey)) {
                         triggerConfetti();
@@ -585,7 +587,6 @@
                             cell.textContent = number;
                             cell.classList.add('number');
                             cell.dataset.number = number;
-                            // Ensure ticket.marked is a Set
                             if (!(ticket.marked instanceof Set)) ticket.marked = new Set(ticket.marked || []);
 
                             if (ticket.marked && ticket.marked.has(number)) {
@@ -602,7 +603,6 @@
                 ticketGridsContainer.appendChild(gridDivWrapper);
             });
 
-            // After rendering, ensure the correct ticket's numbers are marked/highlighted
             if (playerTickets.length > 0 && playerTickets[activeTicketIndex]) {
                  autoMarkDrawnNumbers(serverGameState.drawnNumbers || []); 
                  highlightLatestDrawnOnTicket(serverGameState.currentNumber, serverGameState.drawnNumbers || []);
@@ -621,7 +621,7 @@
             Array.from(ticketGridsContainer.children).forEach((gridWrapper, i) => {
                 gridWrapper.classList.toggle('hidden', i !== index);
             });
-            if (playerTickets[activeTicketIndex]) { // Check again after setting index
+            if (playerTickets[activeTicketIndex]) { 
                 autoMarkDrawnNumbers(serverGameState.drawnNumbers || []); 
                 highlightLatestDrawnOnTicket(serverGameState.currentNumber, serverGameState.drawnNumbers || []);
             }
@@ -630,7 +630,7 @@
         async function requestAnotherTicket() {
             if (isRequestingTicket) return;
             isRequestingTicket = true;
-            addTicketBtn.disabled = true; // Disable immediately
+            addTicketBtn.disabled = true; 
             addTicketBtn.classList.add('loading');
 
 
@@ -638,22 +638,21 @@
                 showToast("Player or Room ID not found. Please rejoin.", "error");
                 isRequestingTicket = false;
                 addTicketBtn.classList.remove('loading');
-                addTicketBtn.disabled = false; // Re-enable
+                addTicketBtn.disabled = false; 
                 return;
             }
-            // Check ticket count again before making API call
             if (playerTickets.length >= 5) {
                 showToast("You already have the maximum of 5 tickets.", "warning");
                 isRequestingTicket = false;
                 addTicketBtn.classList.remove('loading');
-                updateTicketStatusText(); // This will set disabled true
+                updateTicketStatusText(); 
                 return;
             }
 
 
             ticketStatusText.textContent = "Requesting new ticket...";
             try {
-                const response = await fetch('/api/player/request-ticket', {
+                const response = await fetch(`${API_BASE_URL}/api/player/request-ticket`, { // USE API_BASE_URL
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ playerId: currentPlayerId, playerName: currentPlayerName, roomId: currentRoomId })
@@ -701,7 +700,6 @@
             if (playerTickets.length === 0 || !playerTickets[activeTicketIndex] || !playerTickets[activeTicketIndex].id) return;
 
             const currentVisibleTicket = playerTickets[activeTicketIndex];
-            // Ensure currentVisibleTicket.marked is a Set
             if (!(currentVisibleTicket.marked instanceof Set)) {
                 currentVisibleTicket.marked = new Set(currentVisibleTicket.marked || []);
             }
@@ -720,18 +718,16 @@
                                 currentVisibleTicket.marked.add(numOnTicket);
                                 triggerConfetti(cell); 
                              }
-                        } else { // Already marked, ensure visually it is
+                        } else { 
                              cell.classList.add('marked'); 
                         }
                     }
-                    // No "else" to unmark here, as unmarking should be manual or on game reset.
                 }
             });
         }
         
         function manualMarkNumber(ticket, number, cellElement) {
             if (!ticket || !ticket.id) return; 
-            // Ensure ticket.marked is a Set
             if (!(ticket.marked instanceof Set)) {
                 ticket.marked = new Set(ticket.marked || []);
             }
@@ -794,7 +790,7 @@
         async function submitClaim() {
             if (isSubmittingClaim) return;
             isSubmittingClaim = true;
-            submitClaimBtn.disabled = true; // Disable immediately
+            submitClaimBtn.disabled = true; 
             submitClaimBtn.classList.add('loading');
 
             if (playerTickets.length === 0 || !playerTickets[activeTicketIndex] || !playerTickets[activeTicketIndex].id) {
@@ -815,7 +811,6 @@
                 return;
             }
 
-            // Ensure activeTicket.marked is a Set
             if (!(activeTicket.marked instanceof Set)) {
                  activeTicket.marked = new Set(activeTicket.marked || []);
             }
@@ -825,7 +820,7 @@
             claimStatusMessageEl.className = 'mt-4 text-center font-medium text-info';
 
             try {
-                const response = await fetch('/api/player/claim-prize', {
+                const response = await fetch(`${API_BASE_URL}/api/player/claim-prize`, { // USE API_BASE_URL
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
