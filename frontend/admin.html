@@ -70,8 +70,7 @@
                     </div>
                     <div id="qrCodeCanvasContainer" class="mt-4 text-center hidden">
                         <p class="mb-2 font-semibold">Player Join QR Code:</p>
-                        <canvas id="qrCodeCanvas" class="mx-auto border rounded-md"></canvas>
-                        <p id="playerJoinLink" class="text-sm mt-1"></p>
+                        <div id="qrCodeCanvas" class="mx-auto border rounded-md inline-block"></div> <p id="playerJoinLink" class="text-sm mt-1 break-all"></p>
                     </div>
                 </section>
 
@@ -196,12 +195,18 @@
     </div>
 
     <script>
+        // !!! IMPORTANT: Set your Render Backend URL here !!!
+        const API_BASE_URL = 'https://tambola-backend.onrender.com'; 
+        
+        // !!! IMPORTANT: Set your Netlify Frontend URL here for QR Code !!!
+        const FRONTEND_BASE_URL = 'https://mytambola.netlify.app'; 
+
         // DOM Elements
         const roomIdInput = document.getElementById('roomIdInput');
         const connectRoomBtn = document.getElementById('connectRoomBtn');
         const adminRoomDisplay = document.getElementById('adminRoomDisplay');
         const qrCodeCanvasContainer = document.getElementById('qrCodeCanvasContainer');
-        const qrCodeCanvas = document.getElementById('qrCodeCanvas');
+        const qrCodeCanvas = document.getElementById('qrCodeCanvas'); // This is now a div
         const playerJoinLink = document.getElementById('playerJoinLink');
         const gameControlsSection = document.getElementById('gameControlsSection');
 
@@ -238,7 +243,7 @@
         const floatStopBtn = document.getElementById('floatStopBtn');
 
         // Game State
-        let currentRoomId = null; // Admin's currently active room
+        let currentRoomId = null; 
         let autoCallIntervalId = null;
         let isGamePaused = false;
         let serverGameState = {}; 
@@ -253,8 +258,15 @@
             corners: { name: "Corners (4)", maxWinners: 1, enabled: true }
         };
 
-        // Initialize Tambola Board & Winning Rules UI
         function initAdminUI() {
+             if (!API_BASE_URL || API_BASE_URL === 'YOUR_RENDER_BACKEND_URL_HERE') { // Added safety check
+                alert("CRITICAL: API_BASE_URL is not set correctly in the frontend JavaScript. Please check admin.html.");
+                connectRoomBtn.disabled = true;
+            }
+             if (!FRONTEND_BASE_URL || FRONTEND_BASE_URL === 'YOUR_NETLIFY_FRONTEND_URL_HERE') { // Added safety check
+                alert("CRITICAL: FRONTEND_BASE_URL is not set correctly in the frontend JavaScript. Please check admin.html.");
+                connectRoomBtn.disabled = true;
+            }
             tambolaBoard.innerHTML = '';
             for (let i = 1; i <= 90; i++) {
                 const cell = document.createElement('div');
@@ -291,7 +303,7 @@
                 alert("Please enter a Room ID.");
                 return;
             }
-            currentRoomId = newRoomId; // Set the admin's current working room
+            currentRoomId = newRoomId; 
             
             roomIdInput.disabled = true;
             connectRoomBtn.disabled = true;
@@ -301,43 +313,24 @@
             gameControlsSection.classList.remove('hidden');
             statusTextEl.textContent = "Ready to Start";
             
-            const playerUrl = `${window.location.origin}/?roomId=${encodeURIComponent(currentRoomId)}`;
+            // Use the configured FRONTEND_BASE_URL for the player join link
+            const playerUrl = `${FRONTEND_BASE_URL}/?roomId=${encodeURIComponent(currentRoomId)}`; 
             playerJoinLink.textContent = playerUrl;
-            playerJoinLink.href = playerUrl;
+            playerJoinLink.href = playerUrl; // Make it a clickable link too
             try {
-                qrCodeCanvas.innerHTML = ''; // Clear previous QR
+                qrCodeCanvas.innerHTML = ''; 
                 const qr = qrcode(0, 'L'); 
                 qr.addData(playerUrl);
                 qr.make();
-                // qrcode.js library might need specific handling for canvas element or creates an img tag
-                // If it generates an img tag string:
-                const qrImgTag = qr.createImgTag(4, 8); // size 4, margin 8
+                qrCodeCanvas.innerHTML = qr.createImgTag(4, 8); 
                 qrCodeCanvasContainer.classList.remove('hidden');
-                // If qrCodeCanvas is a canvas element, you'd draw to it.
-                // For simplicity with this library, let's assume createImgTag works or adapt.
-                // A common way is to set innerHTML of a div container for the img.
-                // Let's adjust to put the img inside the canvas container, not replacing the canvas element itself if it's meant for drawing.
-                // For this library, it's simpler to just replace content of a div.
-                // Let's assume qrCodeCanvas is a div for the image.
-                if (document.getElementById('qrCodeCanvas').tagName === 'CANVAS') {
-                    // If it's truly a canvas, the library might have a draw method.
-                    // For now, let's clear and append image.
-                    const img = document.createElement('img');
-                    img.src = qr.createDataURL(4,8);
-                    qrCodeCanvas.innerHTML = ''; // Clear if it was a canvas
-                    qrCodeCanvas.appendChild(img); // Append the image
-                } else {
-                     qrCodeCanvas.innerHTML = qrImgTag; // If qrCodeCanvas is a div
-                }
-
-
             } catch (e) {
                 console.error("QR Code generation failed:", e);
                 qrCodeCanvasContainer.innerHTML = "<p class='text-error'>QR Code generation failed.</p>";
                 qrCodeCanvasContainer.classList.remove('hidden');
             }
             
-            await fetchAdminData(); // Fetch state for this newly connected room
+            await fetchAdminData(); 
             updateButtonStates();
 
             if(pollingAdminIntervalId) clearInterval(pollingAdminIntervalId);
@@ -347,11 +340,10 @@
         function toggleModeControls() {
             const isAutoMode = modeSelector.value === 'auto';
             intervalSelector.disabled = !isAutoMode || (serverGameState && serverGameState.gameStarted);
-            // Other button states are handled by updateButtonStates
             if (!isAutoMode && autoCallIntervalId) { 
                 clearInterval(autoCallIntervalId);
                 autoCallIntervalId = null;
-                isGamePaused = false; // Reset pause state if switching from auto
+                isGamePaused = false; 
             }
             updateButtonStates(); 
         }
@@ -384,7 +376,7 @@
                         maxWinners: parseInt(maxWinnersInput.value) || 1
                     };
                 } else {
-                     rules[ruleKey] = { // Still send rule, but disabled
+                     rules[ruleKey] = { 
                         enabled: false,
                         maxWinners: parseInt(maxWinnersInput.value) || 1
                     };
@@ -401,33 +393,29 @@
 
         async function fetchAdminData() { 
             if (!currentRoomId) {
-                // console.log("Admin: No current room ID set. Not fetching state.");
-                updateAdminUI({ message: "Not connected to any room."}); // Update UI to reflect no connection
+                updateAdminUI({ message: "Not connected to any room."}); 
                 return;
             }
             try {
-                const response = await fetch(`/api/admin/state?roomId=${currentRoomId}`); 
+                const response = await fetch(`${API_BASE_URL}/api/admin/state?roomId=${currentRoomId}`); // USE API_BASE_URL
                 if (!response.ok) {
                     const errText = await response.text();
+                    if (response.status === 404) {
+                         throw new Error(`Room '${currentRoomId}' not found on backend.`);
+                    }
                     throw new Error(`HTTP error! status: ${response.status}, ${errText}`);
                 }
                 serverGameState = await response.json();
                 updateAdminUI(serverGameState);
             } catch (error) {
                 console.error("Failed to fetch admin game state:", error);
-                statusTextEl.textContent = 'Error fetching state';
-                // Optionally, try to disconnect or show error to admin
-                // gameControlsSection.classList.add('hidden');
-                // roomIdInput.disabled = false;
-                // connectRoomBtn.disabled = false;
-                // connectRoomBtn.textContent = "Connect to Room";
-                // adminRoomDisplay.classList.add('hidden');
+                statusTextEl.textContent = `Error fetching state: ${error.message}`;
             }
         }
 
         function updateAdminUI(state) {
             serverGameState = state; 
-            if (state.message && !state.roomId) { // Handle "not connected" or error states from server
+            if (state.message && !state.roomId) { 
                 statusTextEl.textContent = state.message;
                 currentNumberEl.textContent = '-';
                 drawnNumbersListEl.innerHTML = `<span class="italic text-gray-500">Not connected.</span>`;
@@ -435,12 +423,12 @@
                 ticketRequestListEl.innerHTML = `<p class="italic text-gray-500 p-2">Not connected.</p>`;
                 claimListEl.innerHTML = `<p class="italic text-gray-500 p-2">Not connected.</p>`;
                 winnersListEl.innerHTML = `<p class="italic text-gray-500 p-2">Not connected.</p>`;
-                gameControlsSection.classList.add('hidden'); // Hide controls if not properly connected
+                gameControlsSection.classList.add('hidden'); 
                 roomIdInput.disabled = false;
                 connectRoomBtn.disabled = false;
                 connectRoomBtn.textContent = "Connect to Room";
                 adminRoomDisplay.classList.add('hidden');
-                if (pollingAdminIntervalId) clearInterval(pollingAdminIntervalId); // Stop polling if error
+                if (pollingAdminIntervalId) clearInterval(pollingAdminIntervalId); 
                 pollingAdminIntervalId = null;
                 return;
             }
@@ -475,7 +463,7 @@
 
             playerCountEl.textContent = state.players?.length || 0;
             playerListEl.innerHTML = (state.players && state.players.length > 0) ?
-                state.players.map(player => `<div class="list-item">${player.name} (ID: ${player.id.slice(-4)}, Tickets: ${player.ticketCount})</div>`).join('') :
+                state.players.map(player => `<div class="list-item">${player.name} (ID: ...${player.id.slice(-4)}, Tickets: ${player.ticketCount})</div>`).join('') :
                 `<p class="italic text-gray-500 p-2">No players connected.</p>`;
 
             ticketRequestCountEl.textContent = state.ticketRequests?.length || 0;
@@ -499,7 +487,7 @@
                     </div>`).join('') :
                 `<p class="italic text-gray-500 p-2">No pending claims.</p>`;
             
-            winnersListEl.innerHTML = ''; // Clear before repopulating
+            winnersListEl.innerHTML = ''; 
             if (state.winners && Object.keys(state.winners).length > 0) {
                 let winnersHtml = '';
                 for (const prize in state.winners) {
@@ -512,12 +500,10 @@
                 winnersListEl.innerHTML = '<p class="italic text-gray-500 p-2">No winners declared yet.</p>';
             }
             
-            // Update config UI based on game state (e.g., disable after start)
             const gameCanBeConfigured = !state.gameStarted || state.gameOver;
             modeSelector.disabled = !gameCanBeConfigured;
             intervalSelector.disabled = !gameCanBeConfigured || modeSelector.value !== 'auto';
             winningRulesConfigEl.querySelectorAll('input').forEach(input => input.disabled = !gameCanBeConfigured);
-
 
             updateButtonStates();
         }
@@ -540,7 +526,7 @@
             stopGameBtn.disabled = !isConnected || !gameStarted || gameOver;
             floatStopBtn.disabled = !isConnected || !gameStarted || gameOver;
             
-            resetGameBtnTop.disabled = false; // Always allow server reset
+            resetGameBtnTop.disabled = false; 
         }
 
 
@@ -553,7 +539,7 @@
             if (!selectedRules) return;
 
             try {
-                const response = await fetch('/api/admin/start-game', { 
+                const response = await fetch(`${API_BASE_URL}/api/admin/start-game`, { // USE API_BASE_URL
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -580,16 +566,15 @@
             if (autoCallIntervalId) clearInterval(autoCallIntervalId); 
             const interval = parseInt(intervalSelector.value);
             autoCallIntervalId = setInterval(async () => {
-                // Check serverGameState directly inside interval as it might be updated by polling
                 if (serverGameState.gameOver || isGamePaused || !serverGameState.gameStarted) {
                     clearInterval(autoCallIntervalId);
                     autoCallIntervalId = null;
-                    updateButtonStates(); // Reflect that auto-calling stopped
+                    updateButtonStates(); 
                     return;
                 }
-                await drawNextNumber(); // drawNextNumber will fetch and update serverGameState
+                await drawNextNumber(); 
             }, interval);
-            isGamePaused = false; // Explicitly set, as we are starting
+            isGamePaused = false; 
             updateButtonStates();
         }
 
@@ -598,7 +583,7 @@
             try {
                 if (modeSelector.value === 'manual') callNextBtn.disabled = true;
 
-                const response = await fetch('/api/admin/draw-number', { 
+                const response = await fetch(`${API_BASE_URL}/api/admin/draw-number`, { // USE API_BASE_URL
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ roomId: currentRoomId }) 
@@ -606,21 +591,16 @@
                  if (!response.ok) {
                      const errorData = await response.json();
                      alert(`Error drawing number: ${errorData.message}`);
-                     // serverGameState might be updated by fetchAdminData if errorData indicates gameOver
-                     if (errorData.gameOver) { // Explicitly update local flag if server confirms
+                     if (errorData.gameOver) { 
                          serverGameState.gameOver = true;
                      }
                      throw new Error(`HTTP error! status: ${response.status}, Message: ${errorData.message}`);
                 }
-                // No need to call fetchAdminData here if draw-number returns the updated state parts needed
-                // However, a full fetch ensures consistency if draw-number response is minimal
                 await fetchAdminData(); 
             } catch (error) {
                 console.error("Failed to draw number:", error);
-                // If error, re-fetch state to be sure
                 await fetchAdminData();
             } 
-            // updateButtonStates is called within fetchAdminData's updateAdminUI
         }
 
         function pauseGame() {
@@ -636,7 +616,7 @@
         function resumeGame() {
              if (modeSelector.value === 'auto' && isGamePaused && serverGameState.gameStarted && !serverGameState.gameOver) {
                 isGamePaused = false;
-                startAutoCalling(); // This will also update button states
+                startAutoCalling(); 
                 statusTextEl.textContent = `In Progress (Mode: Auto, Room: ${currentRoomId})`;
             }
         }
@@ -648,7 +628,7 @@
             }
             if (!confirm(`Are you sure you want to stop the game in room ${currentRoomId}?`)) return;
             try {
-                const response = await fetch('/api/admin/stop-game', { 
+                const response = await fetch(`${API_BASE_URL}/api/admin/stop-game`, { // USE API_BASE_URL
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ roomId: currentRoomId })
@@ -664,19 +644,19 @@
             }
         }
         
-        async function resetGame() { // This is the FULL SERVER RESET
+        async function resetGame() { 
             if (!confirm("DANGER! This will reset THE ENTIRE SERVER, deleting all rooms and game progress. Are you absolutely sure?")) {
                 return;
             }
             try {
-                const response = await fetch('/api/admin/reset-game', { method: 'POST' });
+                const response = await fetch(`${API_BASE_URL}/api/admin/reset-game`, { method: 'POST' }); // USE API_BASE_URL
                 if (!response.ok) throw new Error(await response.text());
                 
                 if (autoCallIntervalId) clearInterval(autoCallIntervalId);
                 autoCallIntervalId = null;
                 isGamePaused = false;
                 currentRoomId = null; 
-                serverGameState = {}; // Clear local cache of server state
+                serverGameState = {}; 
                 
                 roomIdInput.disabled = false;
                 roomIdInput.value = "ROOM1"; 
@@ -686,17 +666,12 @@
                 adminRoomDisplay.textContent = '';
                 gameControlsSection.classList.add('hidden');
                 qrCodeCanvasContainer.classList.add('hidden');
-                if (qrCodeCanvas.tagName === 'CANVAS' && qrCodeCanvas.getContext) {
-                    const ctx = qrCodeCanvas.getContext('2d');
-                    ctx.clearRect(0,0, qrCodeCanvas.width, qrCodeCanvas.height);
-                } else {
-                    qrCodeCanvas.innerHTML = '';
-                }
+                qrCodeCanvas.innerHTML = '';
                 playerJoinLink.textContent = '';
                 
-                renderWinningRulesConfig(); // Reset rules to default display
+                renderWinningRulesConfig(); 
 
-                updateAdminUI({ message: "Server has been reset. Connect to a room."}); // Update UI to reflect reset
+                updateAdminUI({ message: "Server has been reset. Connect to a room."}); 
                 if(pollingAdminIntervalId) clearInterval(pollingAdminIntervalId);
                 pollingAdminIntervalId = null;
                 alert("Server reset successfully!");
@@ -710,7 +685,7 @@
         async function approveTicket(requestId) {
             if (!currentRoomId) { alert("Not connected to a room."); return; }
             try {
-                const response = await fetch('/api/admin/approve-ticket', {
+                const response = await fetch(`${API_BASE_URL}/api/admin/approve-ticket`, { // USE API_BASE_URL
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ requestId, roomId: currentRoomId })
@@ -729,7 +704,7 @@
         async function processClaim(claimId, action) { 
             if (!currentRoomId) { alert("Not connected to a room."); return; }
             try {
-                const response = await fetch('/api/admin/process-claim', {
+                const response = await fetch(`${API_BASE_URL}/api/admin/process-claim`, { // USE API_BASE_URL
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ claimId, action, roomId: currentRoomId })
