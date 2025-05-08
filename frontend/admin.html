@@ -351,29 +351,25 @@
         // --- Theme Controller ---
         const themes = [ "light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter", "dim", "nord", "sunset", ];
         const themeDropdownDesktop = document.getElementById('theme-dropdown-desktop');
-        const themeDropdownMobile = document.getElementById('theme-dropdown-mobile'); // Get mobile dropdown
+        const themeDropdownMobile = document.getElementById('theme-dropdown-mobile'); 
         const htmlTag = document.documentElement;
-        const currentTheme = localStorage.getItem('tambolaAdminTheme') || 'cupcake'; // Default theme
+        const currentTheme = localStorage.getItem('tambolaAdminTheme') || 'cupcake'; 
 
         function populateThemeOptions(dropdownElement) {
             if (!dropdownElement) return;
-            dropdownElement.innerHTML = ''; // Clear existing options
+            dropdownElement.innerHTML = ''; 
             themes.forEach(theme => {
                 const li = document.createElement('li');
-                // Use button role for better accessibility and styling control
                 li.innerHTML = `<button role="radio" aria-checked="${theme === currentTheme}" aria-label="${capitalizeFirstLetter(theme)}" data-set-theme="${theme}" class="theme-controller btn btn-sm btn-block btn-ghost justify-start font-medium">${capitalizeFirstLetter(theme)}</button>`;
                 dropdownElement.appendChild(li);
             });
         }
 
-        // Populate both dropdowns
         populateThemeOptions(themeDropdownDesktop);
-        populateThemeOptions(themeDropdownMobile); // Populate mobile dropdown
+        populateThemeOptions(themeDropdownMobile); 
 
-        // Set initial theme
         htmlTag.setAttribute('data-theme', currentTheme);
         
-        // Function to handle theme change
         function handleThemeChange(event) {
              const button = event.target.closest('.theme-controller');
             if (button) {
@@ -381,16 +377,13 @@
                 if (selectedTheme) {
                     htmlTag.setAttribute('data-theme', selectedTheme);
                     localStorage.setItem('tambolaAdminTheme', selectedTheme);
-                    // Update aria-checked state for accessibility in both dropdowns
                     document.querySelectorAll('.theme-controller').forEach(btn => {
                         btn.setAttribute('aria-checked', btn.getAttribute('data-set-theme') === selectedTheme);
                     });
-                     // Close sidebar if theme changed from there
                     const drawerCheckbox = document.getElementById('my-drawer-3');
-                    if (drawerCheckbox && drawerCheckbox.checked && event.currentTarget === themeDropdownMobile) { // Close only if changed from mobile
+                    if (drawerCheckbox && drawerCheckbox.checked && event.currentTarget === themeDropdownMobile) { 
                          drawerCheckbox.checked = false;
                     }
-                    // Close desktop dropdown if theme changed from there
                     if (document.activeElement instanceof HTMLElement && event.currentTarget === themeDropdownDesktop && document.activeElement.closest('.dropdown')) {
                         document.activeElement.blur();
                     }
@@ -398,9 +391,8 @@
             }
         }
 
-        // Add event listeners using event delegation
         themeDropdownDesktop?.addEventListener('click', handleThemeChange);
-        themeDropdownMobile?.addEventListener('click', handleThemeChange); // Add listener for mobile
+        themeDropdownMobile?.addEventListener('click', handleThemeChange); 
 
 
         // --- DOM Elements (Game Related) ---
@@ -579,6 +571,7 @@
 
                     pollingAdminIntervalId = setInterval(fetchAdminData, 7000); 
                 } else {
+                    // Error message handled within fetchAdminData if room not found
                     roomIdInput.disabled = false; 
                 }
 
@@ -600,7 +593,6 @@
 
         async function fetchAdminData() { 
             if (!currentRoomId) {
-                 // If polling is running but we lost connection, clear interval and update UI
                  if (pollingAdminIntervalId) {
                      console.log("Polling stopped: No currentRoomId.");
                      clearInterval(pollingAdminIntervalId);
@@ -627,13 +619,12 @@
                         serverGameState = {};
                         updateAdminUI({ message: "Room disconnected or not found. Please connect again."}); 
                     } else {
-                         // For other errors, just show in status, don't disconnect
                          statusTextEl.textContent = `Error fetching state: ${errorData.message || response.status}. Retrying...`;
                     }
                     return; 
                 }
                 serverGameState = await response.json();
-                console.log("Fetched state:", serverGameState); // DEBUG LOG
+                // console.log("Fetched state:", serverGameState); // DEBUG LOG - Can be noisy
                 updateAdminUI(serverGameState);
             } catch (error) { // Catch network errors
                 console.error("Failed to fetch admin game state (Network Error):", error);
@@ -690,6 +681,7 @@
         async function drawNextNumber() {
             if (isDrawingNumber || !currentRoomId || serverGameState.gameOver || !serverGameState.gameStarted) return;
             isDrawingNumber = true;
+            // Disable button immediately
             callNextBtn.disabled = true; 
             callNextBtnSpinner.classList.remove('hidden');
             callNextBtnText.classList.add('hidden');
@@ -706,18 +698,21 @@
                      if (errorData.gameOver) { 
                          serverGameState.gameOver = true; 
                      }
-                     await fetchAdminData(); 
                      console.error(`Draw number error: ${response.status}, Message: ${errorData.message}`);
-                } else {
-                    await fetchAdminData(); 
-                }
+                     // No need to throw if we fetch state in finally
+                } 
+                // Fetch state regardless of success/fail to update UI correctly
+                await fetchAdminData(); 
             } catch (error) {
                 console.error("Failed to draw number (network/fetch issue):", error);
-                await fetchAdminData();
+                await fetchAdminData(); // Fetch state on network error too
             } finally {
                  isDrawingNumber = false;
+                 // Reset button appearance
                  callNextBtnSpinner.classList.add('hidden');
                  callNextBtnText.classList.remove('hidden');
+                 // Re-evaluate disabled state based on potentially updated serverGameState
+                 updateButtonStates(); 
             }
         }
 
@@ -897,8 +892,6 @@
                  serverGameState = state; 
              } else {
                  console.warn("Received state without roomId, retaining previous state:", state);
-                 // Potentially update only parts of the UI if some data is still useful?
-                 // For now, we avoid updating if the core identifier (roomId) is missing.
                  updateButtonStates(); // Still update buttons based on possibly stale state
                  return; 
              }
