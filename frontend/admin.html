@@ -571,7 +571,6 @@
 
                     pollingAdminIntervalId = setInterval(fetchAdminData, 7000); 
                 } else {
-                    // Error message handled within fetchAdminData if room not found
                     roomIdInput.disabled = false; 
                 }
 
@@ -601,15 +600,15 @@
                  }
                  return; 
             }
-            console.log(`Polling for room: ${currentRoomId}`); // DEBUG LOG
+            // console.log(`Polling for room: ${currentRoomId}`); // DEBUG LOG (Uncomment if needed)
             try {
                 const response = await fetch(`${API_BASE_URL}/api/admin/state?roomId=${currentRoomId}`); 
                 
-                console.log(`Fetch response status for room ${currentRoomId}: ${response.status}`); // DEBUG LOG
+                // console.log(`Fetch response status for room ${currentRoomId}: ${response.status}`); // DEBUG LOG (Uncomment if needed)
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
-                    console.error("Fetch Error Data:", errorData); // DEBUG LOG
+                    console.error("Fetch Error Data:", errorData); 
                     
                     if (response.status === 404 || response.status === 401 || errorData.message?.includes("not found")) {
                         console.warn(`Room ${currentRoomId} invalid or session expired. Resetting admin UI.`);
@@ -681,7 +680,6 @@
         async function drawNextNumber() {
             if (isDrawingNumber || !currentRoomId || serverGameState.gameOver || !serverGameState.gameStarted) return;
             isDrawingNumber = true;
-            // Disable button immediately
             callNextBtn.disabled = true; 
             callNextBtnSpinner.classList.remove('hidden');
             callNextBtnText.classList.add('hidden');
@@ -699,10 +697,12 @@
                          serverGameState.gameOver = true; 
                      }
                      console.error(`Draw number error: ${response.status}, Message: ${errorData.message}`);
-                     // No need to throw if we fetch state in finally
-                } 
-                // Fetch state regardless of success/fail to update UI correctly
-                await fetchAdminData(); 
+                     // Fetch state even on error to update UI (e.g., show game over)
+                     await fetchAdminData(); 
+                } else {
+                    // Success: Fetch full state to update UI including new number
+                    await fetchAdminData(); 
+                }
             } catch (error) {
                 console.error("Failed to draw number (network/fetch issue):", error);
                 await fetchAdminData(); // Fetch state on network error too
@@ -712,6 +712,8 @@
                  callNextBtnSpinner.classList.add('hidden');
                  callNextBtnText.classList.remove('hidden');
                  // Re-evaluate disabled state based on potentially updated serverGameState
+                 // This is handled by the fetchAdminData -> updateAdminUI -> updateButtonStates chain
+                 // But we can call it explicitly here too for immediate feedback after the attempt.
                  updateButtonStates(); 
             }
         }
