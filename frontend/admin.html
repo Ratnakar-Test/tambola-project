@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
-    <meta charset="UTF-UTF-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tambola Admin - Join</title>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@latest/dist/full.css" rel="stylesheet" type="text/css" />
@@ -35,12 +35,12 @@
         </div>
         <div class="flex-none">
             <div class="dropdown dropdown-end">
-                <label tabindex="0" class="btn btn-ghost btn-circle">
+                <label tabindex="0" class="btn btn-ghost btn-circle" aria-label="Theme selector">
                     <i class="fas fa-palette"></i>
                 </label>
                 <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
                     <template x-for="theme in themes" :key="theme">
-                        <li><a @click="setTheme(theme)" x-text="theme.charAt(0).toUpperCase() + theme.slice(1)"></a></li>
+                        <li><a @click="setTheme(theme, $event)" x-text="theme.charAt(0).toUpperCase() + theme.slice(1)"></a></li>
                     </template>
                 </ul>
             </div>
@@ -108,7 +108,8 @@
                 init() {
                     // Load saved theme or default to light
                     const savedTheme = localStorage.getItem('theme') || 'light';
-                    this.setTheme(savedTheme);
+                    // Pass null for event and false for closeDropdown on initial load
+                    this.setTheme(savedTheme, null, false); 
 
                     // Try to get adminName and roomId from query params if redirected from admin_room
                     const urlParams = new URLSearchParams(window.location.search);
@@ -119,9 +120,27 @@
                         this.roomId = urlParams.get('roomId');
                     }
                 },
-                setTheme(themeName) {
+                // Updated setTheme function signature and logic
+                setTheme(themeName, event = null, closeDropdown = true) {
                     document.documentElement.setAttribute('data-theme', themeName);
                     localStorage.setItem('theme', themeName);
+                    
+                    // If closeDropdown is true and an event is provided (meaning it's a user click)
+                    if (closeDropdown && event && event.target) {
+                        // Find the label that triggered the dropdown.
+                        // event.target is the clicked <a> tag.
+                        // .closest('.dropdown') finds the main dropdown container.
+                        // .querySelector('label[tabindex="0"]') finds the clickable label within that container.
+                        const dropdownTriggerLabel = event.target.closest('.dropdown')?.querySelector('label[tabindex="0"]');
+                        
+                        if (dropdownTriggerLabel) {
+                            dropdownTriggerLabel.blur(); // Blurring the label should close the dropdown.
+                        } else if (document.activeElement instanceof HTMLElement) {
+                            // Fallback: if the specific label isn't found for some reason,
+                            // try blurring the currently active element (which might be the <a> or <ul>).
+                            document.activeElement.blur();
+                        }
+                    }
                 },
                 validateInput() {
                     this.errors.adminName = '';
@@ -143,20 +162,53 @@
                         return;
                     }
 
-                    // TODO: Implement actual backend connection here.
+                    // Placeholder for backend connection
+                    // console.log(`Attempting to join room with Admin: ${this.adminName}, Room ID: ${this.roomId}`);
+                    // fetch('https://tambola-backend.onrender.com/admin/create-room', { // Example endpoint
+                    //     method: 'POST',
+                    //     headers: { 'Content-Type': 'application/json' },
+                    //     body: JSON.stringify({ adminName: this.adminName, roomId: this.roomId })
+                    // })
+                    // .then(response => {
+                    //     if (!response.ok) {
+                    //         // Try to parse error message from backend if available
+                    //         return response.json().then(err => { throw err; });
+                    //     }
+                    //     return response.json();
+                    // })
+                    // .then(data => {
+                    //     if (data.success) { // Assuming backend returns { success: true, ... } or similar
+                    //         this.messageType = 'success';
+                    //         this.message = data.message || `Successfully joined/created room ${this.roomId}. Redirecting...`;
+                    //         localStorage.setItem('adminName', this.adminName);
+                    //         localStorage.setItem('roomId', this.roomId);
+                    //         // Potentially save a token if your backend uses it
+                    //         // localStorage.setItem('adminToken', data.token); 
+                    //         setTimeout(() => {
+                    //             window.location.href = `admin_room.html?adminName=${encodeURIComponent(this.adminName)}&roomId=${encodeURIComponent(this.roomId)}`;
+                    //         }, 1500);
+                    //     } else {
+                    //         this.messageType = 'error';
+                    //         this.message = data.message || 'Failed to join or create room.';
+                    //     }
+                    // })
+                    // .catch(error => {
+                    //     console.error('Error joining room:', error);
+                    //     this.messageType = 'error';
+                    //     this.message = error.message || 'An error occurred. Please try again.';
+                    // });
+
                     // For now, we'll simulate a successful join and redirect.
                     console.log(`Admin: ${this.adminName}, Room ID: ${this.roomId}`);
                     
-                    // Simulate API call
                     this.messageType = 'success';
                     this.message = `Joining room ${this.roomId}...`;
 
-                    // Store adminName and roomId for the next page (using localStorage or query params)
+                    // Store adminName and roomId for the next page
                     localStorage.setItem('adminName', this.adminName);
                     localStorage.setItem('roomId', this.roomId);
 
                     // Redirect to admin_room.html
-                    // The timeout is to allow the message to be seen briefly
                     setTimeout(() => {
                         window.location.href = `admin_room.html?adminName=${encodeURIComponent(this.adminName)}&roomId=${encodeURIComponent(this.roomId)}`;
                     }, 1000); 
