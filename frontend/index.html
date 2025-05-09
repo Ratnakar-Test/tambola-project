@@ -1,6 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="fantasy">
-<head>
+<html lang="en" data-theme="fantasy"> <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tambola Game - Player</title>
@@ -9,45 +8,54 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            scroll-behavior: smooth;
+        }
+        /* Ticket Grid Styling */
         .ticket-grid {
             display: grid;
-            grid-template-columns: repeat(9, 1fr);
-            gap: 2px;
-            border: 1px solid #ccc;
+            grid-template-columns: repeat(9, minmax(0, 1fr));
+            gap: 2px; /* Reduced gap for tighter cells */
+            border: 1px solid hsl(var(--bc) / 0.2); /* Theme-aware border */
             margin-bottom: 1rem;
-            max-width: 500px;
+            max-width: 500px; /* Max width for readability */
             margin-left: auto;
             margin-right: auto;
+            background-color: hsl(var(--b1)); /* Theme base color */
+            border-radius: 0.5rem;
+            padding: 0.25rem; /* Small padding around grid */
         }
         .ticket-cell {
-            @apply border border-base-300 aspect-square flex justify-center items-center text-sm sm:text-base font-semibold;
-            min-height: 40px;
+            @apply border border-base-300 aspect-square flex justify-center items-center text-xs sm:text-sm font-semibold shadow-sm;
+            min-height: 36px; /* Slightly smaller cells */
         }
         .ticket-cell.number {
-            @apply bg-base-100 cursor-pointer;
-            transition: background-color 0.3s ease, transform 0.2s ease;
+            @apply bg-base-100 hover:bg-base-200 cursor-pointer;
+            transition: background-color 0.2s ease, transform 0.1s ease;
         }
         .ticket-cell.number.marked {
-            @apply bg-accent text-accent-content line-through scale-95;
+            @apply bg-accent text-accent-content line-through scale-95 shadow-inner;
         }
-        .ticket-cell.number.drawn-highlight { /* For newly drawn number on ticket */
-            @apply ring-2 ring-secondary ring-offset-2;
+        .ticket-cell.number.drawn-highlight { 
+            @apply ring-2 ring-secondary ring-offset-base-100 ring-offset-1;
         }
         .ticket-cell.blank {
-            @apply bg-base-200;
+            @apply bg-base-200/50; /* Lighter blank cells */
         }
+        /* Fixed Bottom Navigation */
         .floating-nav-container {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
-            z-index: 1000;
+            z-index: 1000; /* Ensure it's above other content */
         }
-        .tab-ticket.active {
-            @apply tab-active font-bold;
+        /* Active Tab Styling */
+        .tab-ticket.tab-active { /* DaisyUI uses tab-active */
+            @apply font-bold border-primary; /* Example active style */
         }
-        /* Toast notification styles */
+        /* Toast Notification Styling */
         .toast-container {
             position: fixed;
             top: 1rem;
@@ -58,7 +66,7 @@
             gap: 0.5rem;
         }
         .toast-message {
-            @apply alert shadow-lg text-sm;
+            @apply alert shadow-lg text-sm py-2 px-3; /* Compact toast */
             opacity: 0;
             transform: translateX(100%);
             transition: opacity 0.5s ease, transform 0.5s ease;
@@ -67,7 +75,16 @@
             opacity: 1;
             transform: translateX(0);
         }
-        main { padding-bottom: 80px; /* Space for floating nav */ }
+        /* Main content padding for bottom nav */
+        main { padding-bottom: 80px; } 
+        /* Card styling for sections */
+        .player-section { @apply card bg-base-100 shadow-xl mb-6 border border-base-300/50; }
+        .player-section .card-body { @apply p-4 sm:p-6; }
+        .player-section .card-title { @apply justify-center mb-4 border-b pb-2 border-base-300; }
+        /* Loading spinner initially hidden */
+        .loading-spinner { display: none; }
+        .btn.loading .loading-spinner { display: inline-block; }
+        .btn.loading > span:not(.loading-spinner) { display: none; } 
     </style>
 </head>
 <body class="bg-base-200 min-h-screen flex flex-col">
@@ -86,119 +103,167 @@
                 </div>
                 <div class="flex-1 px-2 mx-2 font-bold text-xl">Tambola Game <span id="roomDisplay" class="text-sm ml-2 badge badge-neutral hidden"></span></div>
                 <div class="flex-none hidden lg:block">
-                    <ul class="menu menu-horizontal">
+                    <ul class="menu menu-horizontal px-1 items-center">
                          <li><a href="#ticketSection" class="font-semibold">My Tickets</a></li>
                          <li><a href="#drawnNumbersSection" class="font-semibold">Game Board</a></li>
-                         <li><a href="/admin" class="font-semibold" target="_blank">Admin Panel</a></li>
+                         <li><a href="/admin" class="font-semibold tooltip tooltip-bottom" data-tip="Admin Panel (New Tab)" target="_blank">Admin Panel</a></li>
                     </ul>
                 </div>
             </div>
 
             <main class="container mx-auto p-4 flex-grow">
                 
-                <section id="joinGameSection" class="my-8 p-6 bg-base-100 rounded-box shadow-lg max-w-md mx-auto">
-                    <h2 class="text-2xl font-semibold mb-4 text-center">Join Tambola Game</h2>
-                    <div class="form-control mb-4">
-                        <label class="label" for="playerNameInput"><span class="label-text">Your Name</span></label>
-                        <input type="text" id="playerNameInput" placeholder="Enter your name" class="input input-bordered w-full" />
+                <section id="joinGameSection" class="my-8 player-section max-w-md mx-auto">
+                    <div class="card-body">
+                        <h2 class="card-title text-2xl">Join Tambola Game</h2>
+                        <div class="form-control mb-4">
+                            <label class="label" for="playerNameInput"><span class="label-text font-medium">Your Name</span></label>
+                            <input type="text" id="playerNameInput" placeholder="Enter your name" class="input input-bordered w-full focus:ring focus:ring-primary focus:ring-opacity-50" />
+                        </div>
+                        <div class="form-control mb-4">
+                            <label class="label" for="roomIdInputPlayer"><span class="label-text font-medium">Room ID</span></label>
+                            <input type="text" id="roomIdInputPlayer" placeholder="Enter Room ID from Admin" class="input input-bordered w-full focus:ring focus:ring-primary focus:ring-opacity-50" />
+                        </div>
+                        <button id="joinGameBtn" class="btn btn-primary btn-block" onclick="joinGame()">
+                            <span class="loading loading-spinner loading-sm hidden"></span>
+                            <span>Join Game</span>
+                        </button>
+                        <p id="joinErrorText" class="text-error text-sm mt-2 text-center"></p>
                     </div>
-                    <div class="form-control mb-4">
-                        <label class="label" for="roomIdInputPlayer"><span class="label-text">Room ID</span></label>
-                        <input type="text" id="roomIdInputPlayer" placeholder="Enter Room ID from Admin" class="input input-bordered w-full" />
-                    </div>
-                    <button id="joinGameBtn" class="btn btn-primary btn-block" onclick="joinGame()">Join Game</button>
-                    <p id="joinErrorText" class="text-error text-sm mt-2 text-center"></p>
                 </section>
 
                 <div id="gameAreaDisplay" class="hidden">
-                    <div class="text-center mb-2">
-                        <h1 class="text-3xl font-bold text-primary">Welcome, <span id="playerNameDisplay"></span>!</h1>
-                        <p id="ticketStatusText" class="text-sm text-info-content min-h-[20px]"></p>
+                    <div class="text-center mb-4">
+                        <h1 class="text-3xl font-bold text-primary">Welcome, <span id="playerNameDisplay" class="underline decoration-secondary decoration-2">Player</span>!</h1>
+                        <p id="ticketStatusText" class="text-sm text-info-content min-h-[20px] mt-1"></p>
                     </div>
 
-                    <section id="ticketSection" class="my-6">
-                        <div class="flex justify-between items-center mb-2">
-                            <h2 class="text-2xl font-semibold">Your Tickets</h2>
-                            <button id="addTicketBtn" class="btn btn-sm btn-secondary" onclick="requestAnotherTicket()">Request New Ticket</button>
-                        </div>
-                        <div id="ticketTabsContainer" role="tablist" class="tabs tabs-lifted tabs-sm sm:tabs-md">
+                    <section id="ticketSection" class="my-6 player-section">
+                        <div class="card-body">
+                            <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+                                <h2 class="card-title text-2xl">Your Tickets</h2>
+                                <button id="addTicketBtn" class="btn btn-sm btn-secondary btn-outline tooltip tooltip-left" data-tip="Request another ticket from Admin">
+                                    <span class="loading loading-spinner loading-xs hidden"></span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    <span>Add Ticket</span>
+                                </button>
                             </div>
-                        <div id="ticketGridsContainer" class="mt-1 p-2 sm:p-4 bg-base-100 rounded-box shadow-lg">
-                            <p id="noTicketsText" class="text-center italic p-4">You have no tickets yet. Request one!</p>
-                        </div>
-                         <div class="form-control w-fit mt-4">
-                            <label class="label cursor-pointer gap-2">
-                                <span class="label-text">Auto-Mark Numbers</span> 
-                                <input type="checkbox" id="autoMarkCheckbox" class="toggle toggle-primary" checked onchange="toggleAutoMark(this.checked)"/>
-                            </label>
+                            <div id="ticketTabsContainer" role="tablist" class="tabs tabs-lifted tabs-sm sm:tabs-md mb-1">
+                                </div>
+                            <div id="ticketGridsContainer" class="mt-1 p-2 sm:p-4 bg-base-200 rounded-box shadow-inner">
+                                <p id="noTicketsText" class="text-center italic p-4 text-base-content/70">You have no tickets yet. Request one or wait for admin approval.</p>
+                            </div>
+                             <div class="form-control w-fit mt-4 self-end">
+                                <label class="label cursor-pointer gap-2">
+                                    <span class="label-text font-medium">Auto-Mark Numbers</span> 
+                                    <input type="checkbox" id="autoMarkCheckbox" class="toggle toggle-primary" checked onchange="toggleAutoMark(this.checked)"/>
+                                </label>
+                            </div>
                         </div>
                     </section>
 
-                    <section id="drawnNumbersSection" class="my-8">
-                        <div id="latestNumberDisplay" class="text-center my-6 p-4 bg-base-100 rounded-box shadow max-w-xs mx-auto">
-                            <h2 class="text-lg font-semibold mb-1">Last Number Drawn:</h2>
-                            <p id="currentNumberPlayer" class="text-5xl font-bold text-secondary">-</p>
-                        </div>
-                        
-                        <div class="max-w-3xl mx-auto">
-                            <h3 class="text-xl font-semibold mb-2 text-center">All Drawn Numbers (<span id="drawnCountPlayer">0</span>/90):</h3>
-                            <div id="drawnNumbersListPlayer" class="p-4 bg-base-100 rounded-box shadow min-h-[50px] flex flex-wrap gap-2 justify-center items-center">
-                                 <span class="italic text-gray-500">Waiting for game to start...</span>
+                    <section id="drawnNumbersSection" class="my-8 player-section">
+                        <div class="card-body">
+                            <h2 class="card-title text-2xl">Game Board</h2>
+                            <div id="latestNumberDisplay" class="text-center my-6 p-4 bg-gradient-to-r from-primary to-secondary text-primary-content rounded-box shadow-lg max-w-xs mx-auto">
+                                <h3 class="text-lg font-semibold mb-1 opacity-90">Last Number Drawn:</h3>
+                                <p id="currentNumberPlayer" class="text-6xl font-bold tracking-wider">-</p>
+                            </div>
+                            
+                            <div class="max-w-3xl mx-auto">
+                                <h3 class="text-xl font-semibold mb-2 text-center">All Drawn Numbers (<span id="drawnCountPlayer">0</span>/90):</h3>
+                                <div id="drawnNumbersListPlayer" class="p-4 bg-base-200 rounded-box shadow-inner min-h-[60px] flex flex-wrap gap-2 justify-center items-center">
+                                     <span class="italic text-base-content/70">Waiting for game to start...</span>
+                                </div>
                             </div>
                         </div>
                     </section>
                     
-                    <section id="claimPrizeSection" class="my-8 p-4 bg-base-100 rounded-box shadow-lg">
-                        <h2 class="text-2xl font-semibold mb-4 text-center">Claim a Prize</h2>
-                        <div class="form-control w-full max-w-xs mx-auto">
-                            <label class="label"><span class="label-text">Select Prize:</span></label>
-                            <select id="prizeTypeSelect" class="select select-bordered w-full">
-                                </select>
-                            <button id="submitClaimBtn" class="btn btn-accent mt-4 w-full" onclick="submitClaim()">Claim Selected Prize</button>
-                        </div>
-                        <div id="claimStatusMessage" class="mt-4 text-center font-medium"></div>
-                    </section>
-
-                    <section id="myClaimsListSection" class="my-8 p-4 bg-base-100 rounded-box shadow-lg">
-                        <h2 class="text-2xl font-semibold mb-4 text-center">My Claims History</h2>
-                        <div id="myClaimsList" class="max-h-60 overflow-y-auto">
-                            <p class="italic text-gray-500 p-2">You haven't made any claims yet.</p>
+                    <section id="claimPrizeSection" class="my-8 player-section">
+                        <div class="card-body">
+                            <h2 class="card-title text-2xl">Claim a Prize</h2>
+                            <div class="form-control w-full max-w-xs mx-auto">
+                                <label class="label"><span class="label-text font-medium">Select Prize:</span></label>
+                                <select id="prizeTypeSelect" class="select select-bordered w-full focus:ring focus:ring-accent focus:ring-opacity-50">
+                                    </select>
+                                <button id="submitClaimBtn" class="btn btn-accent mt-4 w-full" onclick="submitClaim()">
+                                    <span class="loading loading-spinner loading-sm hidden"></span>
+                                    <span>Claim Selected Prize</span>
+                                </button>
+                            </div>
+                            <div id="claimStatusMessage" class="mt-4 text-center font-medium min-h-[24px]"></div>
                         </div>
                     </section>
 
-                    <div id="gameStatusPlayer" class="text-center my-4 text-lg font-medium">
-                        Status: <span id="statusTextPlayer">Not Started</span>
+                    <section id="myClaimsListSection" class="my-8 player-section">
+                         <div class="card-body">
+                            <h2 class="card-title text-2xl">My Claims History</h2>
+                            <div id="myClaimsList" class="max-h-60 overflow-y-auto">
+                                <p class="italic text-base-content/70 p-2">You haven't made any claims yet.</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="text-center my-4 text-lg font-medium stats shadow bg-base-200 stats-vertical sm:stats-horizontal">
+                         <div class="stat">
+                            <div class="stat-title">Game Status</div>
+                            <div id="statusTextPlayer" class="stat-value text-base-content/90">Not Started</div>
+                        </div>
                     </div>
-                    <div id="gameOverMessagePlayer" class="text-center my-4 text-2xl font-bold text-error hidden">GAME OVER!</div>
-                </div>
-            </main>
+                    <div id="gameOverMessagePlayer" class="alert alert-info shadow-lg hidden justify-center my-4">
+                         <div>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span class="font-bold text-xl">GAME OVER! Hope you enjoyed.</span>
+                        </div>
+                    </div>
+                </div> </main>
         </div> 
         
         <div class="drawer-side z-[60]">
             <label for="player-drawer" aria-label="close sidebar" class="drawer-overlay"></label> 
-            <ul class="menu p-4 w-80 min-h-full bg-base-200">
-                <li class="menu-title">Game Menu</li>
-                <li><a href="#ticketSection" onclick="closeDrawerAndScroll('#ticketSection')">My Tickets</a></li>
-                <li><a href="#drawnNumbersSection" onclick="closeDrawerAndScroll('#drawnNumbersSection')">Game Board</a></li>
-                <li><a href="#claimPrizeSection" onclick="closeDrawerAndScroll('#claimPrizeSection')">Claim Prize</a></li>
-                <li><a href="#myClaimsListSection" onclick="closeDrawerAndScroll('#myClaimsListSection')">My Claims</a></li>
+            <ul class="menu p-4 w-80 min-h-full bg-base-200 text-base-content">
+                <li class="menu-title"><span>Game Menu</span></li>
+                <li><a href="#ticketSection" onclick="closeDrawerAndScroll('#ticketSection')">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 00-2-2H5z"></path></svg>
+                    My Tickets
+                </a></li>
+                <li><a href="#drawnNumbersSection" onclick="closeDrawerAndScroll('#drawnNumbersSection')">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    Game Board
+                </a></li>
+                <li><a href="#claimPrizeSection" onclick="closeDrawerAndScroll('#claimPrizeSection')">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Claim Prize
+                </a></li>
+                <li><a href="#myClaimsListSection" onclick="closeDrawerAndScroll('#myClaimsListSection')">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                    My Claims
+                </a></li>
                 <li class="mt-auto"><div class="divider"></div></li>
-                <li><a href="/admin" target="_blank">Admin Panel</a></li>
-                 <li><a onclick="closeDrawer()">Close Menu</a></li>
+                <li><a href="/admin" target="_blank">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    Admin Panel
+                </a></li>
+                 <li><a onclick="closeDrawer()">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    Close Menu
+                </a></li>
             </ul>
         </div>
     </div>
 
     <div class="floating-nav-container btm-nav lg:hidden">
-        <button id="floatTicketNav" class="text-primary" onclick="closeDrawerAndScroll('#ticketSection')">
+        <button id="floatTicketNav" class="text-primary tooltip tooltip-top" data-tip="My Tickets" onclick="closeDrawerAndScroll('#ticketSection')">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 00-2-2H5z"></path></svg>
             <span class="btm-nav-label">Tickets</span>
         </button>
-        <button id="floatBoardNav" onclick="closeDrawerAndScroll('#drawnNumbersSection')">
+        <button id="floatBoardNav" class="tooltip tooltip-top" data-tip="Game Board" onclick="closeDrawerAndScroll('#drawnNumbersSection')">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             <span class="btm-nav-label">Board</span>
         </button>
-        <button id="floatClaimNav" onclick="closeDrawerAndScroll('#claimPrizeSection')">
+        <button id="floatClaimNav" class="tooltip tooltip-top" data-tip="Claim Prize" onclick="closeDrawerAndScroll('#claimPrizeSection')">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             <span class="btm-nav-label">Claim</span>
         </button>
@@ -284,11 +349,10 @@
             if (currentRoomId) {
                 roomIdInputPlayer.value = currentRoomId;
             }
-
+            // If all details are present from a previous session, attempt to rejoin automatically.
+            // This can be removed if auto-rejoin is not desired.
             // if (currentPlayerId && currentRoomId && currentPlayerName) {
-            //     playerNameInput.value = currentPlayerName;
-            //     roomIdInputPlayer.value = currentRoomId;
-            //     // joinGame(true); // <-- THIS LINE CAUSED AUTO-JOIN, NOW COMMENTED OUT
+            //    joinGame(true); 
             // }
         };
         
@@ -306,11 +370,11 @@
             setTimeout(() => toast.classList.add('show'), 10);
             setTimeout(() => {
                 toast.classList.remove('show');
-                setTimeout(() => toast.remove(), 5000);
+                setTimeout(() => toast.remove(), 5000); // Increased duration for visibility
             }, 5000);
         }
 
-        async function joinGame(isRejoin = false) { // isRejoin flag is now less critical here but kept for consistency
+        async function joinGame(isRejoinAttempt = false) { 
             if (isJoining) return; 
             isJoining = true;
             joinGameBtn.disabled = true; 
@@ -335,9 +399,9 @@
                 return;
             }
 
-            // If it's not a programmatic rejoin attempt, ensure we use the latest localStorage or generate new ID
-            const playerIdToSend = isRejoin ? currentPlayerId : (localStorage.getItem('tambolaPlayerId') || null);
-
+            // Use existing player ID from localStorage if this is a rejoin attempt,
+            // otherwise, let the backend generate one or use null.
+            const playerIdToSend = isRejoinAttempt ? currentPlayerId : null;
 
             try {
                 const response = await fetch(`${API_BASE_URL}/api/player/join-game`, { 
@@ -361,7 +425,7 @@
                         errorMsg = `Failed to join. Server status: ${response.status}. Response: ${textError.substring(0,100)}...`;
                     }
                     joinErrorText.textContent = errorMsg;
-                    // Don't clear localStorage here, let user retry or change inputs
+                    // Don't clear localStorage here for a failed rejoin, user might want to try again with same details
                     return; 
                 }
 
@@ -403,7 +467,16 @@
         }
 
         async function fetchPlayerFullState() {
-            if (!currentPlayerId || !currentRoomId) return;
+            if (!currentPlayerId || !currentRoomId) {
+                // If we lose critical IDs, stop polling and potentially reset UI
+                if (pollingIntervalId) {
+                    console.log("Stopping polling: Missing Player ID or Room ID.");
+                    clearInterval(pollingIntervalId);
+                    pollingIntervalId = null;
+                    // Consider calling logoutAndResetUI() if this state is unexpected
+                }
+                return;
+            }
             try {
                 const response = await fetch(`${API_BASE_URL}/api/player/state?playerId=${currentPlayerId}&roomId=${currentRoomId}`); 
                 if (!response.ok) {
@@ -431,7 +504,7 @@
             
             // Clear only playerId, keep name and room in inputs for potential re-attempt
             localStorage.removeItem('tambolaPlayerId'); 
-            // currentPlayerId = null; // This will be handled by the next load or join attempt
+            currentPlayerId = null; // This is important to signify logged-out state
 
             // Reset UI to join screen
             joinGameSection.classList.remove('hidden');
