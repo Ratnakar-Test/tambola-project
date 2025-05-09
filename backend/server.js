@@ -10,7 +10,8 @@ const PORT = process.env.PORT || 3000; // Render will set PORT environment varia
 
 // --- CORS Configuration ---
 const allowedOrigins = [
-    'https://mytambola.netlify.app', // Your Netlify frontend URL
+    'https://mytambola.netlify.app', // Your main Netlify frontend URL
+    'https://3kzbl6hqlkkh8t7s5097ut5oaydnlllm9655d6162p5vx5d14z-h752753355.scf.usercontent.goog', // The new origin from the error log
     'http://localhost:3000',        // For local frontend development (if needed)
     'http://127.0.0.1:5500',       // For VS Code Live Server (if needed)
     // Add any other origins if necessary (e.g., custom domains)
@@ -50,10 +51,10 @@ function getRoomState(roomId) {
             availableNumbers: [...Array.from({ length: 90 }, (_, i) => i + 1)],
             gameMode: 'manual',
             gameConfig: { rules: {} },
-            prizesClaimed: {}, // Tracks counts per prize type (can be enhanced)
-            winners: {}, // Stores final approved winners: { prizeType: [{playerId, ticketId, playerName}]}
-            players: new Map(), // Key: playerId, Value: { id, name, tickets: [ticketId1, ticketId2], claims: [claimObj1]}
-            ticketRequests: [], // { requestId, playerId, playerName, roomId, timestamp, approved, ticketId }
+            prizesClaimed: {}, 
+            winners: {}, 
+            players: new Map(), 
+            ticketRequests: [], 
         });
         console.log(`Initialized new room state for: ${roomId}`);
     }
@@ -68,15 +69,11 @@ function resetRoomState(roomId) {
         room.currentNumber = null;
         room.drawnNumbers = [];
         room.availableNumbers = [...room.allNumbers];
-        // Keep gameMode and gameConfig unless explicitly reset by admin
         room.prizesClaimed = {};
         room.winners = {};
-        // Reset player claims for the new game, but keep players and their tickets
         room.players.forEach(player => {
             player.claims = []; 
         });
-        // Clear pending ticket requests for this room
-        room.ticketRequests = room.ticketRequests.filter(req => req.roomId !== roomId || req.approved); 
         console.log(`Game state soft-reset for room: ${roomId}`);
     } else {
         console.warn(`Attempted to reset non-existent room: ${roomId}`);
@@ -94,15 +91,11 @@ function fullResetServerState() {
 }
 
 function generateId() {
-    // Simple ID generator
     return Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
 }
 
 // --- Middleware ---
-app.use(express.json()); // Parse JSON bodies
-
-// Static file serving - Keep for local testing, but not essential for Render API deployment
-// If you access the backend URL directly, it might serve these.
+app.use(express.json()); 
 app.use(express.static(path.join(__dirname, '../frontend'))); 
 
 // --- HTML Serving (for local testing) ---
@@ -118,6 +111,7 @@ app.get('/admin', (req, res) => {
 // POST /api/player/join-game
 app.post('/api/player/join-game', (req, res) => {
     console.log(`--- SERVER HIT: POST /api/player/join-game ---`);
+    console.log("Request Origin:", req.get('origin')); // Log the origin for debugging CORS
     console.log("Request Body:", req.body);
 
     const { playerName, roomId, playerId: existingPlayerId } = req.body;
@@ -132,10 +126,7 @@ app.post('/api/player/join-game', (req, res) => {
     let playerId = existingPlayerId;
     let player = existingPlayerId ? room.players.get(existingPlayerId) : null;
 
-    // Validate or generate player ID
     if (player && player.name.toLowerCase() !== playerName.toLowerCase()) {
-        // If ID exists but name doesn't match, treat as potential issue or new player?
-        // For simplicity, let's allow name update on rejoin with same ID.
         player.name = playerName;
         console.log(`Player ${playerName} (ID: ${playerId}) re-joined room ${roomId} (name updated).`);
     } else if (!player) { 
@@ -152,7 +143,6 @@ app.post('/api/player/join-game', (req, res) => {
          console.log(`Player ${playerName} (ID: ${playerId}) re-joined room ${roomId}.`);
     }
     
-    // Prepare initial state for the player
     const playerSpecificState = {
         roomId: room.roomId,
         drawnNumbers: room.drawnNumbers,
@@ -161,9 +151,9 @@ app.post('/api/player/join-game', (req, res) => {
         gameOver: room.gameOver,
         winningRules: room.gameConfig.rules,
         winners: room.winners,
-        playerTickets: player.tickets.map(ticketId => ticketStore.getTicketById(ticketId)).filter(t => t), // Send full ticket details
+        playerTickets: player.tickets.map(ticketId => ticketStore.getTicketById(ticketId)).filter(t => t),
         myClaims: player.claims,
-        playerId: player.id, // Send back the confirmed/generated player ID
+        playerId: player.id, 
         playerName: player.name
     };
 
@@ -178,6 +168,7 @@ app.post('/api/player/join-game', (req, res) => {
 // GET /api/player/state 
 app.get('/api/player/state', (req, res) => {
     const { playerId, roomId } = req.query;
+    console.log(`--- SERVER HIT: GET /api/player/state --- Origin: ${req.get('origin')}, Query:`, req.query);
     if (!playerId || !roomId) {
         return res.status(400).json({ message: "Player ID and Room ID are required." });
     }
@@ -189,11 +180,9 @@ app.get('/api/player/state', (req, res) => {
 
     const player = room.players.get(playerId);
     if (!player) {
-        // Player might be polling with old ID after server reset or trying to access wrong room
         return res.status(401).json({ message: "Player not found in this room. Please rejoin." });
     }
 
-    // Return the current state relevant to the player
     res.json({
         roomId: room.roomId,
         drawnNumbers: room.drawnNumbers,
@@ -202,24 +191,23 @@ app.get('/api/player/state', (req, res) => {
         gameOver: room.gameOver,
         winningRules: room.gameConfig.rules,
         winners: room.winners,
-        playerTickets: player.tickets.map(ticketId => ticketStore.getTicketById(ticketId)).filter(t => t), // Fetch details for current tickets
-        myClaims: player.claims, // Send player's claim history
+        playerTickets: player.tickets.map(ticketId => ticketStore.getTicketById(ticketId)).filter(t => t),
+        myClaims: player.claims,
     });
 });
 
 // GET /api/admin/state
 app.get('/api/admin/state', (req, res) => {
     const adminViewingRoomId = req.query.roomId; 
+    console.log(`--- SERVER HIT: GET /api/admin/state --- Origin: ${req.get('origin')}, Query:`, req.query);
     let roomToReport = null;
 
     if (adminViewingRoomId && gameState.activeRooms.has(adminViewingRoomId)) {
         roomToReport = getRoomState(adminViewingRoomId);
     } else if (gameState.activeRooms.size > 0 && !adminViewingRoomId) {
-        // If admin client doesn't specify, maybe default to first room or require selection
         if (gameState.activeRooms.size === 1) {
              roomToReport = gameState.activeRooms.values().next().value;
         } else {
-             // In a multi-room scenario, admin *must* specify the room
              return res.json({ 
                 message: "Please connect to a specific room in the admin panel to see its state.", 
                 gameStarted: false, drawnNumbers: [], players: [], ticketRequests: [], claims: [], winners: {},
@@ -228,7 +216,6 @@ app.get('/api/admin/state', (req, res) => {
         }
     }
 
-    // If no room context could be determined
     if (!roomToReport) {
         return res.json({ 
             message: "No active game room found or specified.", 
@@ -237,12 +224,10 @@ app.get('/api/admin/state', (req, res) => {
         });
     }
     
-    // Aggregate pending claims from all players in this room for admin view
     let aggregatedClaims = [];
     roomToReport.players.forEach(p => {
         (p.claims || []).forEach(c => { 
             if (c.status === 'pending') { 
-                // Include necessary info for admin display
                 aggregatedClaims.push({ 
                     claimId: c.claimId, 
                     prizeType: c.prizeType,
@@ -254,7 +239,6 @@ app.get('/api/admin/state', (req, res) => {
         });
     });
 
-    // Return state for the specific room admin is viewing
     res.json({
         roomId: roomToReport.roomId,
         drawnNumbers: roomToReport.drawnNumbers,
@@ -265,16 +249,16 @@ app.get('/api/admin/state', (req, res) => {
         gameMode: roomToReport.gameMode,
         gameConfig: roomToReport.gameConfig,
         winners: roomToReport.winners,
-        players: Array.from(roomToReport.players.values()).map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length })), // Summary for admin list
-        ticketRequests: roomToReport.ticketRequests.filter(req => !req.approved), // Pending requests for this room
-        claims: aggregatedClaims, // Pending claims for this room
+        players: Array.from(roomToReport.players.values()).map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length })),
+        ticketRequests: roomToReport.ticketRequests.filter(req => !req.approved && req.roomId === roomToReport.roomId), // Filter by room
+        claims: aggregatedClaims, 
     });
 });
 
 
 // POST /api/admin/start-game
 app.post('/api/admin/start-game', (req, res) => {
-    console.log(`--- SERVER HIT: POST /api/admin/start-game --- Body:`, req.body);
+    console.log(`--- SERVER HIT: POST /api/admin/start-game --- Origin: ${req.get('origin')}, Body:`, req.body);
     const { roomId, rules, mode } = req.body;
 
     if (!roomId) return res.status(400).json({ message: "Room ID is required to start a game." });
@@ -285,14 +269,12 @@ app.post('/api/admin/start-game', (req, res) => {
         return res.status(400).json({ message: "Game already in progress in this room." });
     }
     
-    // Reset state for a new game within the room
     resetRoomState(roomId); 
 
-    // Set new game parameters
     room.gameStarted = true;
     room.gameOver = false;
     room.gameMode = mode || 'manual';
-    room.gameConfig.rules = rules || {}; // Set the rules for this game instance
+    room.gameConfig.rules = rules || {};
 
     console.log(`Game started by admin. Room: ${room.roomId}, Mode: ${room.gameMode}, Rules:`, room.gameConfig.rules);
     res.json({ message: "Game started successfully.", roomId: room.roomId, gameStarted: room.gameStarted });
@@ -300,7 +282,7 @@ app.post('/api/admin/start-game', (req, res) => {
 
 // POST /api/admin/draw-number
 app.post('/api/admin/draw-number', (req, res) => {
-    console.log(`--- SERVER HIT: POST /api/admin/draw-number --- Body:`, req.body);
+    console.log(`--- SERVER HIT: POST /api/admin/draw-number --- Origin: ${req.get('origin')}, Body:`, req.body);
     const { roomId } = req.body; 
     let room;
     if (roomId && gameState.activeRooms.has(roomId)) {
@@ -325,10 +307,9 @@ app.post('/api/admin/draw-number', (req, res) => {
     const randomIndex = Math.floor(Math.random() * room.availableNumbers.length);
     room.currentNumber = room.availableNumbers.splice(randomIndex, 1)[0];
     room.drawnNumbers.push(room.currentNumber);
-    room.drawnNumbers.sort((a, b) => a - b); // Keep drawn numbers sorted
+    room.drawnNumbers.sort((a, b) => a - b); 
 
     console.log(`Admin drew number: ${room.currentNumber} for room ${room.roomId}. Numbers left: ${room.availableNumbers.length}`);
-    // Return the updated state parts needed by admin UI
     res.json({
         currentNumber: room.currentNumber,
         drawnNumbers: room.drawnNumbers,
@@ -338,7 +319,7 @@ app.post('/api/admin/draw-number', (req, res) => {
 
 // POST /api/admin/stop-game
 app.post('/api/admin/stop-game', (req, res) => {
-    console.log(`--- SERVER HIT: POST /api/admin/stop-game --- Body:`, req.body);
+    console.log(`--- SERVER HIT: POST /api/admin/stop-game --- Origin: ${req.get('origin')}, Body:`, req.body);
     const { roomId } = req.body; 
     let room;
      if (roomId && gameState.activeRooms.has(roomId)) {
@@ -350,15 +331,15 @@ app.post('/api/admin/stop-game', (req, res) => {
     if (!room.gameStarted) {
         return res.status(400).json({ message: "Game not started, cannot stop." });
     }
-    room.gameOver = true; // Mark the game as over
+    room.gameOver = true; 
     console.log(`Game stopped by admin in room ${room.roomId}.`);
     res.json({ message: "Game stopped successfully." });
 });
 
-// POST /api/admin/reset-game - Resets the ENTIRE SERVER state
+// POST /api/admin/reset-game
 app.post('/api/admin/reset-game', (req, res) => {
-    console.log(`--- SERVER HIT: POST /api/admin/reset-game ---`);
-    fullResetServerState(); // This clears all rooms and tickets
+    console.log(`--- SERVER HIT: POST /api/admin/reset-game --- Origin: ${req.get('origin')}`);
+    fullResetServerState(); 
     console.log("Full game server state reset by admin.");
     res.json({ message: "Tambola server has been completely reset." });
 });
@@ -366,7 +347,7 @@ app.post('/api/admin/reset-game', (req, res) => {
 
 // POST /api/player/request-ticket
 app.post('/api/player/request-ticket', (req, res) => {
-    console.log(`--- SERVER HIT: POST /api/player/request-ticket --- Body:`, req.body);
+    console.log(`--- SERVER HIT: POST /api/player/request-ticket --- Origin: ${req.get('origin')}, Body:`, req.body);
     const { playerId, playerName, roomId } = req.body; 
     if (!playerId || !roomId || !playerName) {
         return res.status(400).json({ message: "Player ID, Player Name, and Room ID are required." });
@@ -379,7 +360,6 @@ app.post('/api/player/request-ticket', (req, res) => {
         return res.status(404).json({ message: "Player not found in this room. Please rejoin." });
     }
     
-    // Check ticket limits specific to this room
     const existingTicketCount = player.tickets.length;
     const pendingRequestsForPlayer = room.ticketRequests.filter(r => r.playerId === playerId && r.roomId === roomId && !r.approved).length;
 
@@ -390,24 +370,23 @@ app.post('/api/player/request-ticket', (req, res) => {
     const newRequest = {
         requestId: generateId(),
         playerId: playerId,
-        playerName: player.name, // Use name from player object
+        playerName: player.name, 
         roomId: roomId,
         timestamp: Date.now(),
         approved: false
     };
-    room.ticketRequests.push(newRequest); // Add request to the specific room's list
+    room.ticketRequests.push(newRequest); 
     console.log(`Ticket request from ${player.name} (ID: ${playerId}) for room ${roomId}. Request ID: ${newRequest.requestId}`);
     res.status(201).json({ message: "Ticket requested successfully. Waiting for admin approval.", requestId: newRequest.requestId });
 });
 
 // POST /api/admin/approve-ticket
 app.post('/api/admin/approve-ticket', (req, res) => {
-    console.log(`--- SERVER HIT: POST /api/admin/approve-ticket --- Body:`, req.body);
+    console.log(`--- SERVER HIT: POST /api/admin/approve-ticket --- Origin: ${req.get('origin')}, Body:`, req.body);
     const { requestId, roomId } = req.body; 
     if (!roomId) return res.status(400).json({message: "Room ID is required to approve a ticket."});
     
     const room = getRoomState(roomId);
-    // Find the request within the specific room's list
     const requestIndex = room.ticketRequests.findIndex(r => r.requestId === requestId && r.roomId === roomId && !r.approved);
 
     if (requestIndex === -1) {
@@ -417,8 +396,7 @@ app.post('/api/admin/approve-ticket', (req, res) => {
     const player = room.players.get(request.playerId);
 
     if (!player) { 
-        // Should not happen if request is valid, but good safeguard
-        request.approved = false; // Ensure it remains unapproved
+        request.approved = false; 
         return res.status(404).json({ message: "Player associated with request not found." });
     }
     if (player.tickets.length >= 5) {
@@ -430,12 +408,11 @@ app.post('/api/admin/approve-ticket', (req, res) => {
         if (!newTicket || newTicket.id === "ERROR_TICKET") {
             throw new Error("Ticket generation in store failed.");
         }
-        player.tickets.push(newTicket.id); // Store only ticket ID with player
+        player.tickets.push(newTicket.id); 
         request.approved = true;
-        request.ticketId = newTicket.id; // Record which ticket was assigned
+        request.ticketId = newTicket.id; 
 
         console.log(`Ticket ${newTicket.id} approved for ${request.playerName} in room ${room.roomId}`);
-        // Respond simply, the player's next poll will get the updated ticket list
         res.json({ message: `Ticket approved for ${request.playerName}.`});
     } catch (error) {
         console.error("Error generating or assigning ticket during approval:", error);
@@ -446,7 +423,7 @@ app.post('/api/admin/approve-ticket', (req, res) => {
 
 // POST /api/player/claim-prize
 app.post('/api/player/claim-prize', (req, res) => {
-    console.log(`--- SERVER HIT: POST /api/player/claim-prize --- Body:`, req.body);
+    console.log(`--- SERVER HIT: POST /api/player/claim-prize --- Origin: ${req.get('origin')}, Body:`, req.body);
     const { playerId, ticketId, prizeType, playerNumbers, roomId } = req.body;
 
     if (!playerId || !ticketId || !prizeType || !playerNumbers || !roomId) {
@@ -465,7 +442,6 @@ app.post('/api/player/claim-prize', (req, res) => {
 
     const ticket = ticketStore.getTicketById(ticketId); 
     if (!ticket) {
-        // Ticket might have been cleared if server restarted, handle gracefully
         return res.status(404).json({ message: "Ticket details not found (may have expired)." });
     }
 
@@ -474,13 +450,11 @@ app.post('/api/player/claim-prize', (req, res) => {
         return res.status(400).json({ message: `Prize type '${prizeType}' is not active.` });
     }
     
-    // Check if max winners already reached for this prize in this room
     const currentWinnersForPrize = room.winners[prizeType] ? room.winners[prizeType].length : 0;
     if (currentWinnersForPrize >= activeRule.maxWinners) {
          return res.status(400).json({ message: `Prize '${prizeType}' already has max ${activeRule.maxWinners} winner(s).` });
     }
     
-    // Check if player already submitted/won this prize with this ticket
     const existingClaim = player.claims.find(c => c.ticketId === ticketId && c.prizeType === prizeType && (c.status === 'pending' || c.status === 'accepted'));
     if(existingClaim) {
         return res.status(400).json({ message: `You've already claimed or won '${prizeType}' with this ticket.` });
@@ -488,32 +462,27 @@ app.post('/api/player/claim-prize', (req, res) => {
 
     // --- Server-Side Validation ---
     const drawnNumbersSet = new Set(room.drawnNumbers);
-    // Ensure playerNumbers is an array before creating Set
     const claimedNumbersSet = new Set(Array.isArray(playerNumbers) ? playerNumbers.map(n => parseInt(n)) : []); 
 
-    // 1. Check if all claimed numbers are actually drawn
     for (const num of claimedNumbersSet) {
         if (!drawnNumbersSet.has(num)) {
             return res.status(400).json({ message: `Invalid claim: Number ${num} not drawn.`});
         }
     }
-    // 2. Check if all claimed numbers are on the player's ticket
     for (const num of claimedNumbersSet) {
          if (!ticket.numbers.includes(num)) { 
             return res.status(400).json({ message: `Invalid claim: Number ${num} not on your ticket.`});
         }
     }
     
-    // 3. Check specific prize conditions (add more robust checks!)
     let prizeConditionMet = false;
     if (prizeType === 'fullHouse') {
-        // All numbers on the ticket must be in the claimed set (and thus drawn)
         if (ticket.numbers.every(n => claimedNumbersSet.has(n)) && claimedNumbersSet.size === ticket.numbers.length) {
             prizeConditionMet = true;
         }
     } else if (prizeType === 'firstLine') {
         const lineNumbers = ticket.rows[0].filter(n => n !== null);
-        if (lineNumbers.every(n => claimedNumbersSet.has(n)) && claimedNumbersSet.size >= lineNumbers.length) { // Allow claiming if more numbers marked, but check line completion
+        if (lineNumbers.every(n => claimedNumbersSet.has(n)) && claimedNumbersSet.size >= lineNumbers.length) { 
              prizeConditionMet = true;
         }
     } else if (prizeType === 'secondLine') {
@@ -527,43 +496,36 @@ app.post('/api/player/claim-prize', (req, res) => {
              prizeConditionMet = true;
         }
     } else if (prizeType === 'earlyFive') {
-        // Check if at least 5 claimed numbers are present
         if (claimedNumbersSet.size >= 5) {
-             // More complex: verify these were among the first 5 *drawn* numbers on the ticket.
-             // Requires tracking when numbers were drawn relative to ticket. Simplified for now.
              prizeConditionMet = true; 
         }
     } else if (prizeType === 'corners') {
         const r0 = ticket.rows[0];
         const r2 = ticket.rows[2];
         const corners = [
-            r0.find(n => n !== null), // First non-null in row 0
-            r0.slice().reverse().find(n => n !== null), // Last non-null in row 0
-            r2.find(n => n !== null), // First non-null in row 2
-            r2.slice().reverse().find(n => n !== null) // Last non-null in row 2
-        ].filter(n => n !== null && n !== undefined); // Filter out undefined/null
+            r0.find(n => n !== null), 
+            r0.slice().reverse().find(n => n !== null), 
+            r2.find(n => n !== null), 
+            r2.slice().reverse().find(n => n !== null) 
+        ].filter(n => n !== null && n !== undefined); 
         const uniqueCorners = [...new Set(corners)];
-        // Expect 4 unique corners, all must be claimed
         if (uniqueCorners.length === 4 && uniqueCorners.every(n => claimedNumbersSet.has(n))) {
             prizeConditionMet = true;
         }
     }
-    // Add more prize rules here...
 
     if (!prizeConditionMet) {
          return res.status(400).json({ message: `Claim conditions for ${prizeType} not met based on marked numbers.` });
     }
     // --- End Server-Side Validation ---
 
-
-    // If validation passes, add claim to player's list
     const newClaim = {
         claimId: generateId(),
         ticketId,
         prizeType,
-        playerNumbers: Array.from(claimedNumbersSet), // Store validated claimed numbers
+        playerNumbers: Array.from(claimedNumbersSet), 
         timestamp: Date.now(),
-        status: 'pending' // Status is pending until admin action
+        status: 'pending' 
     };
     player.claims.push(newClaim);
 
@@ -573,7 +535,7 @@ app.post('/api/player/claim-prize', (req, res) => {
 
 // POST /api/admin/process-claim
 app.post('/api/admin/process-claim', (req, res) => {
-    console.log(`--- SERVER HIT: POST /api/admin/process-claim --- Body:`, req.body);
+    console.log(`--- SERVER HIT: POST /api/admin/process-claim --- Origin: ${req.get('origin')}, Body:`, req.body);
     const { claimId, action, roomId } = req.body; 
     
     if (!roomId) return res.status(400).json({message: "Room ID is required to process a claim."});
@@ -582,13 +544,12 @@ app.post('/api/admin/process-claim', (req, res) => {
     let claimToProcess = null;
     let playerOfClaim = null;
 
-    // Find the claim within the specific room's players
     for (const player of room.players.values()) {
         const foundClaim = (player.claims || []).find(c => c.claimId === claimId && c.status === 'pending');
         if (foundClaim) {
             claimToProcess = foundClaim;
             playerOfClaim = player;
-            break; // Found the claim, stop searching
+            break; 
         }
     }
 
@@ -598,7 +559,6 @@ app.post('/api/admin/process-claim', (req, res) => {
 
     if (action === 'accept') {
         const activeRule = room.gameConfig.rules[claimToProcess.prizeType];
-        // Re-check rule status and winner count at the time of acceptance
         if (!activeRule || !activeRule.enabled) {
              claimToProcess.status = 'rejected';
              claimToProcess.reason = 'Prize type no longer active.';
@@ -615,8 +575,6 @@ app.post('/api/admin/process-claim', (req, res) => {
             return res.status(400).json({ message: `Cannot accept: Prize '${claimToProcess.prizeType}' has max ${activeRule.maxWinners} winner(s).` });
         }
         
-        // Optional: Perform final rigorous validation here again if desired.
-
         claimToProcess.status = 'accepted';
         room.winners[claimToProcess.prizeType].push({ 
             playerId: playerOfClaim.id, 
@@ -630,7 +588,7 @@ app.post('/api/admin/process-claim', (req, res) => {
 
     } else if (action === 'reject') {
         claimToProcess.status = 'rejected';
-        claimToProcess.reason = req.body.reason || 'Rejected by admin.'; // Optional: Admin could provide a reason
+        claimToProcess.reason = req.body.reason || 'Rejected by admin.'; 
         console.log(`Claim ${claimId} (${claimToProcess.prizeType} by ${playerOfClaim.name}) rejected in room ${roomId}. Reason: ${claimToProcess.reason}`);
         res.json({ message: `Claim rejected.` });
     } else {
@@ -640,7 +598,7 @@ app.post('/api/admin/process-claim', (req, res) => {
 
 
 // --- Server Listen ---
-app.listen(PORT, '0.0.0.0', () => { // Listen on 0.0.0.0 for Render/Docker compatibility
+app.listen(PORT, '0.0.0.0', () => { 
     console.log(`Tambola server running on port ${PORT}`);
     console.log(`Accepting requests from origins: ${allowedOrigins.join(', ')}`);
 });
