@@ -3,18 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tambola Admin - Join</title>
+    <title>Tambola Admin - Game Room</title>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@latest/dist/full.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+
     <style>
         body {
-            font-family: 'Inter', sans-serif; /* Default font */
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
         }
-        /* Custom scrollbar for better aesthetics */
+        .flex-grow {
+            flex-grow: 1;
+        }
+        /* Custom scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
+            height: 8px;
         }
         ::-webkit-scrollbar-track {
             background: #f1f1f1;
@@ -26,200 +35,788 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+        /* Ensure drawer content is scrollable if it overflows */
+        .drawer-side > *:not(label) {
+            overflow-y: auto;
+        }
+        /* Styling for the number grid */
+        .number-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            gap: 0.5rem;
+            max-width: 800px; /* Adjust as needed */
+            margin: auto;
+        }
+        .number-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            aspect-ratio: 1 / 1;
+            border-radius: 0.375rem; /* rounded-md */
+            font-weight: bold;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .number-cell.called {
+            background-color: oklch(var(--p)); /* DaisyUI primary color */
+            color: oklch(var(--pc)); /* DaisyUI primary-content color */
+            transform: scale(1.1);
+            box-shadow: 0 0 10px oklch(var(--p));
+        }
+        .number-cell.latest {
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1.1); box-shadow: 0 0 10px oklch(var(--p)); }
+            50% { transform: scale(1.2); box-shadow: 0 0 15px oklch(var(--p)); }
+            100% { transform: scale(1.1); box-shadow: 0 0 10px oklch(var(--p)); }
+        }
     </style>
 </head>
-<body class="bg-base-200 min-h-screen flex flex-col" x-data="adminJoin()">
-    <nav class="navbar bg-base-100 shadow-lg sticky top-0 z-50">
-        <div class="flex-1">
-            <a class="btn btn-ghost normal-case text-xl">Tambola Admin Panel</a>
-        </div>
-        <div class="flex-none">
-            <div class="dropdown dropdown-end">
-                <label tabindex="0" class="btn btn-ghost btn-circle" aria-label="Theme selector">
-                    <i class="fas fa-palette"></i>
-                </label>
-                <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
-                    <template x-for="theme in themes" :key="theme">
-                        <li><a @click="setTheme(theme, $event)" x-text="theme.charAt(0).toUpperCase() + theme.slice(1)"></a></li>
-                    </template>
-                </ul>
-            </div>
-        </div>
-    </nav>
+<body x-data="adminRoom()">
+    <div class="drawer lg:drawer-open">
+        <input id="my-drawer" type="checkbox" class="drawer-toggle" x-model="isDrawerOpen" />
+        <div class="drawer-content flex flex-col bg-base-200">
+            <nav class="navbar bg-base-100 shadow-lg sticky top-0 z-30">
+                <div class="flex-none">
+                    <label for="my-drawer" class="btn btn-square btn-ghost lg:hidden" aria-label="Open menu">
+                        <i class="fas fa-bars text-xl"></i>
+                    </label>
+                </div>
+                <div class="flex-1">
+                    <a class="btn btn-ghost normal-case text-xl">Tambola Admin Panel</a>
+                </div>
+                <div class="flex-none">
+                     <span class="mr-2 hidden sm:inline">Room ID: <strong x-text="roomId"></strong></span>
+                    <div class="dropdown dropdown-end">
+                        <label tabindex="0" class="btn btn-ghost btn-circle" aria-label="Theme selector">
+                            <i class="fas fa-palette"></i>
+                        </label>
+                        <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
+                            <template x-for="theme in themes" :key="theme">
+                                <li><a @click="setTheme(theme, $event)" x-text="theme.charAt(0).toUpperCase() + theme.slice(1)"></a></li>
+                            </template>
+                        </ul>
+                    </div>
+                </div>
+            </nav>
 
-    <main class="flex-grow flex items-center justify-center p-4">
-        <div class="card w-full max-w-md bg-base-100 shadow-xl">
-            <div class="card-body">
-                <h2 class="card-title text-2xl mb-6 text-center">Admin Login</h2>
+            <main class="flex-grow p-4 overflow-y-auto">
+                <div x-show="currentView === 'home'" x-transition>
+                    <h2 class="text-2xl font-bold mb-4">Game Room (<span x-text="adminName"></span>)</h2>
+                    
+                    <div class="bg-base-100 p-3 rounded-lg shadow mb-4 sticky top-[64px] z-20"> <div class="flex flex-wrap gap-2 items-center justify-center">
+                            <div class="form-control">
+                                <label class="label cursor-pointer">
+                                    <span class="label-text mr-2">Mode:</span>
+                                    <select class="select select-bordered select-sm" x-model="callingMode" :disabled="gameStatus !== 'idle'">
+                                        <option value="manual">Manual</option>
+                                        <option value="auto">Auto</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div class="form-control" x-show="callingMode === 'auto'">
+                                <label class="label cursor-pointer">
+                                    <span class="label-text mr-2">Interval:</span>
+                                    <select class="select select-bordered select-sm" x-model.number="autoCallInterval" :disabled="gameStatus !== 'idle'">
+                                        <option value="3">3s</option>
+                                        <option value="5">5s</option>
+                                        <option value="7">7s</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-base-100 p-3 rounded-lg shadow mb-6 sticky top-[130px] z-20"> <div class="flex flex-wrap gap-2 items-center justify-center">
+                            <button class="btn btn-success btn-sm" @click="startGame" :disabled="gameStatus !== 'idle'">
+                                <i class="fas fa-play mr-1"></i> Start Game
+                            </button>
+                            <button class="btn btn-primary btn-sm" @click="callNextNumber" :disabled="callingMode !== 'manual' || gameStatus !== 'running'">
+                                <i class="fas fa-arrow-right mr-1"></i> Call Next
+                            </button>
+                            <button class="btn btn-warning btn-sm" @click="pauseGame" :disabled="callingMode !== 'auto' || gameStatus !== 'running'">
+                                <i class="fas fa-pause mr-1"></i> Pause
+                            </button>
+                            <button class="btn btn-info btn-sm" @click="resumeGame" :disabled="callingMode !== 'auto' || gameStatus !== 'paused'">
+                                <i class="fas fa-play-circle mr-1"></i> Resume
+                            </button>
+                            <button class="btn btn-error btn-sm" @click="stopGame" :disabled="gameStatus === 'idle' || gameStatus === 'stopped'">
+                                <i class="fas fa-stop mr-1"></i> Stop Game
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="text-center mb-6" x-show="latestCalledNumber !== null">
+                        <span class="label-text">Last Called:</span>
+                        <div class="badge badge-lg badge-secondary text-2xl p-4" x-text="latestCalledNumber"></div>
+                    </div>
+                    <div class="text-center mb-6" x-show="latestCalledNumber === null && gameStatus !== 'idle'">
+                        <span class="label-text">Game started. Call the first number!</span>
+                    </div>
+
+
+                    <div class="number-grid p-2 bg-base-100 rounded-lg shadow">
+                        <template x-for="numObj in numbers" :key="numObj.number">
+                            <div class="number-cell bg-base-300"
+                                 :class="{ 'called': numObj.called, 'latest': numObj.number === latestCalledNumber && numObj.called }"
+                                 x-text="numObj.number">
+                            </div>
+                        </template>
+                    </div>
+                     <div x-show="gameMessage" class="mt-4 p-3 rounded-md text-center text-lg"
+                         :class="{ 'bg-info text-info-content': gameMessageType === 'info', 
+                                   'bg-success text-success-content': gameMessageType === 'success',
+                                   'bg-warning text-warning-content': gameMessageType === 'warning',
+                                   'bg-error text-error-content': gameMessageType === 'error' }"
+                         x-text="gameMessage">
+                    </div>
+
+                </div>
+
+                <div x-show="currentView === 'players'" x-transition>
+                    <h2 class="text-2xl font-bold mb-4">Players</h2>
+                    <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
+                        <table class="table table-zebra w-full">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Player Name</th>
+                                    <th>Room No</th>
+                                    <th>No of Tickets</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-if="players.length === 0">
+                                    <tr><td colspan="4" class="text-center">No players connected yet.</td></tr>
+                                </template>
+                                <template x-for="(player, index) in players" :key="player.id">
+                                    <tr>
+                                        <th x-text="index + 1"></th>
+                                        <td x-text="player.name"></td>
+                                        <td x-text="player.roomId"></td>
+                                        <td x-text="player.ticketsCount"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div x-show="currentView === 'ticketRequests'" x-transition>
+                    <h2 class="text-2xl font-bold mb-4">Ticket Requests</h2>
+                     <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
+                        <table class="table table-zebra w-full">
+                            <thead>
+                                <tr>
+                                    <th>Player</th>
+                                    <th>Tickets Requested</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-if="ticketRequests.length === 0">
+                                    <tr><td colspan="3" class="text-center">No pending ticket requests.</td></tr>
+                                </template>
+                                <template x-for="(request, index) in ticketRequests" :key="request.id">
+                                    <tr>
+                                        <td x-text="request.playerName"></td>
+                                        <td x-text="request.ticketsRequested"></td>
+                                        <td>
+                                            <button class="btn btn-xs btn-success mr-1" @click="approveTicketRequest(request.id)">Approve</button>
+                                            <button class="btn btn-xs btn-error" @click="rejectTicketRequest(request.id)">Reject</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
                 
-                <div class="form-control mb-4">
-                    <label class="label">
-                        <span class="label-text">Admin Name</span>
-                    </label>
-                    <input type="text" x-model="adminName" placeholder="Enter your name" class="input input-bordered w-full" />
-                    <p x-show="errors.adminName" x-text="errors.adminName" class="text-error text-xs mt-1"></p>
+                <div x-show="currentView === 'prizeClaims'" x-transition>
+                    <h2 class="text-2xl font-bold mb-4">Prize Claims</h2>
+                     <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
+                        <table class="table table-zebra w-full">
+                            <thead>
+                                <tr>
+                                    <th>Player</th>
+                                    <th>Prize Claimed</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                 <template x-if="prizeClaims.length === 0">
+                                    <tr><td colspan="3" class="text-center">No pending prize claims.</td></tr>
+                                </template>
+                                <template x-for="(claim, index) in prizeClaims" :key="claim.id">
+                                    <tr>
+                                        <td x-text="claim.playerName"></td>
+                                        <td x-text="claim.prizeName"></td>
+                                        <td>
+                                            <button class="btn btn-xs btn-success mr-1" @click="approvePrizeClaim(claim.id)">Approve</button>
+                                            <button class="btn btn-xs btn-error" @click="rejectPrizeClaim(claim.id)">Reject</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <div class="form-control mb-6">
-                    <label class="label">
-                        <span class="label-text">Create or Enter Room ID</span>
-                    </label>
-                    <input type="text" x-model="roomId" placeholder="Enter a unique Room ID" class="input input-bordered w-full" />
-                     <p x-show="errors.roomId" x-text="errors.roomId" class="text-error text-xs mt-1"></p>
+                <div x-show="currentView === 'winners'" x-transition>
+                    <h2 class="text-2xl font-bold mb-4">Winners</h2>
+                    <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
+                        <table class="table table-zebra w-full">
+                            <thead>
+                                <tr>
+                                    <th>Player</th>
+                                    <th>Prize</th>
+                                    <th>Coins</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-if="winners.length === 0">
+                                    <tr><td colspan="3" class="text-center">No winners yet.</td></tr>
+                                </template>
+                                <template x-for="(winner, index) in winners" :key="winner.id">
+                                   <tr>
+                                        <td x-text="winner.playerName"></td>
+                                        <td x-text="winner.prizeName"></td>
+                                        <td x-text="winner.coins"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <div class="card-actions justify-center">
-                    <button @click="joinRoom" class="btn btn-primary w-full">
-                        Join / Create Room
+                <div x-show="currentView === 'rules'" x-transition class="space-y-6">
+                    <h2 class="text-2xl font-bold mb-4">Game Rules & Prize Allocation</h2>
+                    <div class="bg-base-100 p-4 rounded-lg shadow">
+                        <p class="text-sm mb-4">
+                            Configure the winning rules for this game. Assign a "base weight" to each rule.
+                            When rules are selected for play, their weights will be used to proportionally allocate the total prize pool.
+                            You can adjust the number of prizes allowed per rule and the coins awarded for each prize.
+                        </p>
+                    </div>
+
+                    <template x-for="(rule, index) in gameRules" :key="rule.id">
+                        <div class="card bg-base-100 shadow-md">
+                            <div class="card-body p-4">
+                                <div class="flex items-center justify-between">
+                                    <h3 class="card-title text-lg" x-text="rule.name"></h3>
+                                    <input type="checkbox" class="toggle toggle-primary" x-model="rule.isActive" @change="recalculatePrizeAllocation()">
+                                </div>
+                                <p class="text-xs text-base-content/70 mt-1" x-text="rule.description"></p>
+                                <div x-show="rule.isActive" class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div class="form-control">
+                                        <label class="label pb-1">
+                                            <span class="label-text">Base Weight</span>
+                                        </label>
+                                        <input type="number" class="input input-sm input-bordered" x-model.number="rule.baseWeight" min="0" @input="recalculatePrizeAllocation()">
+                                    </div>
+                                    <div class="form-control">
+                                        <label class="label pb-1">
+                                            <span class="label-text">Prizes Allowed</span>
+                                        </label>
+                                        <input type="number" class="input input-sm input-bordered" x-model.number="rule.maxPrizes" min="1">
+                                    </div>
+                                    <div class="form-control">
+                                        <label class="label pb-1">
+                                            <span class="label-text">Coins per Prize</span>
+                                        </label>
+                                        <input type="number" class="input input-sm input-bordered" x-model.number="rule.coinsPerPrize" min="0">
+                                    </div>
+                                </div>
+                                <div x-show="rule.isActive" class="mt-2 text-sm">
+                                    Allocated Prize Pool Share: <span class="font-semibold" x-text="rule.allocatedShare ? rule.allocatedShare.toFixed(2) + '%' : '0.00%'"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <div class="bg-base-100 p-4 rounded-lg shadow mt-6">
+                        <h3 class="text-xl font-semibold">Prize Allocation Summary</h3>
+                        <p>Total Selected Weight: <strong x-text="totalSelectedWeight"></strong></p>
+                        <p>Total Coins to be Distributed (if all prizes claimed): <strong x-text="totalPotentialCoins"></strong></p>
+                        <button class="btn btn-primary btn-sm mt-2" @click="saveRulesConfiguration">Save Rules</button>
+                    </div>
+                </div>
+
+
+                <div x-show="currentView === 'qrCode'" x-transition class="text-center">
+                    <h2 class="text-2xl font-bold mb-4">Player Join QR Code</h2>
+                    <p class="mb-4">Players can scan this QR code to join Room ID: <strong x-text="roomId"></strong></p>
+                    <div class="flex justify-center">
+                        <div id="qrcodeCanvas" class="bg-white p-4 inline-block rounded-lg shadow-lg">
+                            </div>
+                    </div>
+                     <button class="btn btn-secondary mt-4" @click="generateQRCode">
+                        <i class="fas fa-sync-alt mr-2"></i>Regenerate QR Code
                     </button>
                 </div>
-                 <div x-show="message" class="mt-4 p-2 rounded-md text-center"
-                     :class="{ 'bg-success text-success-content': messageType === 'success', 'bg-error text-error-content': messageType === 'error' }"
-                     x-text="message">
-                </div>
-            </div>
-        </div>
-    </main>
 
-    <footer class="footer footer-center p-4 bg-base-300 text-base-content">
-        <div>
-            <p>Copyright © <span x-text="new Date().getFullYear()"></span> - Tambola Game</p>
+                <div x-show="currentView === 'gameSummary'" x-transition>
+                    <h2 class="text-2xl font-bold mb-4">Game Summary</h2>
+                     <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
+                        <table class="table table-zebra w-full">
+                            <thead>
+                                <tr>
+                                    <th>Player</th>
+                                    <th>Room No</th>
+                                    <th>Tickets</th>
+                                    <th>Prizes Won</th>
+                                    <th>Coins Received</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-if="gameSummaryData.length === 0">
+                                    <tr><td colspan="5" class="text-center">No game summary available yet. Play a game!</td></tr>
+                                </template>
+                                <template x-for="summary in gameSummaryData" :key="summary.playerId">
+                                    <tr>
+                                        <td x-text="summary.playerName"></td>
+                                        <td x-text="summary.roomId"></td>
+                                        <td x-text="summary.ticketsCount"></td>
+                                        <td x-text="summary.prizesWon.join(', ') || 'None'"></td>
+                                        <td x-text="summary.coinsReceived"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </main>
         </div>
-    </footer>
+        <div class="drawer-side z-40">
+            <label for="my-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+            <ul class="menu p-4 w-80 min-h-full bg-base-100 text-base-content">
+                <li class="mb-2 text-center">
+                    <span class="text-lg font-bold">Admin Menu</span>
+                    <button @click="isDrawerOpen = false" class="btn btn-ghost btn-sm btn-circle absolute top-2 right-2 lg:hidden">✕</button>
+                </li>
+                <li><a @click="changeView('home')" :class="{ 'active': currentView === 'home' }"><i class="fas fa-home mr-2"></i>Game Room</a></li>
+                <li><a @click="changeView('players')" :class="{ 'active': currentView === 'players' }"><i class="fas fa-users mr-2"></i>Players</a></li>
+                <li><a @click="changeView('ticketRequests')" :class="{ 'active': currentView === 'ticketRequests' }"><i class="fas fa-ticket-alt mr-2"></i>Ticket Requests</a></li>
+                <li><a @click="changeView('prizeClaims')" :class="{ 'active': currentView === 'prizeClaims' }"><i class="fas fa-trophy mr-2"></i>Prize Claims</a></li>
+                <li><a @click="changeView('winners')" :class="{ 'active': currentView === 'winners' }"><i class="fas fa-medal mr-2"></i>Winners</a></li>
+                <li><a @click="changeView('rules')" :class="{ 'active': currentView === 'rules' }"><i class="fas fa-gavel mr-2"></i>Rules & Prizes</a></li>
+                <li><a @click="changeView('qrCode')" :class="{ 'active': currentView === 'qrCode' }"><i class="fas fa-qrcode mr-2"></i>QR Code</a></li>
+                <li><a @click="changeView('gameSummary')" :class="{ 'active': currentView === 'gameSummary' }"><i class="fas fa-clipboard-list mr-2"></i>Game Summary</a></li>
+                <li class="mt-auto"><a href="admin_join.html"><i class="fas fa-sign-out-alt mr-2"></i>Logout / Change Room</a></li>
+            </ul>
+        </div>
+    </div>
 
     <script>
-        function adminJoin() {
-            return {
-                adminName: '',
-                roomId: '',
-                message: '',
-                messageType: '', // 'success' or 'error'
-                errors: {
-                    adminName: '',
-                    roomId: ''
-                },
-                themes: [ // Common DaisyUI themes
-                    "light", "dark", "cupcake", "bumblebee", "emerald", "corporate", 
-                    "synthwave", "retro", "cyberpunk", "valentine", "halloween", 
-                    "garden", "forest", "aqua", "lofi", "pastel", "fantasy", 
-                    "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", 
-                    "business", "acid", "lemonade", "night", "coffee", "winter"
-                ],
-                init() {
-                    // Load saved theme or default to light
-                    const savedTheme = localStorage.getItem('theme') || 'light';
-                    // Pass null for event and false for closeDropdown on initial load
-                    this.setTheme(savedTheme, null, false); 
+    function adminRoom() {
+        return {
+            adminName: '',
+            roomId: '',
+            currentView: 'home', // Default view
+            isDrawerOpen: false,
+            themes: ["light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter"],
+            
+            // Game Room Data
+            numbers: [], // Array of { number: i, called: false }
+            calledNumbersHistory: [], // Stores called numbers in order
+            availableNumbers: [], // Stores numbers not yet called
+            latestCalledNumber: null,
+            callingMode: 'manual', // 'auto' or 'manual'
+            autoCallInterval: 5, // seconds
+            gameStatus: 'idle', // 'idle', 'running', 'paused', 'stopped'
+            intervalId: null, // For setInterval in auto mode
+            gameMessage: '',
+            gameMessageType: 'info', // 'info', 'success', 'warning', 'error'
 
-                    // Try to get adminName and roomId from query params if redirected from admin_room
-                    const urlParams = new URLSearchParams(window.location.search);
-                    if (urlParams.has('adminName')) {
-                        this.adminName = urlParams.get('adminName');
-                    }
-                    if (urlParams.has('roomId')) {
-                        this.roomId = urlParams.get('roomId');
-                    }
-                },
-                // Updated setTheme function to reliably close the dropdown
-                setTheme(themeName, event = null, closeDropdown = true) {
-                    document.documentElement.setAttribute('data-theme', themeName);
-                    localStorage.setItem('theme', themeName);
-                    
-                    if (closeDropdown && event && event.target) {
-                        const anchorElement = event.target; // The <a> tag that was clicked
-                        const dropdownContent = anchorElement.closest('.dropdown-content'); // The <ul>
-                        const dropdownRoot = anchorElement.closest('.dropdown'); // The main <div class="dropdown">
-                        const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]'); // The <label>
+            // Placeholder data for other sections
+            players: [], // { id: 1, name: 'Player 1', roomId: 'XYZ', ticketsCount: 2 }
+            ticketRequests: [], // { id: 1, playerName: 'Player 2', ticketsRequested: 1 }
+            prizeClaims: [], // { id: 1, playerName: 'Player 1', prizeName: 'Top Line' }
+            winners: [], // { id: 1, playerName: 'Player 1', prizeName: 'Top Line', coins: 100 }
+            gameSummaryData: [], // { playerId: 1, playerName: 'Player 1', roomId: 'XYZ', ticketsCount: 2, prizesWon: ['Top Line'], coinsReceived: 100 }
+            
+            gameRules: [
+                { id: 'rule1', name: '1-2-3', description: 'First number of first row, First 2 numbers of 2nd row and First 3 numbers of third row are cut.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 50, isActive: false, allocatedShare: 0 },
+                { id: 'rule2', name: 'Bottom Line', description: 'Bottom Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 75, isActive: true, allocatedShare: 0 },
+                { id: 'rule3', name: 'BP (Bull\'s Eye)', description: 'Highest and lowest numbers of the ticket.', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 30, isActive: false, allocatedShare: 0 },
+                { id: 'rule4', name: 'Breakfast', description: 'Numbers from 1 to 30.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 40, isActive: false, allocatedShare: 0 },
+                { id: 'rule5', name: 'Corners', description: 'Top Row: 1st and 5th Number; Bottom Row: 1st and 5th Number.', baseWeight: 10, maxPrizes: 2, coinsPerPrize: 25, isActive: true, allocatedShare: 0 },
+                { id: 'rule6', name: 'Dinner', description: 'Numbers from 61 to 90 in the ticket.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 40, isActive: false, allocatedShare: 0 },
+                { id: 'rule7', name: 'Early 5', description: 'First Five Numbers called.', baseWeight: 20, maxPrizes: 1, coinsPerPrize: 60, isActive: true, allocatedShare: 0 },
+                { id: 'rule8', name: 'Early 7', description: 'First seven Numbers called of ticket.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 70, isActive: false, allocatedShare: 0 },
+                { id: 'rule9', name: 'Fat Ladies (Two Little Ducks - 88)', description: 'All numbers with the digit 8 (e.g., 8, 18, ..., 88, 89).', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 35, isActive: false, allocatedShare: 0 },
+                { id: 'rule10', name: 'Full House', description: 'All 15 Numbers.', baseWeight: 30, maxPrizes: 1, coinsPerPrize: 200, isActive: true, allocatedShare: 0 },
+                { id: 'rule11', name: 'Middle Line', description: 'Middle Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 75, isActive: true, allocatedShare: 0 },
+                { id: 'rule12', name: 'Top Line', description: 'Top Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 75, isActive: true, allocatedShare: 0 },
+                { id: 'rule13', name: 'Unlucky 1', description: 'Player who is last in having his/her first number striked.', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 20, isActive: false, allocatedShare: 0 },
+            ],
+            totalSelectedWeight: 0,
+            totalPotentialCoins: 0,
 
-                        // Use setTimeout to ensure these actions run after the current event cycle
-                        setTimeout(() => {
-                            // 1. If the clicked anchor or another element inside the dropdown has focus, blur it.
-                            if (document.activeElement && dropdownRoot && dropdownRoot.contains(document.activeElement)) {
-                                if (typeof document.activeElement.blur === 'function') {
-                                    document.activeElement.blur();
-                                }
-                            }
-                            // 2. Then, ensure the dropdown content (<ul>) itself is blurred, as it's focusable.
-                            if (dropdownContent && typeof dropdownContent.blur === 'function') {
-                                dropdownContent.blur();
-                            }
-                            // 3. Finally, ensure the main trigger label is blurred. This is key for DaisyUI focus-based dropdowns.
-                            if (dropdownTriggerLabel && typeof dropdownTriggerLabel.blur === 'function') {
-                                dropdownTriggerLabel.blur();
-                            }
-                        }, 0); // A 0ms delay pushes this to the end of the event queue.
-                    }
-                },
-                validateInput() {
-                    this.errors.adminName = '';
-                    this.errors.roomId = '';
-                    let isValid = true;
-                    if (!this.adminName.trim()) {
-                        this.errors.adminName = 'Admin name is required.';
-                        isValid = false;
-                    }
-                    if (!this.roomId.trim()) {
-                        this.errors.roomId = 'Room ID is required.';
-                        isValid = false;
-                    }
-                    return isValid;
-                },
-                joinRoom() {
-                    this.message = ''; // Clear previous messages
-                    if (!this.validateInput()) {
-                        return;
-                    }
+            init() {
+                // Load saved theme
+                const savedTheme = localStorage.getItem('theme') || 'light';
+                this.setTheme(savedTheme, null, false);
 
-                    // Placeholder for backend connection
-                    // console.log(`Attempting to join room with Admin: ${this.adminName}, Room ID: ${this.roomId}`);
-                    // fetch('https://tambola-backend.onrender.com/admin/create-room', { // Example endpoint
-                    //     method: 'POST',
-                    //     headers: { 'Content-Type': 'application/json' },
-                    //     body: JSON.stringify({ adminName: this.adminName, roomId: this.roomId })
-                    // })
-                    // .then(response => {
-                    //     if (!response.ok) {
-                    //         return response.json().then(err => { throw err; });
-                    //     }
-                    //     return response.json();
-                    // })
-                    // .then(data => {
-                    //     if (data.success) { 
-                    //         this.messageType = 'success';
-                    //         this.message = data.message || `Successfully joined/created room ${this.roomId}. Redirecting...`;
-                    //         localStorage.setItem('adminName', this.adminName);
-                    //         localStorage.setItem('roomId', this.roomId);
-                    //         setTimeout(() => {
-                    //             window.location.href = `admin_room.html?adminName=${encodeURIComponent(this.adminName)}&roomId=${encodeURIComponent(this.roomId)}`;
-                    //         }, 1500);
-                    //     } else {
-                    //         this.messageType = 'error';
-                    //         this.message = data.message || 'Failed to join or create room.';
-                    //     }
-                    // })
-                    // .catch(error => {
-                    //     console.error('Error joining room:', error);
-                    //     this.messageType = 'error';
-                    //     this.message = error.message || 'An error occurred. Please try again.';
-                    // });
+                // Get adminName and roomId from URL
+                const urlParams = new URLSearchParams(window.location.search);
+                this.adminName = urlParams.get('adminName') || 'Admin';
+                this.roomId = urlParams.get('roomId') || 'N/A';
 
-                    // For now, we'll simulate a successful join and redirect.
-                    console.log(`Admin: ${this.adminName}, Room ID: ${this.roomId}`);
-                    
-                    this.messageType = 'success';
-                    this.message = `Joining room ${this.roomId}...`;
+                if (this.roomId === 'N/A') {
+                    // Redirect to join page if no room ID
+                    // window.location.href = 'admin_join.html';
+                    // For now, show a message
+                    this.gameMessage = "Room ID not found. Please create or join a room first.";
+                    this.gameMessageType = "error";
+                }
 
-                    // Store adminName and roomId for the next page
-                    localStorage.setItem('adminName', this.adminName);
-                    localStorage.setItem('roomId', this.roomId);
+                this.initializeNumbers();
+                this.recalculatePrizeAllocation(); // Initial calculation for rules
 
-                    // Redirect to admin_room.html
+                // Example: Fetch initial data (replace with actual API calls)
+                this.fetchPlayers();
+                this.fetchTicketRequests();
+                this.fetchPrizeClaims();
+                this.fetchWinners();
+                this.fetchGameSummary();
+
+
+                // WebSocket connection (conceptual)
+                // this.connectWebSocket();
+            },
+
+            // connectWebSocket() {
+            //     // const socket = new WebSocket(`wss://tambola-backend.onrender.com/ws/admin/${this.roomId}?adminName=${this.adminName}`);
+            //     // socket.onopen = () => { console.log("Admin WebSocket connected"); this.showGameMessage("Connected to game server.", "success"); };
+            //     // socket.onmessage = (event) => { this.handleWebSocketMessage(JSON.parse(event.data)); };
+            //     // socket.onerror = (error) => { console.error("WebSocket error:", error); this.showGameMessage("Connection error.", "error");};
+            //     // socket.onclose = () => { console.log("WebSocket disconnected"); this.showGameMessage("Disconnected. Attempting to reconnect...", "warning"); /* Add reconnect logic */ };
+            //     // this.socket = socket;
+            // },
+
+            // handleWebSocketMessage(data) {
+            //     console.log("Admin received:", data);
+            //     switch(data.type) {
+            //         case 'PLAYER_JOINED':
+            //             this.players.push(data.player);
+            //             this.showGameMessage(`${data.player.name} joined the room.`, 'info');
+            //             break;
+            //         case 'PLAYER_LEFT':
+            //             this.players = this.players.filter(p => p.id !== data.playerId);
+            //             this.showGameMessage(`A player left the room.`, 'info');
+            //             break;
+            //         case 'TICKET_REQUEST':
+            //             this.ticketRequests.push(data.request);
+            //             this.showGameMessage(`New ticket request from ${data.request.playerName}.`, 'info');
+            //             break;
+            //         case 'PRIZE_CLAIM':
+            //             this.prizeClaims.push(data.claim);
+            //             this.showGameMessage(`New prize claim from ${data.claim.playerName} for ${data.claim.prizeName}.`, 'info');
+            //             break;
+            //         // Add more cases as needed
+            //     }
+            // },
+
+            // sendWebSocketMessage(message) {
+            //     // if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            //     //     this.socket.send(JSON.stringify(message));
+            //     // } else {
+            //     //     this.showGameMessage("Not connected to server. Cannot send message.", "error");
+            //     // }
+            // },
+
+            showGameMessage(text, type = 'info', duration = 3000) {
+                this.gameMessage = text;
+                this.gameMessageType = type;
+                if (duration) {
                     setTimeout(() => {
-                        window.location.href = `admin_room.html?adminName=${encodeURIComponent(this.adminName)}&roomId=${encodeURIComponent(this.roomId)}`;
-                    }, 1000); 
+                        this.gameMessage = '';
+                    }, duration);
+                }
+            },
+
+            initializeNumbers() {
+                this.numbers = [];
+                this.availableNumbers = [];
+                for (let i = 1; i <= 90; i++) {
+                    this.numbers.push({ number: i, called: false });
+                    this.availableNumbers.push(i);
+                }
+                this.calledNumbersHistory = [];
+                this.latestCalledNumber = null;
+            },
+
+            setTheme(themeName, event = null, closeDropdown = true) {
+                document.documentElement.setAttribute('data-theme', themeName);
+                localStorage.setItem('theme', themeName);
+                if (closeDropdown && event && event.target) {
+                    const anchorElement = event.target;
+                    const dropdownContent = anchorElement.closest('.dropdown-content');
+                    const dropdownRoot = anchorElement.closest('.dropdown');
+                    const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]');
+                    setTimeout(() => {
+                        if (document.activeElement && dropdownRoot && dropdownRoot.contains(document.activeElement)) {
+                            if (typeof document.activeElement.blur === 'function') document.activeElement.blur();
+                        }
+                        if (dropdownContent && typeof dropdownContent.blur === 'function') dropdownContent.blur();
+                        if (dropdownTriggerLabel && typeof dropdownTriggerLabel.blur === 'function') dropdownTriggerLabel.blur();
+                    }, 0);
+                }
+            },
+
+            changeView(viewName) {
+                this.currentView = viewName;
+                this.isDrawerOpen = false; // Close drawer on view change (for mobile)
+                if (viewName === 'qrCode') {
+                    this.$nextTick(() => { // Ensure DOM is updated before generating QR
+                        this.generateQRCode();
+                    });
+                }
+            },
+
+            // Game Controls
+            startGame() {
+                if (this.gameStatus !== 'idle') {
+                    this.showGameMessage("Game is already in progress or has ended.", "warning");
+                    return;
+                }
+                // Validate at least one rule is selected
+                const activeRules = this.gameRules.filter(rule => rule.isActive);
+                if (activeRules.length === 0) {
+                    this.showGameMessage("Please select at least one winning rule before starting the game.", "error");
+                    this.currentView = 'rules'; // Navigate to rules
+                    return;
+                }
+
+                this.initializeNumbers();
+                this.gameStatus = 'running';
+                this.showGameMessage(`Game started! Mode: ${this.callingMode}.`, "success");
+                // this.sendWebSocketMessage({ type: 'GAME_START', rules: activeRules, callingMode: this.callingMode, interval: this.autoCallInterval });
+
+
+                if (this.callingMode === 'auto') {
+                    this.autoCall();
+                }
+            },
+
+            callNextNumber() {
+                if (this.gameStatus !== 'running') {
+                    this.showGameMessage("Game is not running.", "warning");
+                    return;
+                }
+                if (this.availableNumbers.length === 0) {
+                    this.showGameMessage("All numbers have been called!", "info");
+                    this.stopGame(false); // Game ends naturally
+                    return;
+                }
+
+                const randomIndex = Math.floor(Math.random() * this.availableNumbers.length);
+                const calledNum = this.availableNumbers.splice(randomIndex, 1)[0];
+                
+                this.latestCalledNumber = calledNum;
+                this.calledNumbersHistory.push(calledNum);
+                const numObj = this.numbers.find(n => n.number === calledNum);
+                if (numObj) numObj.called = true;
+
+                this.showGameMessage(`Number called: ${calledNum}`, "info", 1500);
+                // this.sendWebSocketMessage({ type: 'NUMBER_CALLED', number: calledNum });
+
+
+                if (this.availableNumbers.length === 0) {
+                    this.showGameMessage("All numbers called! Game Over!", "success");
+                    this.stopGame(false);
+                }
+                return calledNum;
+            },
+
+            autoCall() {
+                if (this.gameStatus !== 'running' || this.callingMode !== 'auto') return;
+
+                this.callNextNumber();
+
+                if (this.gameStatus === 'running' && this.availableNumbers.length > 0) {
+                    this.intervalId = setTimeout(() => {
+                        this.autoCall();
+                    }, this.autoCallInterval * 1000);
+                }
+            },
+
+            pauseGame() {
+                if (this.gameStatus !== 'running' || this.callingMode !== 'auto') {
+                     this.showGameMessage("Game cannot be paused in manual mode or if not running.", "warning");
+                    return;
+                }
+                clearTimeout(this.intervalId);
+                this.intervalId = null;
+                this.gameStatus = 'paused';
+                this.showGameMessage("Game paused.", "info");
+                // this.sendWebSocketMessage({ type: 'GAME_PAUSE' });
+            },
+
+            resumeGame() {
+                if (this.gameStatus !== 'paused' || this.callingMode !== 'auto') {
+                    this.showGameMessage("Game is not paused or not in auto mode.", "warning");
+                    return;
+                }
+                this.gameStatus = 'running';
+                this.showGameMessage("Game resumed.", "info");
+                // this.sendWebSocketMessage({ type: 'GAME_RESUME' });
+                this.autoCall(); // Restart auto-calling
+            },
+
+            stopGame(manualStop = true) {
+                clearTimeout(this.intervalId);
+                this.intervalId = null;
+                this.gameStatus = 'stopped';
+                if (manualStop) {
+                    this.showGameMessage("Game stopped by admin.", "warning");
+                    // this.sendWebSocketMessage({ type: 'GAME_STOP' });
+                } else {
+                     this.showGameMessage("Game Over! All numbers called or game ended.", "success");
+                    // this.sendWebSocketMessage({ type: 'GAME_END' });
+                }
+                // Emit game summary to players (conceptual)
+                this.showGameMessage("Final game summary is being prepared.", "info", null); // Keep this message longer
+                // this.currentView = 'gameSummary'; // Optionally switch to summary view
+            },
+
+            // Placeholder functions for table actions
+            fetchPlayers() { /* this.players = await fetch(...); */ 
+                // Mock data
+                setTimeout(() => {
+                    this.players = [
+                        { id: 'p1', name: 'Alice', roomId: this.roomId, ticketsCount: 2 },
+                        { id: 'p2', name: 'Bob', roomId: this.roomId, ticketsCount: 1 },
+                    ];
+                }, 500);
+            },
+            fetchTicketRequests() { /* this.ticketRequests = await fetch(...); */ 
+                setTimeout(() => {
+                    this.ticketRequests = [
+                        { id: 'tr1', playerId: 'p3', playerName: 'Charlie', ticketsRequested: 1 },
+                    ];
+                }, 500);
+            },
+            approveTicketRequest(requestId) { 
+                console.log('Approve ticket request:', requestId); 
+                this.ticketRequests = this.ticketRequests.filter(r => r.id !== requestId);
+                this.showGameMessage("Ticket request approved.", "success");
+                // this.sendWebSocketMessage({ type: 'TICKET_REQUEST_APPROVED', requestId: requestId, playerId: '...' });
+            },
+            rejectTicketRequest(requestId) { 
+                console.log('Reject ticket request:', requestId); 
+                this.ticketRequests = this.ticketRequests.filter(r => r.id !== requestId);
+                this.showGameMessage("Ticket request rejected.", "warning");
+                // this.sendWebSocketMessage({ type: 'TICKET_REQUEST_REJECTED', requestId: requestId, playerId: '...' });
+            },
+            fetchPrizeClaims() { /* this.prizeClaims = await fetch(...); */
+                setTimeout(() => {
+                    this.prizeClaims = [
+                        { id: 'pc1', playerId: 'p1', playerName: 'Alice', prizeName: 'Top Line' },
+                    ];
+                }, 500);
+            },
+            approvePrizeClaim(claimId) { 
+                console.log('Approve prize claim:', claimId);
+                const claim = this.prizeClaims.find(c => c.id === claimId);
+                if (claim) {
+                    // Add to winners list (example)
+                    const rule = this.gameRules.find(r => r.name === claim.prizeName) || { coinsPerPrize: 50 }; // Default coins
+                    this.winners.push({ 
+                        id: 'w' + (this.winners.length + 1), 
+                        playerName: claim.playerName, 
+                        prizeName: claim.prizeName, 
+                        coins: rule.coinsPerPrize 
+                    });
+                    this.prizeClaims = this.prizeClaims.filter(c => c.id !== claimId);
+                    this.showGameMessage(`Prize claim for ${claim.prizeName} by ${claim.playerName} approved.`, "success");
+                    // this.sendWebSocketMessage({ type: 'PRIZE_CLAIM_APPROVED', claimId: claimId, winnerData: this.winners[this.winners.length-1] });
+                }
+            },
+            rejectPrizeClaim(claimId) { 
+                console.log('Reject prize claim:', claimId); 
+                const claim = this.prizeClaims.find(c => c.id === claimId);
+                 if (claim) {
+                    this.prizeClaims = this.prizeClaims.filter(c => c.id !== claimId);
+                    this.showGameMessage(`Prize claim for ${claim.prizeName} by ${claim.playerName} rejected.`, "warning");
+                    // this.sendWebSocketMessage({ type: 'PRIZE_CLAIM_REJECTED', claimId: claimId, playerId: claim.playerId });
+                }
+            },
+            fetchWinners() { /* this.winners = await fetch(...); */ },
+            fetchGameSummary() { /* this.gameSummaryData = await fetch(...); */ 
+                 setTimeout(() => {
+                    this.gameSummaryData = [
+                        { playerId: 'p1', playerName: 'Alice', roomId: this.roomId, ticketsCount: 2, prizesWon: ['Top Line'], coinsReceived: 75 },
+                    ];
+                }, 500);
+            },
+
+            // Rules View Logic
+            recalculatePrizeAllocation() {
+                this.totalSelectedWeight = 0;
+                let activeRules = this.gameRules.filter(rule => rule.isActive);
+                
+                activeRules.forEach(rule => {
+                    this.totalSelectedWeight += (rule.baseWeight || 0);
+                });
+
+                if (this.totalSelectedWeight > 0) {
+                    activeRules.forEach(rule => {
+                        rule.allocatedShare = ((rule.baseWeight || 0) / this.totalSelectedWeight) * 100;
+                    });
+                } else {
+                    activeRules.forEach(rule => {
+                        rule.allocatedShare = 0;
+                    });
+                }
+                // Also update non-active rules' share to 0
+                this.gameRules.filter(rule => !rule.isActive).forEach(rule => rule.allocatedShare = 0);
+
+
+                this.totalPotentialCoins = this.gameRules.reduce((sum, rule) => {
+                    if (rule.isActive) {
+                        return sum + ((rule.coinsPerPrize || 0) * (rule.maxPrizes || 0));
+                    }
+                    return sum;
+                }, 0);
+            },
+
+            saveRulesConfiguration() {
+                // This is where you would send the this.gameRules to your backend
+                console.log("Saving rules configuration:", JSON.parse(JSON.stringify(this.gameRules)));
+                this.showGameMessage("Rules configuration saved (simulated).", "success");
+                // this.sendWebSocketMessage({ type: 'RULES_UPDATED', rules: this.gameRules });
+            },
+            
+            // QR Code Generation
+            generateQRCode() {
+                const qrCanvas = document.getElementById('qrcodeCanvas');
+                if (!qrCanvas) return;
+                qrCanvas.innerHTML = ''; // Clear previous QR code
+
+                if (!this.roomId || this.roomId === 'N/A') {
+                    qrCanvas.innerHTML = '<p class="text-error">Room ID not set. Cannot generate QR code.</p>';
+                    return;
+                }
+                
+                // Construct the player join URL. This should point to your player_join.html with the room ID.
+                // Example: https://mytambola.netlify.app/player_join.html?roomId=YOUR_ROOM_ID
+                const playerJoinUrl = `https://mytambola.netlify.app/player_join.html?roomId=${encodeURIComponent(this.roomId)}`;
+                
+                try {
+                    const qr = qrcode(0, 'M'); // typeNumber 0 for auto, errorCorrectionLevel 'M'
+                    qr.addData(playerJoinUrl);
+                    qr.make();
+                    qrCanvas.innerHTML = qr.createImgTag(6, 8); // (cellSize, margin)
+                    // Style the image if needed, e.g., qrCanvas.firstChild.style.width = '100%';
+                } catch (e) {
+                    console.error("QR Code generation error:", e);
+                    qrCanvas.innerHTML = '<p class="text-error">Error generating QR code.</p>';
                 }
             }
         }
+    }
     </script>
 </body>
 </html>
