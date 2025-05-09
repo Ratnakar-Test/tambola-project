@@ -120,26 +120,34 @@
                         this.roomId = urlParams.get('roomId');
                     }
                 },
-                // Updated setTheme function signature and logic
+                // Updated setTheme function to reliably close the dropdown
                 setTheme(themeName, event = null, closeDropdown = true) {
                     document.documentElement.setAttribute('data-theme', themeName);
                     localStorage.setItem('theme', themeName);
                     
-                    // If closeDropdown is true and an event is provided (meaning it's a user click)
                     if (closeDropdown && event && event.target) {
-                        // Find the label that triggered the dropdown.
-                        // event.target is the clicked <a> tag.
-                        // .closest('.dropdown') finds the main dropdown container.
-                        // .querySelector('label[tabindex="0"]') finds the clickable label within that container.
-                        const dropdownTriggerLabel = event.target.closest('.dropdown')?.querySelector('label[tabindex="0"]');
-                        
-                        if (dropdownTriggerLabel) {
-                            dropdownTriggerLabel.blur(); // Blurring the label should close the dropdown.
-                        } else if (document.activeElement instanceof HTMLElement) {
-                            // Fallback: if the specific label isn't found for some reason,
-                            // try blurring the currently active element (which might be the <a> or <ul>).
-                            document.activeElement.blur();
-                        }
+                        const anchorElement = event.target; // The <a> tag that was clicked
+                        const dropdownContent = anchorElement.closest('.dropdown-content'); // The <ul>
+                        const dropdownRoot = anchorElement.closest('.dropdown'); // The main <div class="dropdown">
+                        const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]'); // The <label>
+
+                        // Use setTimeout to ensure these actions run after the current event cycle
+                        setTimeout(() => {
+                            // 1. If the clicked anchor or another element inside the dropdown has focus, blur it.
+                            if (document.activeElement && dropdownRoot && dropdownRoot.contains(document.activeElement)) {
+                                if (typeof document.activeElement.blur === 'function') {
+                                    document.activeElement.blur();
+                                }
+                            }
+                            // 2. Then, ensure the dropdown content (<ul>) itself is blurred, as it's focusable.
+                            if (dropdownContent && typeof dropdownContent.blur === 'function') {
+                                dropdownContent.blur();
+                            }
+                            // 3. Finally, ensure the main trigger label is blurred. This is key for DaisyUI focus-based dropdowns.
+                            if (dropdownTriggerLabel && typeof dropdownTriggerLabel.blur === 'function') {
+                                dropdownTriggerLabel.blur();
+                            }
+                        }, 0); // A 0ms delay pushes this to the end of the event queue.
                     }
                 },
                 validateInput() {
@@ -171,19 +179,16 @@
                     // })
                     // .then(response => {
                     //     if (!response.ok) {
-                    //         // Try to parse error message from backend if available
                     //         return response.json().then(err => { throw err; });
                     //     }
                     //     return response.json();
                     // })
                     // .then(data => {
-                    //     if (data.success) { // Assuming backend returns { success: true, ... } or similar
+                    //     if (data.success) { 
                     //         this.messageType = 'success';
                     //         this.message = data.message || `Successfully joined/created room ${this.roomId}. Redirecting...`;
                     //         localStorage.setItem('adminName', this.adminName);
                     //         localStorage.setItem('roomId', this.roomId);
-                    //         // Potentially save a token if your backend uses it
-                    //         // localStorage.setItem('adminToken', data.token); 
                     //         setTimeout(() => {
                     //             window.location.href = `admin_room.html?adminName=${encodeURIComponent(this.adminName)}&roomId=${encodeURIComponent(this.roomId)}`;
                     //         }, 1500);
