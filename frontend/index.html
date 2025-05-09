@@ -256,7 +256,7 @@
 
         // Initialization
         window.onload = () => {
-            if (!API_BASE_URL || API_BASE_URL === 'YOUR_RENDER_BACKEND_URL_HERE') { // Added safety check
+            if (!API_BASE_URL || API_BASE_URL === 'YOUR_RENDER_BACKEND_URL_HERE') { 
                 alert("CRITICAL: API_BASE_URL is not set correctly in the frontend JavaScript. Please check index.html.");
                 joinGameBtn.disabled = true;
                 addTicketBtn.disabled = true;
@@ -277,12 +277,19 @@
                  isAutoMarkEnabled = autoMarkCheckbox.checked; 
             }
 
-
-            if (currentPlayerId && currentRoomId && currentPlayerName) {
+            // Populate input fields if data exists in localStorage, but DO NOT auto-join
+            if (currentPlayerName) {
                 playerNameInput.value = currentPlayerName;
-                roomIdInputPlayer.value = currentRoomId;
-                joinGame(true); 
             }
+            if (currentRoomId) {
+                roomIdInputPlayer.value = currentRoomId;
+            }
+
+            // if (currentPlayerId && currentRoomId && currentPlayerName) {
+            //     playerNameInput.value = currentPlayerName;
+            //     roomIdInputPlayer.value = currentRoomId;
+            //     // joinGame(true); // <-- THIS LINE CAUSED AUTO-JOIN, NOW COMMENTED OUT
+            // }
         };
         
         function showToast(message, type = 'info') { 
@@ -303,7 +310,7 @@
             }, 5000);
         }
 
-        async function joinGame(isRejoin = false) {
+        async function joinGame(isRejoin = false) { // isRejoin flag is now less critical here but kept for consistency
             if (isJoining) return; 
             isJoining = true;
             joinGameBtn.disabled = true; 
@@ -328,14 +335,18 @@
                 return;
             }
 
+            // If it's not a programmatic rejoin attempt, ensure we use the latest localStorage or generate new ID
+            const playerIdToSend = isRejoin ? currentPlayerId : (localStorage.getItem('tambolaPlayerId') || null);
+
+
             try {
-                const response = await fetch(`${API_BASE_URL}/api/player/join-game`, { // USE API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/player/join-game`, { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         playerName: name, 
                         roomId: roomId, 
-                        playerId: isRejoin ? currentPlayerId : null 
+                        playerId: playerIdToSend 
                     }) 
                 });
 
@@ -350,10 +361,7 @@
                         errorMsg = `Failed to join. Server status: ${response.status}. Response: ${textError.substring(0,100)}...`;
                     }
                     joinErrorText.textContent = errorMsg;
-                    if (!isRejoin) { 
-                        localStorage.removeItem('tambolaPlayerId');
-                        localStorage.removeItem('tambolaPlayerName');
-                    }
+                    // Don't clear localStorage here, let user retry or change inputs
                     return; 
                 }
 
@@ -387,10 +395,6 @@
             } catch (error) { 
                 console.error("Error joining game (network or fetch issue):", error);
                 joinErrorText.textContent = "An error occurred (e.g. network issue or backend not reachable). Please try again.";
-                 if (!isRejoin) { 
-                    localStorage.removeItem('tambolaPlayerId');
-                    localStorage.removeItem('tambolaPlayerName');
-                 }
             } finally {
                 isJoining = false;
                 joinGameBtn.disabled = false;
@@ -401,12 +405,12 @@
         async function fetchPlayerFullState() {
             if (!currentPlayerId || !currentRoomId) return;
             try {
-                const response = await fetch(`${API_BASE_URL}/api/player/state?playerId=${currentPlayerId}&roomId=${currentRoomId}`); // USE API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/player/state?playerId=${currentPlayerId}&roomId=${currentRoomId}`); 
                 if (!response.ok) {
                     if (response.status === 401 || response.status === 403 || response.status === 404) { 
                         const errorData = await response.json().catch(() => ({message: "Session invalid or room/player not found. Please rejoin."}));
                         showToast(errorData.message, "error");
-                        logoutAndResetUI();
+                        logoutAndResetUI(); // This will show the join screen again
                     } else {
                          const errorText = await response.text();
                         throw new Error(`HTTP error! status: ${response.status}, ${errorText}`);
@@ -425,18 +429,20 @@
             if (pollingIntervalId) clearInterval(pollingIntervalId);
             pollingIntervalId = null;
             
-            localStorage.removeItem('tambolaPlayerId');
-            currentPlayerId = null; 
-            
-            playerTickets = [];
-            activeTicketIndex = 0;
-            serverGameState = {};
-            lastKnownDrawnNumbersCount = 0;
-            
+            // Clear only playerId, keep name and room in inputs for potential re-attempt
+            localStorage.removeItem('tambolaPlayerId'); 
+            // currentPlayerId = null; // This will be handled by the next load or join attempt
+
+            // Reset UI to join screen
             joinGameSection.classList.remove('hidden');
             gameAreaDisplay.classList.add('hidden');
             roomDisplay.classList.add('hidden'); 
             
+            // Clear dynamic game content
+            playerTickets = [];
+            activeTicketIndex = 0;
+            serverGameState = {};
+            lastKnownDrawnNumbersCount = 0;
             ticketTabsContainer.innerHTML = '';
             ticketGridsContainer.innerHTML = `<p id="noTicketsText" class="text-center italic p-4">You have no tickets yet. Request one!</p>`;
             drawnNumbersListPlayerEl.innerHTML = `<span class="italic text-gray-500">Waiting for game to start...</span>`;
@@ -452,9 +458,9 @@
         function updatePlayerFullState(state) {
             if (!state || !state.roomId) { 
                 console.warn("Received invalid state from server:", state);
-                if (state && state.message && state.message.toLowerCase().includes("player not found")) {
-                    logoutAndResetUI();
-                }
+                // If state is truly invalid or indicates player is no longer valid for this room,
+                // logoutAndResetUI() might be called by fetchPlayerFullState's error handling.
+                // Avoid further processing here if state is bad.
                 return;
             }
             serverGameState = state; 
@@ -652,7 +658,7 @@
 
             ticketStatusText.textContent = "Requesting new ticket...";
             try {
-                const response = await fetch(`${API_BASE_URL}/api/player/request-ticket`, { // USE API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/player/request-ticket`, { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ playerId: currentPlayerId, playerName: currentPlayerName, roomId: currentRoomId })
@@ -820,7 +826,7 @@
             claimStatusMessageEl.className = 'mt-4 text-center font-medium text-info';
 
             try {
-                const response = await fetch(`${API_BASE_URL}/api/player/claim-prize`, { // USE API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/player/claim-prize`, { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
