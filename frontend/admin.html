@@ -674,15 +674,22 @@
                 isStartingGame = false;
                 startGameBtnSpinner.classList.add('hidden');
                 startGameBtnText.classList.remove('hidden');
+                // updateButtonStates called by fetchAdminData
             }
         }
 
         async function drawNextNumber() {
-            if (isDrawingNumber || !currentRoomId || serverGameState.gameOver || !serverGameState.gameStarted) return;
+            // Check conditions first
+            if (!currentRoomId || serverGameState.gameOver || !serverGameState.gameStarted || modeAutoRadio.checked || isDrawingNumber) {
+                console.log("Draw condition not met:", {currentRoomId, gameOver: serverGameState.gameOver, gameStarted: serverGameState.gameStarted, isAuto: modeAutoRadio.checked, isDrawingNumber});
+                return; 
+            }
+
             isDrawingNumber = true;
             callNextBtn.disabled = true; 
             callNextBtnSpinner.classList.remove('hidden');
             callNextBtnText.classList.add('hidden');
+            console.log("Attempting to draw number..."); // DEBUG LOG
 
             try {
                 const response = await fetch(`${API_BASE_URL}/api/admin/draw-number`, { 
@@ -707,13 +714,14 @@
                 console.error("Failed to draw number (network/fetch issue):", error);
                 await fetchAdminData(); // Fetch state on network error too
             } finally {
+                 console.log("Draw number finally block"); // DEBUG LOG
                  isDrawingNumber = false;
                  // Reset button appearance
                  callNextBtnSpinner.classList.add('hidden');
                  callNextBtnText.classList.remove('hidden');
                  // Re-evaluate disabled state based on potentially updated serverGameState
-                 // This is handled by the fetchAdminData -> updateAdminUI -> updateButtonStates chain
-                 // But we can call it explicitly here too for immediate feedback after the attempt.
+                 // updateButtonStates is called within fetchAdminData -> updateAdminUI, 
+                 // but call explicitly here for faster feedback if needed, though might cause flicker.
                  updateButtonStates(); 
             }
         }
@@ -748,6 +756,7 @@
                 isStoppingGame = false;
                 stopGameBtnSpinner.classList.add('hidden');
                 stopGameBtnText.classList.remove('hidden');
+                 // updateButtonStates called by fetchAdminData
             }
         }
         
@@ -866,8 +875,7 @@
         // --- UI Update & State Management ---
         function updateAdminUI(state) {
             if (state.message && !state.roomId) { 
-                // Handle explicit "disconnected" or error states sent from the server
-                serverGameState = {}; // Clear local state
+                serverGameState = {}; 
                 statusTextEl.textContent = state.message;
                 currentNumberEl.textContent = '-';
                 drawnNumbersListEl.innerHTML = `<span class="italic text-base-content/60">Not connected.</span>`;
@@ -889,12 +897,11 @@
                 return;
             }
 
-            // Only update serverGameState if the response seems valid (has a roomId)
              if (state.roomId) {
                  serverGameState = state; 
              } else {
                  console.warn("Received state without roomId, retaining previous state:", state);
-                 updateButtonStates(); // Still update buttons based on possibly stale state
+                 updateButtonStates(); 
                  return; 
              }
 
@@ -1024,6 +1031,7 @@
             if (autoCallIntervalId) clearInterval(autoCallIntervalId); 
             const interval = parseInt(intervalSelector.value);
             autoCallIntervalId = setInterval(async () => {
+                 // Check latest server state before drawing
                  if (!serverGameState.gameStarted || serverGameState.gameOver || isGamePaused) {
                     clearInterval(autoCallIntervalId);
                     autoCallIntervalId = null;
