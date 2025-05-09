@@ -16,6 +16,7 @@
             display: flex;
             flex-direction: column;
             min-height: 100vh;
+            padding-bottom: 100px; /* Add padding to prevent content from being hidden by the bottom bar */
         }
         .flex-grow {
             flex-grow: 1;
@@ -70,11 +71,21 @@
             50% { transform: scale(1.25); box-shadow: 0 0 18px oklch(var(--p)); } /* Emphasize more at peak */
             100% { transform: scale(1.1); box-shadow: 0 0 10px oklch(var(--p)); }
         }
-        /* Sticky header for game controls */
-        .sticky-controls {
-            position: sticky;
-            background-color: oklch(var(--b1)); /* Use base-100 or similar background */
-            z-index: 20; 
+        /* Floating Bottom Nav Bar for Game Controls */
+        .bottom-nav-controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: oklch(var(--b1)); /* DaisyUI base-100 or similar */
+            padding: 0.75rem; /* p-3 */
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1); /* shadow-lg equivalent for top shadow */
+            z-index: 45; /* Above drawer overlay (40) but can be below modals */
+            display: flex;
+            flex-wrap: wrap; /* Allow controls to wrap on smaller screens */
+            gap: 0.5rem; /* gap-2 */
+            align-items: center;
+            justify-content: center; /* Center controls */
         }
     </style>
 </head>
@@ -109,40 +120,14 @@
             <main class="flex-grow p-4 overflow-y-auto">
                 <div x-show="currentView === 'home'" x-transition>
                     <h2 class="text-2xl font-bold mb-4">Game Room (<span x-text="adminName"></span>)</h2>
-                    <div class="bg-base-100 p-3 rounded-lg shadow mb-4 sticky-controls" style="top: 64px;">
-                        <div class="flex flex-wrap gap-2 items-center justify-center">
-                            <div class="form-control">
-                                <label class="label cursor-pointer"><span class="label-text mr-2">Mode:</span>
-                                    <select class="select select-bordered select-sm" x-model="callingMode" :disabled="gameStatus !== 'idle'">
-                                        <option value="manual">Manual</option><option value="auto">Auto</option>
-                                    </select>
-                                </label>
-                            </div>
-                            <div class="form-control" x-show="callingMode === 'auto'">
-                                <label class="label cursor-pointer"><span class="label-text mr-2">Interval:</span>
-                                    <select class="select select-bordered select-sm" x-model.number="autoCallInterval" :disabled="gameStatus !== 'idle'">
-                                        <option value="3">3s</option><option value="5">5s</option><option value="7">7s</option>
-                                    </select>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="bg-base-100 p-3 rounded-lg shadow mb-6 sticky-controls" style="top: 130px;">
-                        <div class="flex flex-wrap gap-2 items-center justify-center">
-                            <button class="btn btn-success btn-sm" @click="startGame" :disabled="gameStatus !== 'idle'"><i class="fas fa-play mr-1"></i>Start Game</button>
-                            <button class="btn btn-primary btn-sm" @click="callNextNumber" :disabled="callingMode !== 'manual' || gameStatus !== 'running'"><i class="fas fa-arrow-right mr-1"></i>Call Next</button>
-                            <button class="btn btn-warning btn-sm" @click="pauseGame" :disabled="callingMode !== 'auto' || gameStatus !== 'running'"><i class="fas fa-pause mr-1"></i>Pause</button>
-                            <button class="btn btn-info btn-sm" @click="resumeGame" :disabled="callingMode !== 'auto' || gameStatus !== 'paused'"><i class="fas fa-play-circle mr-1"></i>Resume</button>
-                            <button class="btn btn-error btn-sm" @click="stopGame" :disabled="gameStatus === 'idle' || gameStatus === 'stopped'"><i class="fas fa-stop mr-1"></i>Stop Game</button>
-                        </div>
-                    </div>
-                    <div class="text-center mb-6" x-show="latestCalledNumber !== null">
-                        <span class="label-text">Last Called:</span>
+                    
+                    <div class="text-center my-6" x-show="latestCalledNumber !== null"> <span class="label-text">Last Called:</span>
                         <div class="badge badge-lg badge-secondary text-2xl p-4" x-text="latestCalledNumber"></div>
                     </div>
-                    <div class="text-center mb-6" x-show="latestCalledNumber === null && gameStatus !== 'idle' && gameStatus !== 'stopped'">
+                    <div class="text-center my-6" x-show="latestCalledNumber === null && gameStatus !== 'idle' && gameStatus !== 'stopped'">
                         <span class="label-text">Game started. Call the first number!</span>
                     </div>
+
                     <div class="number-grid p-2 bg-base-100 rounded-lg shadow">
                         <template x-for="numObj in numbers" :key="numObj.number">
                             <div class="number-cell bg-base-300" :class="{ 'called': numObj.called, 'latest': numObj.number === latestCalledNumber && numObj.called }" x-text="numObj.number"></div>
@@ -294,10 +279,47 @@
         </div>
     </div>
 
+    <div class="bottom-nav-controls" x-show="currentView === 'home'">
+        <div class="form-control">
+            <label class="label cursor-pointer">
+                <span class="label-text mr-1 sm:mr-2">Mode:</span>
+                <select class="select select-bordered select-xs sm:select-sm" x-model="callingMode" :disabled="gameStatus !== 'idle'">
+                    <option value="manual">Manual</option>
+                    <option value="auto">Auto</option>
+                </select>
+            </label>
+        </div>
+        <div class="form-control" x-show="callingMode === 'auto'">
+            <label class="label cursor-pointer">
+                <span class="label-text mr-1 sm:mr-2">Interval:</span>
+                <select class="select select-bordered select-xs sm:select-sm" x-model.number="autoCallInterval" :disabled="gameStatus !== 'idle'">
+                    <option value="3">3s</option>
+                    <option value="5">5s</option>
+                    <option value="7">7s</option>
+                </select>
+            </label>
+        </div>
+        <button class="btn btn-success btn-xs sm:btn-sm" @click="startGame" :disabled="gameStatus !== 'idle'">
+            <i class="fas fa-play mr-1"></i> Start
+        </button>
+        <button class="btn btn-primary btn-xs sm:btn-sm" @click="callNextNumber" :disabled="callingMode !== 'manual' || gameStatus !== 'running'">
+            <i class="fas fa-arrow-right mr-1"></i> Next
+        </button>
+        <button class="btn btn-warning btn-xs sm:btn-sm" @click="pauseGame" :disabled="callingMode !== 'auto' || gameStatus !== 'running'">
+            <i class="fas fa-pause mr-1"></i> Pause
+        </button>
+        <button class="btn btn-info btn-xs sm:btn-sm" @click="resumeGame" :disabled="callingMode !== 'auto' || gameStatus !== 'paused'">
+            <i class="fas fa-play-circle mr-1"></i> Resume
+        </button>
+        <button class="btn btn-error btn-xs sm:btn-sm" @click="stopGame" :disabled="gameStatus === 'idle' || gameStatus === 'stopped'">
+            <i class="fas fa-stop mr-1"></i> Stop
+        </button>
+    </div>
+
+
     <script>
     function adminRoom() {
         return {
-            // ... (other properties remain the same) ...
             adminName: '',
             roomId: '',
             currentView: 'home',
@@ -319,7 +341,6 @@
             winners: [],
             gameSummaryData: [],
             gameRules: [
-                // Initial baseWeights act as desired proportions if activated
                 { id: 'rule1', name: '1-2-3', description: 'First number of first row, First 2 numbers of 2nd row and First 3 numbers of third row are cut.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 10 },
                 { id: 'rule2', name: 'Bottom Line', description: 'Bottom Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: true, originalWeight: 15 },
                 { id: 'rule3', name: 'BP (Bull\'s Eye)', description: 'Highest and lowest numbers of the ticket.', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 5 },
@@ -334,39 +355,33 @@
                 { id: 'rule12', name: 'Top Line', description: 'Top Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: true, originalWeight: 15 },
                 { id: 'rule13', name: 'Unlucky 1', description: 'Player who is last in having his/her first number striked.', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 5 },
             ],
-            totalSelectedWeight: 0, // This will be 100 if any rule is active
+            totalSelectedWeight: 0, 
             totalPotentialCoins: 0,
             totalMoneyCollected: null,
             valuePerCoin: null,
 
             init() {
-                // ... (init logic for theme, URL params, numbers) ...
                 const savedTheme = localStorage.getItem('theme') || 'light';
                 this.setTheme(savedTheme, null, false);
                 const urlParams = new URLSearchParams(window.location.search);
                 this.adminName = urlParams.get('adminName') || 'Admin';
                 this.roomId = urlParams.get('roomId') || 'N/A';
-                if (this.roomId === 'N/A') { /* ... error handling ... */ }
+                if (this.roomId === 'N/A') { 
+                    this.showGameMessage("Room ID not found. Please create or join a room first.", "error", null);
+                 }
                 this.initializeNumbers();
-
-                // Add originalWeight to each rule if not present, for restoring when deactivated
                 this.gameRules.forEach(rule => {
                     if (rule.originalWeight === undefined) rule.originalWeight = rule.baseWeight;
                 });
-
-                this.normalizeActiveRuleWeights(); // First normalization
-                this.updateRuleCalculations();   // Then calculate coins etc.
-
+                this.normalizeActiveRuleWeights(); 
+                this.updateRuleCalculations();   
                 this.fetchPlayers(); this.fetchTicketRequests(); this.fetchPrizeClaims(); this.fetchWinners(); this.fetchGameSummary();
             },
 
-            // --- New and Modified Methods for Rule Weights ---
             handleActivationToggle(ruleId) {
                 const rule = this.gameRules.find(r => r.id === ruleId);
                 if (rule) {
-                    // rule.isActive is already toggled by x-model
                     if (!rule.isActive) {
-                        // If deactivated, reset its baseWeight to its original desired proportion for next activation
                         rule.baseWeight = rule.originalWeight;
                     }
                 }
@@ -378,11 +393,8 @@
                 const rule = this.gameRules.find(r => r.id === ruleId && r.isActive);
                 if (rule) {
                     let newWeight = parseFloat(inputValue);
-                    if (isNaN(newWeight)) newWeight = 0; // Handle non-numeric input gracefully
-                    
-                    // Store this user-defined weight as the new "original" if they deactivate and reactivate
-                    rule.originalWeight = Math.max(0, newWeight); // Don't let originalWeight be negative
-
+                    if (isNaN(newWeight)) newWeight = 0; 
+                    rule.originalWeight = Math.max(0, newWeight); 
                     this.normalizeActiveRuleWeights(ruleId, newWeight);
                     this.updateRuleCalculations();
                 }
@@ -390,37 +402,33 @@
             
             normalizeActiveRuleWeights(editedRuleId = null, newWeightForEditedRule = null) {
                 let activeRules = this.gameRules.filter(r => r.isActive);
-
                 if (activeRules.length === 0) {
                     this.totalSelectedWeight = 0;
-                    this.gameRules.forEach(r => r.baseWeight = r.originalWeight); // Reset all to original
+                    this.gameRules.forEach(r => {
+                         r.baseWeight = r.originalWeight; // Reset to original when no rules are active
+                         r.coinsPerPrize = 0; // Also reset coins
+                    });
+                    this.updateRuleCalculations(); // Recalculate totals
                     return;
                 }
 
                 if (editedRuleId && newWeightForEditedRule !== null) {
-                    // User is editing a specific rule's weight
                     const editedRule = activeRules.find(r => r.id === editedRuleId);
                     if (editedRule) {
-                        editedRule.baseWeight = Math.max(0, Math.min(100, newWeightForEditedRule)); // Clamp 0-100
-
+                        editedRule.baseWeight = Math.max(0, Math.min(100, newWeightForEditedRule)); 
                         if (activeRules.length === 1) {
                             editedRule.baseWeight = 100;
                         } else {
                             let sumOfOtherActiveOriginalWeights = 0;
                             activeRules.forEach(r => {
-                                if (r.id !== editedRuleId) {
-                                    sumOfOtherActiveOriginalWeights += r.originalWeight; // Use original for proportion
-                                }
+                                if (r.id !== editedRuleId) sumOfOtherActiveOriginalWeights += r.originalWeight;
                             });
-
                             const remainingTargetSum = 100 - editedRule.baseWeight;
-                            
                             activeRules.forEach(r => {
                                 if (r.id !== editedRuleId) {
                                     if (sumOfOtherActiveOriginalWeights > 0) {
                                         r.baseWeight = (r.originalWeight / sumOfOtherActiveOriginalWeights) * remainingTargetSum;
                                     } else {
-                                        // If other original weights are 0, distribute remaining equally
                                         r.baseWeight = remainingTargetSum / (activeRules.length - 1);
                                     }
                                 }
@@ -428,80 +436,79 @@
                         }
                     }
                 } else {
-                    // General normalization (init, activation/deactivation without direct edit)
-                    let sumOfActiveOriginalWeights = 0;
-                    activeRules.forEach(r => { sumOfActiveOriginalWeights += r.originalWeight; });
-
+                    let sumOfActiveOriginalWeights = activeRules.reduce((sum, r) => sum + r.originalWeight, 0);
                     if (sumOfActiveOriginalWeights > 0) {
-                        activeRules.forEach(r => {
-                            r.baseWeight = (r.originalWeight / sumOfActiveOriginalWeights) * 100;
-                        });
+                        activeRules.forEach(r => r.baseWeight = (r.originalWeight / sumOfActiveOriginalWeights) * 100);
                     } else if (activeRules.length > 0) {
-                        // All active rules have originalWeight 0, so distribute 100% equally
-                        activeRules.forEach(r => { r.baseWeight = 100 / activeRules.length; });
+                        activeRules.forEach(r => r.baseWeight = 100 / activeRules.length);
                     }
                 }
 
-                // Final pass to correct floating point inaccuracies and ensure sum is 100
                 let currentSum = activeRules.reduce((sum, r) => sum + r.baseWeight, 0);
-                if (activeRules.length > 0 && currentSum > 0 && Math.abs(currentSum - 100) > 0.001) { // Check if sum is not 100
-                    activeRules.forEach(r => r.baseWeight = (r.baseWeight / currentSum) * 100);
-                } else if (activeRules.length > 0 && currentSum === 0) { // All became 0
+                if (activeRules.length > 0 && currentSum > 0 && Math.abs(currentSum - 100) > 0.01) {
+                    const correctionFactor = 100 / currentSum;
+                    activeRules.forEach(r => r.baseWeight *= correctionFactor);
+                } else if (activeRules.length > 0 && currentSum === 0) {
                      activeRules.forEach(r => r.baseWeight = 100 / activeRules.length);
                 }
-
-
+                // Ensure weights are not negative and sum to 100
+                if(activeRules.length > 0) {
+                    activeRules.forEach(r => { if(r.baseWeight < 0) r.baseWeight = 0; });
+                    currentSum = activeRules.reduce((sum, r) => sum + r.baseWeight, 0); // Recalculate sum
+                     if (currentSum > 0 && Math.abs(currentSum - 100) > 0.01) { // Re-normalize if necessary
+                        const finalCorrection = 100 / currentSum;
+                        activeRules.forEach(r => r.baseWeight *= finalCorrection);
+                    }
+                    // Ensure the last rule takes up any slack due to floating point math
+                    if (activeRules.length > 1) {
+                        let sumExceptLast = 0;
+                        for(let i=0; i < activeRules.length -1; i++) {
+                            sumExceptLast += activeRules[i].baseWeight;
+                        }
+                        activeRules[activeRules.length-1].baseWeight = 100 - sumExceptLast;
+                    } else if (activeRules.length === 1) {
+                        activeRules[0].baseWeight = 100;
+                    }
+                }
                 this.totalSelectedWeight = activeRules.length > 0 ? 100 : 0;
             },
 
             updateRuleCalculations() {
-                // This function is called after weights are normalized or other inputs change
                 const currentTotalMoneyCollected = parseFloat(this.totalMoneyCollected) || 0;
                 let calculatedTotalPotentialCoins = 0;
-
                 this.gameRules.forEach(rule => {
                     if (rule.isActive) {
-                        // rule.baseWeight is already the normalized percentage (0-100)
                         const moneyAllocatedToRule = (rule.baseWeight / 100) * currentTotalMoneyCollected;
-                        const maxPrizes = parseInt(rule.maxPrizes) || 1; // Ensure at least 1 prize
+                        const maxPrizes = parseInt(rule.maxPrizes) || 1; 
                         rule.coinsPerPrize = maxPrizes > 0 ? (moneyAllocatedToRule / maxPrizes) : 0;
-                        calculatedTotalPotentialCoins += moneyAllocatedToRule; // Sum of money allocated
+                        calculatedTotalPotentialCoins += moneyAllocatedToRule; 
                     } else {
                         rule.coinsPerPrize = 0;
                     }
                 });
-
                 this.totalPotentialCoins = calculatedTotalPotentialCoins;
-                this.calculateCoinValue(); // valuePerCoin will be 1 if money > 0
+                this.calculateCoinValue(); 
             },
             
             calculateCoinValue() {
                 const currentTotalMoneyCollected = parseFloat(this.totalMoneyCollected) || 0;
-                // If totalPotentialCoins represents the total money distributed, then 1 coin = 1 unit of currency.
-                if (currentTotalMoneyCollected > 0 && this.totalPotentialCoins > 0) {
-                     // If totalPotentialCoins is the sum of money that will be distributed as coins
-                    this.valuePerCoin = currentTotalMoneyCollected / this.totalPotentialCoins; 
-                    // This should be close to 1 if logic is correct. For simplicity, if money is set, value is 1.
-                    this.valuePerCoin = 1.00; 
+                if (currentTotalMoneyCollected > 0 && this.totalPotentialCoins > 0.001) { // Avoid division by very small number
+                    this.valuePerCoin = 1.00; // If coins are derived from money, 1 coin = 1 currency unit
                 } else {
                     this.valuePerCoin = null;
                 }
             },
-            // ... (other methods: showGameMessage, initializeNumbers, setTheme, changeView, game controls, fetchers, approve/reject, save, generateQRCode) ...
-            // Ensure these methods are consistent with the previous version if not listed here for brevity.
-            // For example, approvePrizeClaim should use the updated rule.coinsPerPrize.
             
-            // Minor update to approvePrizeClaim to use the correct coins
             approvePrizeClaim(claimId) { 
                 const claim = this.prizeClaims.find(c => c.id === claimId);
                 if (claim) {
                     const rule = this.gameRules.find(r => r.name === claim.prizeName);
-                    if (rule && rule.isActive) { // Check if rule exists and is active
+                    if (rule && rule.isActive) { 
                          this.winners.push({ 
                             id: 'w' + Date.now(), 
                             playerName: claim.playerName, 
                             prizeName: rule.name, 
-                            coins: rule.coinsPerPrize // This is now the calculated monetary value per prize
+                            coins: rule.coinsPerPrize 
                         });
                         this.prizeClaims = this.prizeClaims.filter(c => c.id !== claimId);
                         this.showGameMessage(`Prize claim for ${rule.name} by ${claim.playerName} approved. Coins: ${rule.coinsPerPrize.toFixed(2)}`, "success");
@@ -510,8 +517,7 @@
                     }
                 }
             },
-            // Placeholder for other existing methods from the previous version
-            showGameMessage(text, type = 'info', duration = 3000) { this.gameMessage = text; this.gameMessageType = type; if (duration) setTimeout(() => { this.gameMessage = ''; }, duration);},
+            showGameMessage(text, type = 'info', duration = 3000) { this.gameMessage = text; this.gameMessageType = type; if (duration !== null) setTimeout(() => { this.gameMessage = ''; }, duration);},
             initializeNumbers() { this.numbers = Array.from({ length: 90 }, (_, i) => ({ number: i + 1, called: false })); this.availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1); this.calledNumbersHistory = []; this.latestCalledNumber = null; },
             setTheme(themeName, event = null, closeDropdown = true) { document.documentElement.setAttribute('data-theme', themeName); localStorage.setItem('theme', themeName); if (closeDropdown && event && event.target) { const anchorElement = event.target; const dropdownRoot = anchorElement.closest('.dropdown'); const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]'); setTimeout(() => { if (document.activeElement instanceof HTMLElement && dropdownRoot?.contains(document.activeElement)) { document.activeElement.blur(); } dropdownTriggerLabel?.blur(); }, 0); } },
             changeView(viewName) { this.currentView = viewName; this.isDrawerOpen = false; if (viewName === 'qrCode') { this.$nextTick(() => { this.generateQRCode(); }); } },
