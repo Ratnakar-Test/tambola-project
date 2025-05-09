@@ -600,17 +600,17 @@
                  }
                  return; 
             }
-            // console.log(`Polling for room: ${currentRoomId}`); // DEBUG LOG (Uncomment if needed)
+            // console.log(`Polling for room: ${currentRoomId}`); 
             try {
                 const response = await fetch(`${API_BASE_URL}/api/admin/state?roomId=${currentRoomId}`); 
                 
-                // console.log(`Fetch response status for room ${currentRoomId}: ${response.status}`); // DEBUG LOG (Uncomment if needed)
+                // console.log(`Fetch response status for room ${currentRoomId}: ${response.status}`); 
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
-                    console.error("Fetch Error Data:", errorData); 
+                    // console.error("Fetch Error Data:", errorData); 
                     
-                    if (response.status === 404 || response.status === 401 || errorData.message?.includes("not found")) {
+                    if (response.status === 404 || response.status === 401 || errorData.message?.includes("not found") || errorData.message?.includes("invalid")) {
                         console.warn(`Room ${currentRoomId} invalid or session expired. Resetting admin UI.`);
                         if (pollingAdminIntervalId) clearInterval(pollingAdminIntervalId);
                         pollingAdminIntervalId = null;
@@ -623,9 +623,9 @@
                     return; 
                 }
                 serverGameState = await response.json();
-                // console.log("Fetched state:", serverGameState); // DEBUG LOG - Can be noisy
+                // console.log("Fetched state:", serverGameState); 
                 updateAdminUI(serverGameState);
-            } catch (error) { // Catch network errors
+            } catch (error) { 
                 console.error("Failed to fetch admin game state (Network Error):", error);
                 statusTextEl.textContent = `Network Error fetching state. Retrying...`;
             }
@@ -674,14 +674,15 @@
                 isStartingGame = false;
                 startGameBtnSpinner.classList.add('hidden');
                 startGameBtnText.classList.remove('hidden');
-                // updateButtonStates called by fetchAdminData
+                // updateButtonStates is called by fetchAdminData
             }
         }
 
         async function drawNextNumber() {
             // Check conditions first
             if (!currentRoomId || serverGameState.gameOver || !serverGameState.gameStarted || modeAutoRadio.checked || isDrawingNumber) {
-                console.log("Draw condition not met:", {currentRoomId, gameOver: serverGameState.gameOver, gameStarted: serverGameState.gameStarted, isAuto: modeAutoRadio.checked, isDrawingNumber});
+                // console.log("Draw condition not met:", {currentRoomId, gameOver: serverGameState.gameOver, gameStarted: serverGameState.gameStarted, isAuto: modeAutoRadio.checked, isDrawingNumber});
+                updateButtonStates(); // Ensure button state is correct even if conditions not met
                 return; 
             }
 
@@ -689,7 +690,7 @@
             callNextBtn.disabled = true; 
             callNextBtnSpinner.classList.remove('hidden');
             callNextBtnText.classList.add('hidden');
-            console.log("Attempting to draw number..."); // DEBUG LOG
+            // console.log("Attempting to draw number..."); 
 
             try {
                 const response = await fetch(`${API_BASE_URL}/api/admin/draw-number`, { 
@@ -704,24 +705,21 @@
                          serverGameState.gameOver = true; 
                      }
                      console.error(`Draw number error: ${response.status}, Message: ${errorData.message}`);
-                     // Fetch state even on error to update UI (e.g., show game over)
-                     await fetchAdminData(); 
-                } else {
-                    // Success: Fetch full state to update UI including new number
-                    await fetchAdminData(); 
-                }
+                } 
+                // Always fetch state to update UI, regardless of draw success/failure
+                await fetchAdminData(); 
             } catch (error) {
                 console.error("Failed to draw number (network/fetch issue):", error);
                 await fetchAdminData(); // Fetch state on network error too
             } finally {
-                 console.log("Draw number finally block"); // DEBUG LOG
-                 isDrawingNumber = false;
+                 // console.log("Draw number finally block"); 
+                 isDrawingNumber = false; // Reset the flag
                  // Reset button appearance
                  callNextBtnSpinner.classList.add('hidden');
                  callNextBtnText.classList.remove('hidden');
                  // Re-evaluate disabled state based on potentially updated serverGameState
-                 // updateButtonStates is called within fetchAdminData -> updateAdminUI, 
-                 // but call explicitly here for faster feedback if needed, though might cause flicker.
+                 // This is handled by the fetchAdminData -> updateAdminUI -> updateButtonStates chain
+                 // but calling it here ensures the button is immediately responsive after the attempt.
                  updateButtonStates(); 
             }
         }
@@ -756,7 +754,7 @@
                 isStoppingGame = false;
                 stopGameBtnSpinner.classList.add('hidden');
                 stopGameBtnText.classList.remove('hidden');
-                 // updateButtonStates called by fetchAdminData
+                // updateButtonStates called by fetchAdminData
             }
         }
         
@@ -1031,7 +1029,6 @@
             if (autoCallIntervalId) clearInterval(autoCallIntervalId); 
             const interval = parseInt(intervalSelector.value);
             autoCallIntervalId = setInterval(async () => {
-                 // Check latest server state before drawing
                  if (!serverGameState.gameStarted || serverGameState.gameOver || isGamePaused) {
                     clearInterval(autoCallIntervalId);
                     autoCallIntervalId = null;
