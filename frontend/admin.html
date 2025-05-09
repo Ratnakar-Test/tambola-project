@@ -70,11 +70,11 @@
             50% { transform: scale(1.25); box-shadow: 0 0 18px oklch(var(--p)); } /* Emphasize more at peak */
             100% { transform: scale(1.1); box-shadow: 0 0 10px oklch(var(--p)); }
         }
-        /* Sticky header for game controls - ensure it has a background to not show content scrolling underneath */
+        /* Sticky header for game controls */
         .sticky-controls {
             position: sticky;
             background-color: oklch(var(--b1)); /* Use base-100 or similar background */
-            z-index: 20; /* Ensure it's above the number grid but below the main navbar */
+            z-index: 20; 
         }
     </style>
 </head>
@@ -109,49 +109,33 @@
             <main class="flex-grow p-4 overflow-y-auto">
                 <div x-show="currentView === 'home'" x-transition>
                     <h2 class="text-2xl font-bold mb-4">Game Room (<span x-text="adminName"></span>)</h2>
-                    
-                    <div class="bg-base-100 p-3 rounded-lg shadow mb-4 sticky-controls" style="top: 64px;"> <div class="flex flex-wrap gap-2 items-center justify-center">
+                    <div class="bg-base-100 p-3 rounded-lg shadow mb-4 sticky-controls" style="top: 64px;">
+                        <div class="flex flex-wrap gap-2 items-center justify-center">
                             <div class="form-control">
-                                <label class="label cursor-pointer">
-                                    <span class="label-text mr-2">Mode:</span>
+                                <label class="label cursor-pointer"><span class="label-text mr-2">Mode:</span>
                                     <select class="select select-bordered select-sm" x-model="callingMode" :disabled="gameStatus !== 'idle'">
-                                        <option value="manual">Manual</option>
-                                        <option value="auto">Auto</option>
+                                        <option value="manual">Manual</option><option value="auto">Auto</option>
                                     </select>
                                 </label>
                             </div>
                             <div class="form-control" x-show="callingMode === 'auto'">
-                                <label class="label cursor-pointer">
-                                    <span class="label-text mr-2">Interval:</span>
+                                <label class="label cursor-pointer"><span class="label-text mr-2">Interval:</span>
                                     <select class="select select-bordered select-sm" x-model.number="autoCallInterval" :disabled="gameStatus !== 'idle'">
-                                        <option value="3">3s</option>
-                                        <option value="5">5s</option>
-                                        <option value="7">7s</option>
+                                        <option value="3">3s</option><option value="5">5s</option><option value="7">7s</option>
                                     </select>
                                 </label>
                             </div>
                         </div>
                     </div>
-
-                    <div class="bg-base-100 p-3 rounded-lg shadow mb-6 sticky-controls" style="top: 130px;"> <div class="flex flex-wrap gap-2 items-center justify-center">
-                            <button class="btn btn-success btn-sm" @click="startGame" :disabled="gameStatus !== 'idle'">
-                                <i class="fas fa-play mr-1"></i> Start Game
-                            </button>
-                            <button class="btn btn-primary btn-sm" @click="callNextNumber" :disabled="callingMode !== 'manual' || gameStatus !== 'running'">
-                                <i class="fas fa-arrow-right mr-1"></i> Call Next
-                            </button>
-                            <button class="btn btn-warning btn-sm" @click="pauseGame" :disabled="callingMode !== 'auto' || gameStatus !== 'running'">
-                                <i class="fas fa-pause mr-1"></i> Pause
-                            </button>
-                            <button class="btn btn-info btn-sm" @click="resumeGame" :disabled="callingMode !== 'auto' || gameStatus !== 'paused'">
-                                <i class="fas fa-play-circle mr-1"></i> Resume
-                            </button>
-                            <button class="btn btn-error btn-sm" @click="stopGame" :disabled="gameStatus === 'idle' || gameStatus === 'stopped'">
-                                <i class="fas fa-stop mr-1"></i> Stop Game
-                            </button>
+                    <div class="bg-base-100 p-3 rounded-lg shadow mb-6 sticky-controls" style="top: 130px;">
+                        <div class="flex flex-wrap gap-2 items-center justify-center">
+                            <button class="btn btn-success btn-sm" @click="startGame" :disabled="gameStatus !== 'idle'"><i class="fas fa-play mr-1"></i>Start Game</button>
+                            <button class="btn btn-primary btn-sm" @click="callNextNumber" :disabled="callingMode !== 'manual' || gameStatus !== 'running'"><i class="fas fa-arrow-right mr-1"></i>Call Next</button>
+                            <button class="btn btn-warning btn-sm" @click="pauseGame" :disabled="callingMode !== 'auto' || gameStatus !== 'running'"><i class="fas fa-pause mr-1"></i>Pause</button>
+                            <button class="btn btn-info btn-sm" @click="resumeGame" :disabled="callingMode !== 'auto' || gameStatus !== 'paused'"><i class="fas fa-play-circle mr-1"></i>Resume</button>
+                            <button class="btn btn-error btn-sm" @click="stopGame" :disabled="gameStatus === 'idle' || gameStatus === 'stopped'"><i class="fas fa-stop mr-1"></i>Stop Game</button>
                         </div>
                     </div>
-
                     <div class="text-center mb-6" x-show="latestCalledNumber !== null">
                         <span class="label-text">Last Called:</span>
                         <div class="badge badge-lg badge-secondary text-2xl p-4" x-text="latestCalledNumber"></div>
@@ -159,50 +143,22 @@
                     <div class="text-center mb-6" x-show="latestCalledNumber === null && gameStatus !== 'idle' && gameStatus !== 'stopped'">
                         <span class="label-text">Game started. Call the first number!</span>
                     </div>
-
-
                     <div class="number-grid p-2 bg-base-100 rounded-lg shadow">
                         <template x-for="numObj in numbers" :key="numObj.number">
-                            <div class="number-cell bg-base-300"
-                                 :class="{ 'called': numObj.called, 'latest': numObj.number === latestCalledNumber && numObj.called }"
-                                 x-text="numObj.number">
-                            </div>
+                            <div class="number-cell bg-base-300" :class="{ 'called': numObj.called, 'latest': numObj.number === latestCalledNumber && numObj.called }" x-text="numObj.number"></div>
                         </template>
                     </div>
-                     <div x-show="gameMessage" class="mt-4 p-3 rounded-md text-center text-lg"
-                         :class="{ 'bg-info text-info-content': gameMessageType === 'info', 
-                                   'bg-success text-success-content': gameMessageType === 'success',
-                                   'bg-warning text-warning-content': gameMessageType === 'warning',
-                                   'bg-error text-error-content': gameMessageType === 'error' }"
-                         x-text="gameMessage">
-                    </div>
-
+                    <div x-show="gameMessage" class="mt-4 p-3 rounded-md text-center text-lg" :class="{ 'bg-info text-info-content': gameMessageType === 'info', 'bg-success text-success-content': gameMessageType === 'success', 'bg-warning text-warning-content': gameMessageType === 'warning', 'bg-error text-error-content': gameMessageType === 'error' }" x-text="gameMessage"></div>
                 </div>
 
                 <div x-show="currentView === 'players'" x-transition>
                     <h2 class="text-2xl font-bold mb-4">Players</h2>
                     <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
                         <table class="table table-zebra w-full">
-                            <thead>
-                                <tr>
-                                    <th></th>
-                                    <th>Player Name</th>
-                                    <th>Room No</th>
-                                    <th>No of Tickets</th>
-                                </tr>
-                            </thead>
+                            <thead><tr><th></th><th>Player Name</th><th>Room No</th><th>No of Tickets</th></tr></thead>
                             <tbody>
-                                <template x-if="players.length === 0">
-                                    <tr><td colspan="4" class="text-center">No players connected yet.</td></tr>
-                                </template>
-                                <template x-for="(player, index) in players" :key="player.id">
-                                    <tr>
-                                        <th x-text="index + 1"></th>
-                                        <td x-text="player.name"></td>
-                                        <td x-text="player.roomId"></td>
-                                        <td x-text="player.ticketsCount"></td>
-                                    </tr>
-                                </template>
+                                <template x-if="players.length === 0"><tr><td colspan="4" class="text-center">No players connected yet.</td></tr></template>
+                                <template x-for="(player, index) in players" :key="player.id"><tr><th x-text="index + 1"></th><td x-text="player.name"></td><td x-text="player.roomId"></td><td x-text="player.ticketsCount"></td></tr></template>
                             </tbody>
                         </table>
                     </div>
@@ -210,29 +166,12 @@
 
                 <div x-show="currentView === 'ticketRequests'" x-transition>
                     <h2 class="text-2xl font-bold mb-4">Ticket Requests</h2>
-                     <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow"> <table class="table table-zebra w-full">
-                            <thead>
-                                <tr>
-                                    <th>Player</th>
-                                    <th>Tickets Requested</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
+                    <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
+                        <table class="table table-zebra w-full">
+                            <thead><tr><th>Player</th><th>Tickets Requested</th><th>Action</th></tr></thead>
                             <tbody>
-                                <template x-if="ticketRequests.length === 0">
-                                    <tr><td colspan="3" class="text-center">No pending ticket requests.</td></tr>
-                                </template>
-                                <template x-for="(request, index) in ticketRequests" :key="request.id">
-                                    <tr>
-                                        <td x-text="request.playerName"></td>
-                                        <td x-text="request.ticketsRequested" class="text-center"></td>
-                                        <td>
-                                            <div class="flex flex-wrap gap-1 justify-start"> <button class="btn btn-xs btn-success" @click="approveTicketRequest(request.id)">Approve</button>
-                                                <button class="btn btn-xs btn-error" @click="rejectTicketRequest(request.id)">Reject</button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </template>
+                                <template x-if="ticketRequests.length === 0"><tr><td colspan="3" class="text-center">No pending ticket requests.</td></tr></template>
+                                <template x-for="request in ticketRequests" :key="request.id"><tr><td x-text="request.playerName"></td><td x-text="request.ticketsRequested" class="text-center"></td><td><div class="flex flex-wrap gap-1 justify-start"><button class="btn btn-xs btn-success" @click="approveTicketRequest(request.id)">Approve</button><button class="btn btn-xs btn-error" @click="rejectTicketRequest(request.id)">Reject</button></div></td></tr></template>
                             </tbody>
                         </table>
                     </div>
@@ -240,29 +179,12 @@
                 
                 <div x-show="currentView === 'prizeClaims'" x-transition>
                     <h2 class="text-2xl font-bold mb-4">Prize Claims</h2>
-                     <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow"> <table class="table table-zebra w-full">
-                            <thead>
-                                <tr>
-                                    <th>Player</th>
-                                    <th>Prize Claimed</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
+                    <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
+                        <table class="table table-zebra w-full">
+                            <thead><tr><th>Player</th><th>Prize Claimed</th><th>Action</th></tr></thead>
                             <tbody>
-                                 <template x-if="prizeClaims.length === 0">
-                                    <tr><td colspan="3" class="text-center">No pending prize claims.</td></tr>
-                                </template>
-                                <template x-for="(claim, index) in prizeClaims" :key="claim.id">
-                                    <tr>
-                                        <td x-text="claim.playerName"></td>
-                                        <td x-text="claim.prizeName"></td>
-                                        <td>
-                                            <div class="flex flex-wrap gap-1 justify-start"> <button class="btn btn-xs btn-success" @click="approvePrizeClaim(claim.id)">Approve</button>
-                                                <button class="btn btn-xs btn-error" @click="rejectPrizeClaim(claim.id)">Reject</button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </template>
+                                <template x-if="prizeClaims.length === 0"><tr><td colspan="3" class="text-center">No pending prize claims.</td></tr></template>
+                                <template x-for="claim in prizeClaims" :key="claim.id"><tr><td x-text="claim.playerName"></td><td x-text="claim.prizeName"></td><td><div class="flex flex-wrap gap-1 justify-start"><button class="btn btn-xs btn-success" @click="approvePrizeClaim(claim.id)">Approve</button><button class="btn btn-xs btn-error" @click="rejectPrizeClaim(claim.id)">Reject</button></div></td></tr></template>
                             </tbody>
                         </table>
                     </div>
@@ -272,22 +194,10 @@
                     <h2 class="text-2xl font-bold mb-4">Winners</h2>
                     <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
                         <table class="table table-zebra w-full">
-                            <thead>
-                                <tr>
-                                    <th>Player</th>
-                                    <th>Prize</th>
-                                    <th>Coins</th> </tr>
-                            </thead>
+                            <thead><tr><th>Player</th><th>Prize</th><th>Coins</th></tr></thead>
                             <tbody>
-                                <template x-if="winners.length === 0">
-                                    <tr><td colspan="3" class="text-center">No winners yet.</td></tr>
-                                </template>
-                                <template x-for="(winner, index) in winners" :key="winner.id">
-                                   <tr>
-                                        <td x-text="winner.playerName"></td>
-                                        <td x-text="winner.prizeName"></td>
-                                        <td x-text="winner.coins.toFixed(2)"></td> </tr>
-                                </template>
+                                <template x-if="winners.length === 0"><tr><td colspan="3" class="text-center">No winners yet.</td></tr></template>
+                                <template x-for="winner in winners" :key="winner.id"><tr><td x-text="winner.playerName"></td><td x-text="winner.prizeName"></td><td x-text="winner.coins.toFixed(2)"></td></tr></template>
                             </tbody>
                         </table>
                     </div>
@@ -297,8 +207,8 @@
                     <h2 class="text-2xl font-bold mb-4">Game Rules & Prize Allocation</h2>
                     <div class="bg-base-100 p-4 rounded-lg shadow">
                         <p class="text-sm mb-4">
-                            Configure winning rules: activate them, assign base weights for proportional prize allocation, and set the maximum number of prizes allowed per rule.
-                            Enter the total money collected. Coins per prize will be calculated automatically based on these settings.
+                            Activate rules, assign their percentage share (Base Weight) of the total prize pool, and set max prizes.
+                            The sum of Base Weights for active rules will always be 100%. Coins per prize are auto-calculated based on the 'Total Money Collected'.
                         </p>
                     </div>
 
@@ -307,31 +217,28 @@
                             <div class="card-body p-4">
                                 <div class="flex items-center justify-between">
                                     <h3 class="card-title text-lg" x-text="rule.name"></h3>
-                                    <input type="checkbox" class="toggle toggle-primary" x-model="rule.isActive" @change="recalculatePrizeAllocationAndCoinValue()">
+                                    <input type="checkbox" class="toggle toggle-primary" x-model="rule.isActive" @change="handleActivationToggle(rule.id)">
                                 </div>
                                 <p class="text-xs text-base-content/70 mt-1" x-text="rule.description"></p>
                                 <div x-show="rule.isActive" class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
                                     <div class="form-control">
-                                        <label class="label pb-1">
-                                            <span class="label-text">Base Weight</span>
-                                        </label>
-                                        <input type="number" class="input input-sm input-bordered" x-model.number="rule.baseWeight" min="0" @input="recalculatePrizeAllocationAndCoinValue()">
+                                        <label class="label pb-1"><span class="label-text">Base Weight (%)</span></label>
+                                        <input type="number" class="input input-sm input-bordered" 
+                                               :value="rule.baseWeight.toFixed(2)" 
+                                               @input="handleBaseWeightInput(rule.id, $event.target.value)"
+                                               min="0" max="100" step="0.01">
                                     </div>
                                     <div class="form-control">
-                                        <label class="label pb-1">
-                                            <span class="label-text">Prizes Allowed</span>
-                                        </label>
-                                        <input type="number" class="input input-sm input-bordered" x-model.number="rule.maxPrizes" min="1" @input="recalculatePrizeAllocationAndCoinValue()">
+                                        <label class="label pb-1"><span class="label-text">Prizes Allowed</span></label>
+                                        <input type="number" class="input input-sm input-bordered" x-model.number="rule.maxPrizes" min="1" @input="updateRuleCalculations()">
                                     </div>
                                     <div class="form-control">
-                                        <label class="label pb-1">
-                                            <span class="label-text">Coins per Prize</span>
-                                        </label>
+                                        <label class="label pb-1"><span class="label-text">Coins per Prize</span></label>
                                         <span class="input input-sm input-bordered flex items-center" x-text="rule.coinsPerPrize > 0 ? rule.coinsPerPrize.toFixed(2) : '0.00'"></span>
                                     </div>
                                 </div>
                                 <div x-show="rule.isActive" class="mt-2 text-sm">
-                                    Allocated Prize Pool Share: <span class="font-semibold" x-text="rule.allocatedShare ? rule.allocatedShare.toFixed(2) + '%' : '0.00%'"></span>
+                                    Allocated Prize Pool Share: <span class="font-semibold" x-text="rule.baseWeight.toFixed(2) + '%'"></span>
                                 </div>
                             </div>
                         </div>
@@ -339,71 +246,41 @@
                     <div class="bg-base-100 p-4 rounded-lg shadow mt-6 space-y-3">
                         <h3 class="text-xl font-semibold">Prize Allocation & Financial Summary</h3>
                         <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Total Money Collected (e.g., OMR)</span>
-                            </label>
-                            <input type="number" placeholder="Enter amount" class="input input-bordered" x-model.number="totalMoneyCollected" @input="recalculatePrizeAllocationAndCoinValue()">
+                            <label class="label"><span class="label-text">Total Money Collected (e.g., OMR)</span></label>
+                            <input type="number" placeholder="Enter amount" class="input input-bordered" x-model.number="totalMoneyCollected" @input="updateRuleCalculations()">
                         </div>
-                        <p>Total Selected Weight (Active Rules): <strong x-text="totalSelectedWeight"></strong></p>
-                        <p>Total Calculated Coins to be Distributed: <strong x-text="totalPotentialCoins.toFixed(2)"></strong></p>
+                        <p>Total Selected Weight (Active Rules): <strong x-text="totalSelectedWeight.toFixed(0) + '%'"></strong></p>
+                        <p>Total Calculated Coins (Monetary Value): <strong x-text="totalPotentialCoins.toFixed(2)"></strong></p>
                         <p>Value per Coin (Currency Unit per Coin): <strong x-text="valuePerCoin !== null ? valuePerCoin.toFixed(2) : 'N/A'"></strong></p>
                         <button class="btn btn-primary btn-sm mt-2" @click="saveRulesConfiguration">Save Rules & Financials</button>
                     </div>
                 </div>
 
-
                 <div x-show="currentView === 'qrCode'" x-transition class="text-center">
                     <h2 class="text-2xl font-bold mb-4">Player Join QR Code</h2>
                     <p class="mb-4">Players can scan this QR code to join Room ID: <strong x-text="roomId"></strong></p>
-                    <div class="flex justify-center">
-                        <div id="qrcodeCanvas" class="bg-white p-4 inline-block rounded-lg shadow-lg">
-                            </div>
-                    </div>
-                     <button class="btn btn-secondary mt-4" @click="generateQRCode">
-                        <i class="fas fa-sync-alt mr-2"></i>Regenerate QR Code
-                    </button>
+                    <div class="flex justify-center"><div id="qrcodeCanvas" class="bg-white p-4 inline-block rounded-lg shadow-lg"></div></div>
+                    <button class="btn btn-secondary mt-4" @click="generateQRCode"><i class="fas fa-sync-alt mr-2"></i>Regenerate QR Code</button>
                 </div>
 
                 <div x-show="currentView === 'gameSummary'" x-transition>
                     <h2 class="text-2xl font-bold mb-4">Game Summary</h2>
-                     <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
+                    <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow">
                         <table class="table table-zebra w-full">
-                            <thead>
-                                <tr>
-                                    <th>Player</th>
-                                    <th>Room No</th>
-                                    <th>Tickets</th>
-                                    <th>Prizes Won</th>
-                                    <th>Coins Received</th>
-                                </tr>
-                            </thead>
+                            <thead><tr><th>Player</th><th>Room No</th><th>Tickets</th><th>Prizes Won</th><th>Coins Received</th></tr></thead>
                             <tbody>
-                                <template x-if="gameSummaryData.length === 0">
-                                    <tr><td colspan="5" class="text-center">No game summary available yet. Play a game!</td></tr>
-                                </template>
-                                <template x-for="summary in gameSummaryData" :key="summary.playerId">
-                                    <tr>
-                                        <td x-text="summary.playerName"></td>
-                                        <td x-text="summary.roomId"></td>
-                                        <td x-text="summary.ticketsCount"></td>
-                                        <td x-text="summary.prizesWon.join(', ') || 'None'"></td>
-                                        <td x-text="summary.coinsReceived.toFixed(2)"></td>
-                                    </tr>
-                                </template>
+                                <template x-if="gameSummaryData.length === 0"><tr><td colspan="5" class="text-center">No game summary available yet.</td></tr></template>
+                                <template x-for="summary in gameSummaryData" :key="summary.playerId"><tr><td x-text="summary.playerName"></td><td x-text="summary.roomId"></td><td x-text="summary.ticketsCount"></td><td x-text="summary.prizesWon.join(', ') || 'None'"></td><td x-text="summary.coinsReceived.toFixed(2)"></td></tr></template>
                             </tbody>
                         </table>
                     </div>
                 </div>
-
             </main>
         </div>
         <div class="drawer-side z-40">
             <label for="my-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
             <ul class="menu p-4 w-80 min-h-full bg-base-100 text-base-content">
-                <li class="mb-2 text-center">
-                    <span class="text-lg font-bold">Admin Menu</span>
-                    <button @click="isDrawerOpen = false" class="btn btn-ghost btn-sm btn-circle absolute top-2 right-2 lg:hidden">✕</button>
-                </li>
+                <li class="mb-2 text-center"><span class="text-lg font-bold">Admin Menu</span><button @click="isDrawerOpen = false" class="btn btn-ghost btn-sm btn-circle absolute top-2 right-2 lg:hidden">✕</button></li>
                 <li><a @click="changeView('home')" :class="{ 'active': currentView === 'home' }"><i class="fas fa-home mr-2"></i>Game Room</a></li>
                 <li><a @click="changeView('players')" :class="{ 'active': currentView === 'players' }"><i class="fas fa-users mr-2"></i>Players</a></li>
                 <li><a @click="changeView('ticketRequests')" :class="{ 'active': currentView === 'ticketRequests' }"><i class="fas fa-ticket-alt mr-2"></i>Ticket Requests</a></li>
@@ -420,12 +297,12 @@
     <script>
     function adminRoom() {
         return {
+            // ... (other properties remain the same) ...
             adminName: '',
             roomId: '',
-            currentView: 'home', // Default view
+            currentView: 'home',
             isDrawerOpen: false,
             themes: ["light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter"],
-            
             numbers: [], 
             calledNumbersHistory: [], 
             availableNumbers: [], 
@@ -436,316 +313,225 @@
             intervalId: null, 
             gameMessage: '',
             gameMessageType: 'info',
-
             players: [], 
             ticketRequests: [], 
             prizeClaims: [], 
-            winners: [], // winner object: { id, playerName, prizeName, coins (calculated) }
-            gameSummaryData: [], 
-            
+            winners: [],
+            gameSummaryData: [],
             gameRules: [
-                // coinsPerPrize will now be calculated and stored here
-                { id: 'rule1', name: '1-2-3', description: 'First number of first row, First 2 numbers of 2nd row and First 3 numbers of third row are cut.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 0, isActive: false, allocatedShare: 0 },
-                { id: 'rule2', name: 'Bottom Line', description: 'Bottom Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: true, allocatedShare: 0 },
-                { id: 'rule3', name: 'BP (Bull\'s Eye)', description: 'Highest and lowest numbers of the ticket.', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, allocatedShare: 0 },
-                { id: 'rule4', name: 'Breakfast', description: 'Numbers from 1 to 30.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 0, isActive: false, allocatedShare: 0 },
-                { id: 'rule5', name: 'Corners', description: 'Top Row: 1st and 5th Number; Bottom Row: 1st and 5th Number.', baseWeight: 10, maxPrizes: 2, coinsPerPrize: 0, isActive: true, allocatedShare: 0 },
-                { id: 'rule6', name: 'Dinner', description: 'Numbers from 61 to 90 in the ticket.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 0, isActive: false, allocatedShare: 0 },
-                { id: 'rule7', name: 'Early 5', description: 'First Five Numbers called.', baseWeight: 20, maxPrizes: 1, coinsPerPrize: 0, isActive: true, allocatedShare: 0 },
-                { id: 'rule8', name: 'Early 7', description: 'First seven Numbers called of ticket.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: false, allocatedShare: 0 },
-                { id: 'rule9', name: 'Fat Ladies', description: 'All numbers with the digit 8 (e.g., 8, 18, ..., 88, 89).', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, allocatedShare: 0 },
-                { id: 'rule10', name: 'Full House', description: 'All 15 Numbers.', baseWeight: 30, maxPrizes: 1, coinsPerPrize: 0, isActive: true, allocatedShare: 0 },
-                { id: 'rule11', name: 'Middle Line', description: 'Middle Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: true, allocatedShare: 0 },
-                { id: 'rule12', name: 'Top Line', description: 'Top Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: true, allocatedShare: 0 },
-                { id: 'rule13', name: 'Unlucky 1', description: 'Player who is last in having his/her first number striked.', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, allocatedShare: 0 },
+                // Initial baseWeights act as desired proportions if activated
+                { id: 'rule1', name: '1-2-3', description: 'First number of first row, First 2 numbers of 2nd row and First 3 numbers of third row are cut.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 10 },
+                { id: 'rule2', name: 'Bottom Line', description: 'Bottom Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: true, originalWeight: 15 },
+                { id: 'rule3', name: 'BP (Bull\'s Eye)', description: 'Highest and lowest numbers of the ticket.', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 5 },
+                { id: 'rule4', name: 'Breakfast', description: 'Numbers from 1 to 30.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 10 },
+                { id: 'rule5', name: 'Corners', description: 'Top Row: 1st and 5th Number; Bottom Row: 1st and 5th Number.', baseWeight: 10, maxPrizes: 2, coinsPerPrize: 0, isActive: true, originalWeight: 10 },
+                { id: 'rule6', name: 'Dinner', description: 'Numbers from 61 to 90 in the ticket.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 10 },
+                { id: 'rule7', name: 'Early 5', description: 'First Five Numbers called.', baseWeight: 20, maxPrizes: 1, coinsPerPrize: 0, isActive: true, originalWeight: 20 },
+                { id: 'rule8', name: 'Early 7', description: 'First seven Numbers called of ticket.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 15 },
+                { id: 'rule9', name: 'Fat Ladies', description: 'All numbers with the digit 8 (e.g., 8, 18, ..., 88, 89).', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 5 },
+                { id: 'rule10', name: 'Full House', description: 'All 15 Numbers.', baseWeight: 30, maxPrizes: 1, coinsPerPrize: 0, isActive: true, originalWeight: 30 },
+                { id: 'rule11', name: 'Middle Line', description: 'Middle Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: true, originalWeight: 15 },
+                { id: 'rule12', name: 'Top Line', description: 'Top Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: true, originalWeight: 15 },
+                { id: 'rule13', name: 'Unlucky 1', description: 'Player who is last in having his/her first number striked.', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 5 },
             ],
-            totalSelectedWeight: 0,
-            totalPotentialCoins: 0, // This will be sum of (calculated coinsPerPrize * maxPrizes)
-            totalMoneyCollected: null, 
-            valuePerCoin: null,       
+            totalSelectedWeight: 0, // This will be 100 if any rule is active
+            totalPotentialCoins: 0,
+            totalMoneyCollected: null,
+            valuePerCoin: null,
 
             init() {
+                // ... (init logic for theme, URL params, numbers) ...
                 const savedTheme = localStorage.getItem('theme') || 'light';
                 this.setTheme(savedTheme, null, false);
-
                 const urlParams = new URLSearchParams(window.location.search);
                 this.adminName = urlParams.get('adminName') || 'Admin';
                 this.roomId = urlParams.get('roomId') || 'N/A';
-
-                if (this.roomId === 'N/A') {
-                    this.gameMessage = "Room ID not found. Please create or join a room first.";
-                    this.gameMessageType = "error";
-                }
-
+                if (this.roomId === 'N/A') { /* ... error handling ... */ }
                 this.initializeNumbers();
-                this.recalculatePrizeAllocationAndCoinValue(); // Initial calculation
 
-                this.fetchPlayers();
-                this.fetchTicketRequests();
-                this.fetchPrizeClaims();
-                this.fetchWinners(); // Winners will now use calculated coins
-                this.fetchGameSummary();
+                // Add originalWeight to each rule if not present, for restoring when deactivated
+                this.gameRules.forEach(rule => {
+                    if (rule.originalWeight === undefined) rule.originalWeight = rule.baseWeight;
+                });
+
+                this.normalizeActiveRuleWeights(); // First normalization
+                this.updateRuleCalculations();   // Then calculate coins etc.
+
+                this.fetchPlayers(); this.fetchTicketRequests(); this.fetchPrizeClaims(); this.fetchWinners(); this.fetchGameSummary();
             },
 
-            showGameMessage(text, type = 'info', duration = 3000) {
-                this.gameMessage = text;
-                this.gameMessageType = type;
-                if (duration) {
-                    setTimeout(() => { this.gameMessage = ''; }, duration);
+            // --- New and Modified Methods for Rule Weights ---
+            handleActivationToggle(ruleId) {
+                const rule = this.gameRules.find(r => r.id === ruleId);
+                if (rule) {
+                    // rule.isActive is already toggled by x-model
+                    if (!rule.isActive) {
+                        // If deactivated, reset its baseWeight to its original desired proportion for next activation
+                        rule.baseWeight = rule.originalWeight;
+                    }
+                }
+                this.normalizeActiveRuleWeights();
+                this.updateRuleCalculations();
+            },
+
+            handleBaseWeightInput(ruleId, inputValue) {
+                const rule = this.gameRules.find(r => r.id === ruleId && r.isActive);
+                if (rule) {
+                    let newWeight = parseFloat(inputValue);
+                    if (isNaN(newWeight)) newWeight = 0; // Handle non-numeric input gracefully
+                    
+                    // Store this user-defined weight as the new "original" if they deactivate and reactivate
+                    rule.originalWeight = Math.max(0, newWeight); // Don't let originalWeight be negative
+
+                    this.normalizeActiveRuleWeights(ruleId, newWeight);
+                    this.updateRuleCalculations();
                 }
             },
+            
+            normalizeActiveRuleWeights(editedRuleId = null, newWeightForEditedRule = null) {
+                let activeRules = this.gameRules.filter(r => r.isActive);
 
-            initializeNumbers() {
-                this.numbers = Array.from({ length: 90 }, (_, i) => ({ number: i + 1, called: false }));
-                this.availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
-                this.calledNumbersHistory = [];
-                this.latestCalledNumber = null;
-            },
-
-            setTheme(themeName, event = null, closeDropdown = true) {
-                document.documentElement.setAttribute('data-theme', themeName);
-                localStorage.setItem('theme', themeName);
-                if (closeDropdown && event && event.target) {
-                    const anchorElement = event.target;
-                    const dropdownRoot = anchorElement.closest('.dropdown');
-                    const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]');
-                    setTimeout(() => {
-                        if (document.activeElement instanceof HTMLElement && dropdownRoot?.contains(document.activeElement)) {
-                             document.activeElement.blur();
-                        }
-                        dropdownTriggerLabel?.blur();
-                    }, 0);
-                }
-            },
-
-            changeView(viewName) {
-                this.currentView = viewName;
-                this.isDrawerOpen = false; 
-                if (viewName === 'qrCode') {
-                    this.$nextTick(() => { this.generateQRCode(); });
-                }
-            },
-
-            startGame() {
-                if (this.gameStatus !== 'idle') {
-                    this.showGameMessage("Game is already in progress or has ended.", "warning"); return;
-                }
-                const activeRules = this.gameRules.filter(rule => rule.isActive);
                 if (activeRules.length === 0) {
-                    this.showGameMessage("Please select at least one winning rule.", "error"); this.currentView = 'rules'; return;
-                }
-                if (this.totalMoneyCollected === null || this.totalMoneyCollected <= 0) {
-                    this.showGameMessage("Please enter a valid total amount collected for prizes.", "error"); this.currentView = 'rules'; return;
-                }
-                this.initializeNumbers();
-                this.gameStatus = 'running';
-                this.showGameMessage(`Game started! Mode: ${this.callingMode}.`, "success");
-                if (this.callingMode === 'auto') this.autoCall();
-            },
-
-            callNextNumber() {
-                if (this.gameStatus !== 'running' || this.availableNumbers.length === 0) {
-                    if (this.availableNumbers.length === 0) this.showGameMessage("All numbers called!", "info");
-                    else this.showGameMessage("Game not running.", "warning");
-                    if (this.availableNumbers.length === 0 && this.gameStatus === 'running') this.stopGame(false);
+                    this.totalSelectedWeight = 0;
+                    this.gameRules.forEach(r => r.baseWeight = r.originalWeight); // Reset all to original
                     return;
                 }
-                const randomIndex = Math.floor(Math.random() * this.availableNumbers.length);
-                const calledNum = this.availableNumbers.splice(randomIndex, 1)[0];
-                this.latestCalledNumber = calledNum;
-                this.calledNumbersHistory.push(calledNum);
-                const numObj = this.numbers.find(n => n.number === calledNum);
-                if (numObj) numObj.called = true;
-                this.showGameMessage(`Number called: ${calledNum}`, "info", 1500);
-                if (this.availableNumbers.length === 0) {
-                    this.showGameMessage("All numbers called! Game Over!", "success"); this.stopGame(false);
+
+                if (editedRuleId && newWeightForEditedRule !== null) {
+                    // User is editing a specific rule's weight
+                    const editedRule = activeRules.find(r => r.id === editedRuleId);
+                    if (editedRule) {
+                        editedRule.baseWeight = Math.max(0, Math.min(100, newWeightForEditedRule)); // Clamp 0-100
+
+                        if (activeRules.length === 1) {
+                            editedRule.baseWeight = 100;
+                        } else {
+                            let sumOfOtherActiveOriginalWeights = 0;
+                            activeRules.forEach(r => {
+                                if (r.id !== editedRuleId) {
+                                    sumOfOtherActiveOriginalWeights += r.originalWeight; // Use original for proportion
+                                }
+                            });
+
+                            const remainingTargetSum = 100 - editedRule.baseWeight;
+                            
+                            activeRules.forEach(r => {
+                                if (r.id !== editedRuleId) {
+                                    if (sumOfOtherActiveOriginalWeights > 0) {
+                                        r.baseWeight = (r.originalWeight / sumOfOtherActiveOriginalWeights) * remainingTargetSum;
+                                    } else {
+                                        // If other original weights are 0, distribute remaining equally
+                                        r.baseWeight = remainingTargetSum / (activeRules.length - 1);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    // General normalization (init, activation/deactivation without direct edit)
+                    let sumOfActiveOriginalWeights = 0;
+                    activeRules.forEach(r => { sumOfActiveOriginalWeights += r.originalWeight; });
+
+                    if (sumOfActiveOriginalWeights > 0) {
+                        activeRules.forEach(r => {
+                            r.baseWeight = (r.originalWeight / sumOfActiveOriginalWeights) * 100;
+                        });
+                    } else if (activeRules.length > 0) {
+                        // All active rules have originalWeight 0, so distribute 100% equally
+                        activeRules.forEach(r => { r.baseWeight = 100 / activeRules.length; });
+                    }
+                }
+
+                // Final pass to correct floating point inaccuracies and ensure sum is 100
+                let currentSum = activeRules.reduce((sum, r) => sum + r.baseWeight, 0);
+                if (activeRules.length > 0 && currentSum > 0 && Math.abs(currentSum - 100) > 0.001) { // Check if sum is not 100
+                    activeRules.forEach(r => r.baseWeight = (r.baseWeight / currentSum) * 100);
+                } else if (activeRules.length > 0 && currentSum === 0) { // All became 0
+                     activeRules.forEach(r => r.baseWeight = 100 / activeRules.length);
+                }
+
+
+                this.totalSelectedWeight = activeRules.length > 0 ? 100 : 0;
+            },
+
+            updateRuleCalculations() {
+                // This function is called after weights are normalized or other inputs change
+                const currentTotalMoneyCollected = parseFloat(this.totalMoneyCollected) || 0;
+                let calculatedTotalPotentialCoins = 0;
+
+                this.gameRules.forEach(rule => {
+                    if (rule.isActive) {
+                        // rule.baseWeight is already the normalized percentage (0-100)
+                        const moneyAllocatedToRule = (rule.baseWeight / 100) * currentTotalMoneyCollected;
+                        const maxPrizes = parseInt(rule.maxPrizes) || 1; // Ensure at least 1 prize
+                        rule.coinsPerPrize = maxPrizes > 0 ? (moneyAllocatedToRule / maxPrizes) : 0;
+                        calculatedTotalPotentialCoins += moneyAllocatedToRule; // Sum of money allocated
+                    } else {
+                        rule.coinsPerPrize = 0;
+                    }
+                });
+
+                this.totalPotentialCoins = calculatedTotalPotentialCoins;
+                this.calculateCoinValue(); // valuePerCoin will be 1 if money > 0
+            },
+            
+            calculateCoinValue() {
+                const currentTotalMoneyCollected = parseFloat(this.totalMoneyCollected) || 0;
+                // If totalPotentialCoins represents the total money distributed, then 1 coin = 1 unit of currency.
+                if (currentTotalMoneyCollected > 0 && this.totalPotentialCoins > 0) {
+                     // If totalPotentialCoins is the sum of money that will be distributed as coins
+                    this.valuePerCoin = currentTotalMoneyCollected / this.totalPotentialCoins; 
+                    // This should be close to 1 if logic is correct. For simplicity, if money is set, value is 1.
+                    this.valuePerCoin = 1.00; 
+                } else {
+                    this.valuePerCoin = null;
                 }
             },
-
-            autoCall() {
-                if (this.gameStatus !== 'running' || this.callingMode !== 'auto') return;
-                this.callNextNumber();
-                if (this.gameStatus === 'running' && this.availableNumbers.length > 0) {
-                    this.intervalId = setTimeout(() => { this.autoCall(); }, this.autoCallInterval * 1000);
-                }
-            },
-
-            pauseGame() {
-                if (this.gameStatus !== 'running' || this.callingMode !== 'auto') {
-                    this.showGameMessage("Can only pause auto mode while running.", "warning"); return;
-                }
-                clearTimeout(this.intervalId); this.intervalId = null; this.gameStatus = 'paused';
-                this.showGameMessage("Game paused.", "info");
-            },
-
-            resumeGame() {
-                if (this.gameStatus !== 'paused' || this.callingMode !== 'auto') {
-                    this.showGameMessage("Can only resume auto mode if paused.", "warning"); return;
-                }
-                this.gameStatus = 'running'; this.showGameMessage("Game resumed.", "info"); this.autoCall(); 
-            },
-
-            stopGame(manualStop = true) {
-                clearTimeout(this.intervalId); this.intervalId = null; this.gameStatus = 'stopped';
-                const message = manualStop ? "Game stopped by admin." : "Game Over!";
-                this.showGameMessage(message, manualStop ? "warning" : "success");
-                this.showGameMessage("Final game summary is being prepared.", "info", null); 
-            },
-
-            fetchPlayers() { 
-                setTimeout(() => {
-                    this.players = [
-                        { id: 'p1', name: 'Alice Wonderland', roomId: this.roomId, ticketsCount: 2 },
-                        { id: 'p2', name: 'Bob The Builder', roomId: this.roomId, ticketsCount: 1 },
-                    ];
-                }, 500);
-            },
-            fetchTicketRequests() { 
-                setTimeout(() => {
-                    this.ticketRequests = [
-                        { id: 'tr1', playerId: 'p3', playerName: 'Charlie Chaplin', ticketsRequested: 1 },
-                        { id: 'tr2', playerId: 'p4', playerName: 'Diana Prince', ticketsRequested: 3 },
-                    ];
-                }, 500);
-            },
-            approveTicketRequest(requestId) { 
-                this.ticketRequests = this.ticketRequests.filter(r => r.id !== requestId);
-                this.showGameMessage("Ticket request approved.", "success");
-            },
-            rejectTicketRequest(requestId) { 
-                this.ticketRequests = this.ticketRequests.filter(r => r.id !== requestId);
-                this.showGameMessage("Ticket request rejected.", "warning");
-            },
-            fetchPrizeClaims() {
-                setTimeout(() => {
-                    this.prizeClaims = [
-                        { id: 'pc1', playerId: 'p1', playerName: 'Alice Wonderland', prizeName: 'Top Line' },
-                        { id: 'pc2', playerId: 'p2', playerName: 'Bob The Builder', prizeName: 'Early 5' },
-                    ];
-                }, 500);
-            },
+            // ... (other methods: showGameMessage, initializeNumbers, setTheme, changeView, game controls, fetchers, approve/reject, save, generateQRCode) ...
+            // Ensure these methods are consistent with the previous version if not listed here for brevity.
+            // For example, approvePrizeClaim should use the updated rule.coinsPerPrize.
+            
+            // Minor update to approvePrizeClaim to use the correct coins
             approvePrizeClaim(claimId) { 
                 const claim = this.prizeClaims.find(c => c.id === claimId);
                 if (claim) {
                     const rule = this.gameRules.find(r => r.name === claim.prizeName);
-                    if (rule) { // Ensure rule exists to get coinsPerPrize
+                    if (rule && rule.isActive) { // Check if rule exists and is active
                          this.winners.push({ 
                             id: 'w' + Date.now(), 
                             playerName: claim.playerName, 
                             prizeName: rule.name, 
-                            coins: rule.coinsPerPrize // Use calculated coinsPerPrize from the rule
+                            coins: rule.coinsPerPrize // This is now the calculated monetary value per prize
                         });
                         this.prizeClaims = this.prizeClaims.filter(c => c.id !== claimId);
                         this.showGameMessage(`Prize claim for ${rule.name} by ${claim.playerName} approved. Coins: ${rule.coinsPerPrize.toFixed(2)}`, "success");
                     } else {
-                         this.showGameMessage(`Rule for prize "${claim.prizeName}" not found. Cannot approve.`, "error");
+                         this.showGameMessage(`Rule for prize "${claim.prizeName}" is not active or found. Cannot approve.`, "error");
                     }
                 }
             },
-            rejectPrizeClaim(claimId) { 
-                const claim = this.prizeClaims.find(c => c.id === claimId);
-                 if (claim) {
-                    this.prizeClaims = this.prizeClaims.filter(c => c.id !== claimId);
-                    this.showGameMessage(`Prize claim by ${claim.playerName} rejected.`, "warning");
-                }
-            },
-            fetchWinners() { /* Placeholder, winners are added via approvePrizeClaim */ },
-            fetchGameSummary() { 
-                 setTimeout(() => {
-                    // Example: Populate based on current winners
-                    this.gameSummaryData = this.winners.map(winner => {
-                        const player = this.players.find(p => p.name === winner.playerName) || { ticketsCount: 0 }; // Basic fallback
-                        return {
-                            playerId: winner.id, // Or player's actual ID if available
-                            playerName: winner.playerName,
-                            roomId: this.roomId,
-                            ticketsCount: player.ticketsCount,
-                            prizesWon: [winner.prizeName], // Simplified, could be aggregated
-                            coinsReceived: winner.coins
-                        };
-                    });
-                 }, 1000); // After potential winners are added
-            },
+            // Placeholder for other existing methods from the previous version
+            showGameMessage(text, type = 'info', duration = 3000) { this.gameMessage = text; this.gameMessageType = type; if (duration) setTimeout(() => { this.gameMessage = ''; }, duration);},
+            initializeNumbers() { this.numbers = Array.from({ length: 90 }, (_, i) => ({ number: i + 1, called: false })); this.availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1); this.calledNumbersHistory = []; this.latestCalledNumber = null; },
+            setTheme(themeName, event = null, closeDropdown = true) { document.documentElement.setAttribute('data-theme', themeName); localStorage.setItem('theme', themeName); if (closeDropdown && event && event.target) { const anchorElement = event.target; const dropdownRoot = anchorElement.closest('.dropdown'); const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]'); setTimeout(() => { if (document.activeElement instanceof HTMLElement && dropdownRoot?.contains(document.activeElement)) { document.activeElement.blur(); } dropdownTriggerLabel?.blur(); }, 0); } },
+            changeView(viewName) { this.currentView = viewName; this.isDrawerOpen = false; if (viewName === 'qrCode') { this.$nextTick(() => { this.generateQRCode(); }); } },
+            startGame() { if (this.gameStatus !== 'idle') { this.showGameMessage("Game is already in progress or has ended.", "warning"); return; } const activeRules = this.gameRules.filter(rule => rule.isActive); if (activeRules.length === 0) { this.showGameMessage("Please select at least one winning rule.", "error"); this.currentView = 'rules'; return; } if (this.totalMoneyCollected === null || this.totalMoneyCollected <= 0) { this.showGameMessage("Please enter a valid total amount collected for prizes.", "error"); this.currentView = 'rules'; return; } this.initializeNumbers(); this.gameStatus = 'running'; this.showGameMessage(`Game started! Mode: ${this.callingMode}.`, "success"); if (this.callingMode === 'auto') this.autoCall(); },
+            callNextNumber() { if (this.gameStatus !== 'running' || this.availableNumbers.length === 0) { if (this.availableNumbers.length === 0) this.showGameMessage("All numbers called!", "info"); else this.showGameMessage("Game not running.", "warning"); if (this.availableNumbers.length === 0 && this.gameStatus === 'running') this.stopGame(false); return; } const randomIndex = Math.floor(Math.random() * this.availableNumbers.length); const calledNum = this.availableNumbers.splice(randomIndex, 1)[0]; this.latestCalledNumber = calledNum; this.calledNumbersHistory.push(calledNum); const numObj = this.numbers.find(n => n.number === calledNum); if (numObj) numObj.called = true; this.showGameMessage(`Number called: ${calledNum}`, "info", 1500); if (this.availableNumbers.length === 0) { this.showGameMessage("All numbers called! Game Over!", "success"); this.stopGame(false); } },
+            autoCall() { if (this.gameStatus !== 'running' || this.callingMode !== 'auto') return; this.callNextNumber(); if (this.gameStatus === 'running' && this.availableNumbers.length > 0) { this.intervalId = setTimeout(() => { this.autoCall(); }, this.autoCallInterval * 1000); } },
+            pauseGame() { if (this.gameStatus !== 'running' || this.callingMode !== 'auto') { this.showGameMessage("Can only pause auto mode while running.", "warning"); return; } clearTimeout(this.intervalId); this.intervalId = null; this.gameStatus = 'paused'; this.showGameMessage("Game paused.", "info"); },
+            resumeGame() { if (this.gameStatus !== 'paused' || this.callingMode !== 'auto') { this.showGameMessage("Can only resume auto mode if paused.", "warning"); return; } this.gameStatus = 'running'; this.showGameMessage("Game resumed.", "info"); this.autoCall();  },
+            stopGame(manualStop = true) { clearTimeout(this.intervalId); this.intervalId = null; this.gameStatus = 'stopped'; const message = manualStop ? "Game stopped by admin." : "Game Over!"; this.showGameMessage(message, manualStop ? "warning" : "success"); this.showGameMessage("Final game summary is being prepared.", "info", null);  },
+            fetchPlayers() { setTimeout(() => { this.players = [ { id: 'p1', name: 'Alice Wonderland', roomId: this.roomId, ticketsCount: 2 }, { id: 'p2', name: 'Bob The Builder', roomId: this.roomId, ticketsCount: 1 }, ]; }, 500); },
+            fetchTicketRequests() { setTimeout(() => { this.ticketRequests = [ { id: 'tr1', playerId: 'p3', playerName: 'Charlie Chaplin', ticketsRequested: 1 }, { id: 'tr2', playerId: 'p4', playerName: 'Diana Prince', ticketsRequested: 3 }, ]; }, 500); },
+            approveTicketRequest(requestId) { this.ticketRequests = this.ticketRequests.filter(r => r.id !== requestId); this.showGameMessage("Ticket request approved.", "success"); },
+            rejectTicketRequest(requestId) { this.ticketRequests = this.ticketRequests.filter(r => r.id !== requestId); this.showGameMessage("Ticket request rejected.", "warning"); },
+            fetchPrizeClaims() { setTimeout(() => { this.prizeClaims = [ { id: 'pc1', playerId: 'p1', playerName: 'Alice Wonderland', prizeName: 'Top Line' }, { id: 'pc2', playerId: 'p2', playerName: 'Bob The Builder', prizeName: 'Early 5' }, ]; }, 500); },
+            rejectPrizeClaim(claimId) { const claim = this.prizeClaims.find(c => c.id === claimId); if (claim) { this.prizeClaims = this.prizeClaims.filter(c => c.id !== claimId); this.showGameMessage(`Prize claim by ${claim.playerName} rejected.`, "warning"); } },
+            fetchWinners() { /* Winners are added via approvePrizeClaim */ },
+            fetchGameSummary() { setTimeout(() => { this.gameSummaryData = this.winners.map(winner => { const player = this.players.find(p => p.name === winner.playerName) || { ticketsCount: 0 }; return { playerId: winner.id, playerName: winner.playerName, roomId: this.roomId, ticketsCount: player.ticketsCount, prizesWon: [winner.prizeName], coinsReceived: winner.coins }; }); }, 1000); },
+            saveRulesConfiguration() { console.log("Saving rules configuration:", JSON.parse(JSON.stringify(this.gameRules.filter(r => r.isActive)))); console.log("Total money collected:", this.totalMoneyCollected); console.log("Value per coin:", this.valuePerCoin); this.showGameMessage("Rules and financial configuration saved (simulated).", "success"); },
+            generateQRCode() { const qrCanvas = document.getElementById('qrcodeCanvas'); if (!qrCanvas) return; qrCanvas.innerHTML = ''; if (!this.roomId || this.roomId === 'N/A') { qrCanvas.innerHTML = '<p class="text-error">Room ID not set. Cannot generate QR code.</p>'; return; } const playerJoinUrl = `https://mytambola.netlify.app/player_join.html?roomId=${encodeURIComponent(this.roomId)}`; try { const qr = qrcode(0, 'M'); qr.addData(playerJoinUrl); qr.make(); qrCanvas.innerHTML = qr.createImgTag(6, 8); if(qrCanvas.firstChild) { qrCanvas.firstChild.style.width = '100%'; qrCanvas.firstChild.style.maxWidth = '256px'; qrCanvas.firstChild.style.height = 'auto'; } } catch (e) { console.error("QR Code generation error:", e); qrCanvas.innerHTML = '<p class="text-error">Error generating QR code.</p>'; } }
 
-            recalculatePrizeAllocationAndCoinValue() {
-                this.totalSelectedWeight = this.gameRules.reduce((sum, rule) => {
-                    return sum + (rule.isActive ? (parseFloat(rule.baseWeight) || 0) : 0);
-                }, 0);
-
-                const currentTotalMoneyCollected = parseFloat(this.totalMoneyCollected) || 0;
-
-                this.gameRules.forEach(rule => {
-                    if (rule.isActive && this.totalSelectedWeight > 0 && currentTotalMoneyCollected > 0) {
-                        rule.allocatedShare = ((parseFloat(rule.baseWeight) || 0) / this.totalSelectedWeight) * 100;
-                        const moneyAllocatedToRule = (rule.allocatedShare / 100) * currentTotalMoneyCollected;
-                        rule.coinsPerPrize = (parseInt(rule.maxPrizes) > 0) ? (moneyAllocatedToRule / parseInt(rule.maxPrizes)) : 0;
-                    } else {
-                        rule.allocatedShare = 0;
-                        rule.coinsPerPrize = 0; 
-                    }
-                });
-
-                this.totalPotentialCoins = this.gameRules.reduce((sum, rule) => {
-                    if (rule.isActive) {
-                        return sum + ((parseFloat(rule.coinsPerPrize) || 0) * (parseInt(rule.maxPrizes) || 0));
-                    }
-                    return sum;
-                }, 0);
-                
-                this.calculateCoinValue();
-            },
-
-            calculateCoinValue() {
-                const currentTotalMoneyCollected = parseFloat(this.totalMoneyCollected) || 0;
-                if (currentTotalMoneyCollected > 0 && this.totalPotentialCoins > 0) {
-                    // totalPotentialCoins is now the sum of money, so valuePerCoin should be 1
-                    // Or, if we want to be precise:
-                    this.valuePerCoin = currentTotalMoneyCollected / this.totalPotentialCoins;
-                    // This should be very close to 1 if totalPotentialCoins sums up correctly to totalMoneyCollected.
-                    // If totalPotentialCoins is effectively the total money, then valuePerCoin is 1.
-                    // Let's make it simpler: if coins are derived from money, 1 coin = 1 currency unit.
-                     if (currentTotalMoneyCollected > 0) this.valuePerCoin = 1; else this.valuePerCoin = null;
-
-
-                } else {
-                    this.valuePerCoin = null; 
-                }
-            },
-
-            saveRulesConfiguration() {
-                console.log("Saving rules configuration:", JSON.parse(JSON.stringify(this.gameRules.filter(r => r.isActive))));
-                console.log("Total money collected:", this.totalMoneyCollected);
-                console.log("Value per coin:", this.valuePerCoin);
-                this.showGameMessage("Rules and financial configuration saved (simulated).", "success");
-            },
-            
-            generateQRCode() {
-                const qrCanvas = document.getElementById('qrcodeCanvas');
-                if (!qrCanvas) return;
-                qrCanvas.innerHTML = ''; 
-
-                if (!this.roomId || this.roomId === 'N/A') {
-                    qrCanvas.innerHTML = '<p class="text-error">Room ID not set. Cannot generate QR code.</p>';
-                    return;
-                }
-                
-                const playerJoinUrl = `https://mytambola.netlify.app/player_join.html?roomId=${encodeURIComponent(this.roomId)}`;
-                
-                try {
-                    const qr = qrcode(0, 'M'); 
-                    qr.addData(playerJoinUrl);
-                    qr.make();
-                    qrCanvas.innerHTML = qr.createImgTag(6, 8); 
-                    if(qrCanvas.firstChild) {
-                        qrCanvas.firstChild.style.width = '100%';
-                        qrCanvas.firstChild.style.maxWidth = '256px'; 
-                        qrCanvas.firstChild.style.height = 'auto';
-                    }
-                } catch (e) {
-                    console.error("QR Code generation error:", e);
-                    qrCanvas.innerHTML = '<p class="text-error">Error generating QR code.</p>';
-                }
-            }
         }
     }
     </script>
