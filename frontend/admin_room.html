@@ -372,7 +372,7 @@
                        this.showGameMessage('Disconnected. Attempting to reconnect...', 'warning', null);
                         if (this.reconnectAttempts < this.maxReconnectAttempts) {
                             this.reconnectAttempts++;
-                            setTimeout(() => this.connectWebSocket(), 5000 * this.reconnectAttempts); 
+                            setTimeout(() => this.connectWebSocket(), 3000 * this.reconnectAttempts); // Increased backoff
                         } else {
                             this.gameStatus = 'connecting_failed';
                             this.showGameMessage('Could not reconnect to server. Please refresh.', 'error', null);
@@ -406,6 +406,7 @@
                         this.adminId = payload.adminId;
                         this.showGameMessage(`Successfully in room: ${payload.roomId} as Admin.`, 'success', 3000);
                         if (payload.roomDetails) {
+                            // Explicitly update players from roomDetails
                             this.players = payload.roomDetails.players.map(p => ({...p, ticketCount: p.ticketCount || p.tickets?.length || 0 })) || [];
                             this.gameStatus = payload.roomDetails.gameStatus || 'idle'; 
                             this.calledNumbersHistory = payload.roomDetails.numbersCalled || [];
@@ -417,6 +418,9 @@
                                     const localRule = this.gameRules.find(lr => lr.id === sr.id);
                                     return {...localRule, ...sr, originalWeight: sr.originalWeight !== undefined ? sr.originalWeight : (localRule ? localRule.originalWeight : sr.baseWeight) };
                                 });
+                            } else {
+                                // If server has no rules, ensure client defaults are used for calculation
+                                // This might already be handled by how gameRules is initialized
                             }
                             this.totalMoneyCollected = payload.roomDetails.totalMoneyCollected === undefined ? null : parseFloat(payload.roomDetails.totalMoneyCollected);
                             this.callingMode = payload.roomDetails.callingMode || 'manual';
@@ -428,7 +432,7 @@
                             this.gameStatus = 'idle'; 
                         }
                         break;
-                    case 'PLAYER_LIST_UPDATE': // This message should be received by the admin too
+                    case 'PLAYER_LIST_UPDATE': 
                         this.players = payload.players.map(p => ({...p, ticketCount: p.ticketCount || p.tickets?.length || 0 })) || [];
                         break;
                     case 'ADMIN_TICKET_REQUEST_RECEIVED':
@@ -449,7 +453,7 @@
                         this.calledNumbersHistory = payload.calledNumbersHistory || this.calledNumbersHistory; 
                         this.availableNumbersCount = payload.remainingCount;
                         this.updateNumbersGrid();
-                        this.showGameMessage(`Number called: ${payload.number}`, 'info', 2000);
+                        // this.showGameMessage(`Number called: ${payload.number}`, 'info', 2000); // Message can be annoying for admin
                         break;
                     case 'GAME_STARTED':
                         this.gameStatus = 'running';
