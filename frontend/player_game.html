@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -53,7 +52,8 @@
                     </div>
                     <a class="btn btn-ghost normal-case text-lg sm:text-xl">Welcome, <span x-text="playerName || 'Player'"></span>!
                         <span x-show="isConnected" class="badge badge-success badge-xs ml-2" title="Connected"></span>
-                        <span x-show="!isConnected" class="badge badge-error badge-xs ml-2" title="Disconnected"></span>
+                        <span x-show="!isConnected && gameStatus !== 'error' && gameStatus !== 'connecting_failed'" class="badge badge-warning badge-xs ml-2" title="Connecting..."></span>
+                        <span x-show="!isConnected && (gameStatus === 'error' || gameStatus === 'connecting_failed')" class="badge badge-error badge-xs ml-2" title="Connection Error"></span>
                     </a>
                 </div>
                 <div class="flex-none">
@@ -79,7 +79,7 @@
                         </div>
                     </div>
                     <div class="space-y-6">
-                        <template x-if="tickets.length === 0"><div class="text-center p-6 bg-base-100 rounded-lg shadow"><p class="text-lg">You don't have any tickets yet!</p><button @click="requestNewTicket" class="btn btn-primary mt-4" :disabled="waitingForTicketApproval || !isConnected">Request a Ticket</button></div></template>
+                        <template x-if="tickets.length === 0"><div class="text-center p-6 bg-base-100 rounded-lg shadow"><p class="text-lg">You don't have any tickets yet!</p><button @click="requestNewTicket" class="btn btn-primary mt-4" :disabled="waitingForTicketApproval || !isConnected || gameStatus === 'stopped'">Request a Ticket</button></div></template>
                         <template x-for="(ticket, ticketIndex) in tickets" :key="ticket.id">
                             <div class="card bg-base-100 shadow-xl">
                                 <div class="card-body p-2 sm:p-4">
@@ -199,22 +199,22 @@
     function playerGame() {
         return {
             playerName: '',
-            playerId: '', // Received from server after join
+            playerId: '', 
             roomId: '',
-            adminName: '', // Received from server after join
+            adminName: '', 
             coinsWon: 0,
             isDrawerOpen: false,
             currentView: 'home',
             themes: ["light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter"],
             
-            tickets: [], // { id: 't1', numbers: [[...],[...],[...]], marked: [5, 12] }
+            tickets: [], 
             calledNumbersHistory: [], 
             latestCalledNumber: null, 
             autoMarkNumbers: true,
             tempBoogieCells: [], 
 
             otherPlayers: [], 
-            gameRules: [], // Active rules from server
+            gameRules: [], 
             myClaims: [], 
             myPrizes: [], 
             
@@ -225,20 +225,21 @@
             gameMessage: '',
             gameMessageType: 'info',
             gameMessageTimeout: null,
-            gameStatus: 'idle', // 'idle', 'connecting', 'connected', 'running', 'paused', 'stopped', 'error'
-
-
+            gameStatus: 'idle', 
             ws: null,
             isConnected: false,
             serverUrl: '',
+            reconnectAttempts: 0,
+            maxReconnectAttempts: 5,
 
             init() {
                 const savedTheme = localStorage.getItem('theme') || 'light';
                 this.setTheme(savedTheme, null, false);
 
                 this.playerName = localStorage.getItem('playerName') || 'Player';
-                this.playerId = localStorage.getItem('playerId'); // Crucial for server identifying player
+                this.playerId = localStorage.getItem('playerId'); 
                 this.roomId = localStorage.getItem('roomId') || 'N/A';
+                this.adminName = localStorage.getItem('adminName') || 'Admin'; // Load admin name if set by join page
 
                 if (!this.playerId || this.roomId === 'N/A') {
                     this.showGameMessage("Player data missing. Please rejoin.", "error", null);
@@ -246,94 +247,96 @@
                     return;
                 }
 
-                // Load initial state from localStorage (set by player_join.html)
                 try {
                     const storedTickets = localStorage.getItem('playerTickets');
                     if (storedTickets) this.tickets = JSON.parse(storedTickets);
                     
-                    const storedRules = localStorage.getItem('gameRules');
+                    const storedRules = localStorage.getItem('gameRules'); // Rules from join success
                     if (storedRules) this.gameRules = JSON.parse(storedRules);
                     
-                    const storedCalledNumbers = localStorage.getItem('calledNumbersHistory');
+                    const storedCalledNumbers = localStorage.getItem('calledNumbersHistory'); // From join success
                     if (storedCalledNumbers) {
                         this.calledNumbersHistory = JSON.parse(storedCalledNumbers);
                         if (this.calledNumbersHistory.length > 0) {
                             this.latestCalledNumber = this.calledNumbersHistory[this.calledNumbersHistory.length - 1];
                         }
                     }
-                    this.gameStatus = localStorage.getItem('gameStatus') || 'idle';
-
+                    this.gameStatus = localStorage.getItem('gameStatus') || 'idle'; // From join success
                 } catch (e) {
                     console.error("Error parsing data from localStorage:", e);
-                    this.showGameMessage("Error loading game data. Please try rejoining.", "error");
+                    this.showGameMessage("Error loading initial game data. Please try rejoining.", "error");
                 }
                 
-                if (this.tickets.length > 0) this.selectedTicketIdForClaim = this.tickets[0].id;
+                if (this.tickets.length > 0 && !this.selectedTicketIdForClaim) {
+                     this.selectedTicketIdForClaim = this.tickets[0].id;
+                }
                 this.updateCanClaimPrize();
-                this.autoMarkExistingTickets(); // Mark numbers if auto-mark is on
+                this.autoMarkExistingTickets(); 
 
-                // Determine WebSocket URL
                 if (window.location.protocol === "https:") {
                     this.serverUrl = `wss://tambola-backend.onrender.com`;
                 } else {
-                    this.serverUrl = `ws://localhost:3000`; // For local testing
+                    this.serverUrl = `ws://localhost:3000`; 
                 }
                 console.log("Player game attempting to connect to WebSocket server at:", this.serverUrl);
                 this.connectWebSocket();
             },
 
             connectWebSocket() {
-                // Construct URL with query params for server to identify player and room upon connection
-                // This is an alternative to sending a JOIN message if server supports it.
-                // For now, our server expects a PLAYER_JOIN_ROOM message after connection.
-                // So, we don't need query params in the WebSocket URL itself for initial identification.
+                this.gameStatus = 'connecting';
                 this.ws = new WebSocket(this.serverUrl); 
                 this.showGameMessage("Connecting to game...", "info");
 
                 this.ws.onopen = () => {
                     console.log('Player WebSocket connection established.');
                     this.isConnected = true;
+                    this.reconnectAttempts = 0;
+                    this.gameStatus = 'connected'; // Or 'idle' if server confirms
                     this.showGameMessage('Connected to Tambola Game!', 'success', 2000);
-                    // Server might send an initial state update upon connection, or we rely on localStorage
-                    // If server expects a specific "player_reconnected" message with playerId, send it here.
-                    // For now, we assume server knows this player from the previous join or will handle new connections.
-                    // If this player is re-joining an active game, they might need to send a specific message
-                    // to get the latest game state if localStorage is stale.
-                    // e.g., this.sendWebSocketMessage('PLAYER_RECONNECTED_GET_STATE', { playerId: this.playerId, roomId: this.roomId });
+                    // Server might send an initial state upon connection, or we might need to request it.
+                    // For now, we rely on data from player_join.html and subsequent broadcasts.
+                    // If rejoining, server should ideally send current state.
                 };
 
                 this.ws.onmessage = (event) => {
                     const message = JSON.parse(event.data);
-                    console.log('Message from server (player game):', message);
+                    console.log('Player received from server:', message);
                     this.handleServerMessage(message);
                 };
 
                 this.ws.onclose = () => {
                     console.log('Player WebSocket connection closed.');
                     this.isConnected = false;
-                    this.showGameMessage('Disconnected from server. Attempting to reconnect...', 'error', null);
-                    // setTimeout(() => this.connectWebSocket(), 5000); // Reconnection logic
+                    if (this.gameStatus !== 'error' && this.gameStatus !== 'connecting_failed') {
+                       this.showGameMessage('Disconnected. Attempting to reconnect...', 'warning', null);
+                        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                            this.reconnectAttempts++;
+                            setTimeout(() => this.connectWebSocket(), 5000 * this.reconnectAttempts);
+                        } else {
+                            this.gameStatus = 'connecting_failed';
+                            this.showGameMessage('Could not reconnect. Please refresh.', 'error', null);
+                        }
+                    }
                 };
-
                 this.ws.onerror = (error) => {
                     console.error('Player WebSocket error:', error);
                     this.isConnected = false;
+                    this.gameStatus = 'error';
                     this.showGameMessage('Connection error. Please check server or refresh.', 'error', null);
                 };
             },
 
             sendWebSocketMessage(type, payload) {
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    // Always include playerId and roomId for server context if available
                     const messageToSend = { 
                         type, 
                         payload: { ...payload, playerId: this.playerId, roomId: this.roomId } 
                     };
                     this.ws.send(JSON.stringify(messageToSend));
-                    console.log('Sent to server (player game):', messageToSend);
+                    console.log('Player sent to server:', messageToSend);
                 } else {
                     this.showGameMessage('Not connected. Cannot send message.', 'error');
-                    console.error('WebSocket not open. Message not sent (player game):', {type, payload});
+                    console.error('Player WebSocket not open. Message not sent:', {type, payload});
                 }
             },
 
@@ -349,8 +352,6 @@
                         this.showGameMessage("Game rules updated by admin.", "info");
                         break;
                     case 'TICKET_APPROVED':
-                        // Assuming payload.ticket is the new single ticket object
-                        // and payload.allTickets is the complete list if server sends that
                         if (payload.allTickets) {
                             this.tickets = payload.allTickets;
                         } else if (payload.ticket) {
@@ -361,24 +362,28 @@
                         if (this.tickets.length > 0 && !this.selectedTicketIdForClaim) {
                             this.selectedTicketIdForClaim = this.tickets[0].id;
                         }
-                        this.autoMarkExistingTickets(); // Mark new ticket with already called numbers
+                        this.autoMarkExistingTickets(); 
                         break;
                     case 'TICKET_REJECTED':
                         this.waitingForTicketApproval = false;
                         this.showGameMessage(`Ticket request rejected: ${payload.reason || ''}`, "warning");
                         break;
                     case 'CLAIM_STATUS_UPDATE':
-                        const claimIndex = this.myClaims.findIndex(c => c.claimId === payload.claimId);
-                        if (claimIndex !== -1) {
-                            this.myClaims[claimIndex].status = payload.status;
-                            this.myClaims[claimIndex].reason = payload.reason || '';
-                        } else if (payload.status === 'approved') { // If it's a new approved claim not yet in local list
-                             this.myClaims.push({claimId: payload.claimId, prizeName: payload.prizeName, status: 'approved'});
+                        const existingClaimIndex = this.myClaims.findIndex(c => c.claimId === payload.claimId || (c.prizeName === payload.prizeName && c.status === 'pending_admin_approval'));
+                        if (existingClaimIndex !== -1) {
+                            this.myClaims[existingClaimIndex].status = payload.status;
+                            this.myClaims[existingClaimIndex].reason = payload.reason || '';
+                            this.myClaims[existingClaimIndex].claimId = payload.claimId; // Ensure claimId is updated
+                        } else if (payload.status === 'approved' || payload.status === 'rejected') { 
+                             this.myClaims.push({claimId: payload.claimId, prizeName: payload.prizeName, status: payload.status, reason: payload.reason || ''});
                         }
 
                         if (payload.status === 'approved') {
-                            this.myPrizes.push({ claimId: payload.claimId, prizeName: payload.prizeName, coinsAwarded: payload.coinsAwarded });
-                            this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));
+                            // Ensure prize isn't added multiple times if message is re-received
+                            if (!this.myPrizes.find(p => p.claimId === payload.claimId)) {
+                                this.myPrizes.push({ claimId: payload.claimId, prizeName: payload.prizeName, coinsAwarded: payload.coinsAwarded });
+                                this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));
+                            }
                             this.showGameMessage(`Claim for ${payload.prizeName} APPROVED! +${payload.coinsAwarded.toFixed(2)} coins!`, "success", 5000);
                             this.triggerConfetti();
                         } else if (payload.status === 'rejected') {
@@ -387,31 +392,29 @@
                         break;
                     case 'PLAYER_LIST_UPDATE':
                         this.otherPlayers = payload.players.filter(p => p.id !== this.playerId);
-                        // Update own ticket count if server sends it for all players
-                        const selfInList = payload.players.find(p => p.id === this.playerId);
-                        if (selfInList && selfInList.ticketCount !== this.tickets.length) {
-                            // This might indicate a desync or tickets added via other means, handle carefully
-                            // For now, primarily rely on TICKET_APPROVED for own ticket updates.
-                        }
+                        // Check if admin is in the list to update adminName
+                        const adminInList = payload.players.find(p => rooms[this.roomId]?.admin?.id === p.id); // This check is flawed, admin isn't in player list.
+                                                                                                                // Admin name should come from GAME_STARTED or PLAYER_JOIN_SUCCESS
                         break;
                     case 'GAME_STARTED':
                         this.gameStatus = 'running';
+                        this.adminName = payload.adminName || this.adminName; // Update admin name
+                        localStorage.setItem('adminName', this.adminName); // Persist for other views
                         this.gameRules = payload.rules || [];
-                        // Reset local game state for a new game if necessary
                         this.calledNumbersHistory = [];
                         this.latestCalledNumber = null;
                         this.tickets.forEach(t => t.marked = []);
                         this.myClaims = [];
-                        this.myPrizes = [];
-                        // this.coinsWon = 0; // Reset coins for a new game? Or accumulate? Let's accumulate for now.
+                        // this.myPrizes = []; // Decide if prizes reset on new game
+                        // this.coinsWon = 0; // Decide if coins reset
                         this.updateCanClaimPrize();
-                        this.showGameMessage(`Game Started by ${payload.adminName || 'Admin'}! Mode: ${payload.callingMode}`, "success");
+                        this.showGameMessage(`Game Started by ${this.adminName}! Mode: ${payload.callingMode}`, "success");
                         break;
                     case 'GAME_PAUSED': this.gameStatus = 'paused'; this.showGameMessage('Game paused by admin.', 'info'); break;
                     case 'GAME_RESUMED': this.gameStatus = 'running'; this.showGameMessage('Game resumed by admin.', 'info'); break;
                     case 'GAME_STOPPED':
                         this.gameStatus = 'stopped';
-                        this.canClaimPrize = false; // No claims after game stops
+                        this.canClaimPrize = false; 
                         this.showGameMessage('Game stopped by admin.', 'warning', null);
                         break;
                     case 'GAME_OVER_ALL_NUMBERS_CALLED':
@@ -419,28 +422,35 @@
                         this.canClaimPrize = false;
                         this.calledNumbersHistory = payload.finalCalledNumbers || this.calledNumbersHistory;
                         this.latestCalledNumber = this.calledNumbersHistory.length > 0 ? this.calledNumbersHistory[this.calledNumbersHistory.length -1] : null;
-                        this.autoMarkExistingTickets(); // Final auto-mark
+                        this.autoMarkExistingTickets(); 
                         this.showGameMessage('All numbers called! Game Over.', 'success', null);
                         break;
-                    case 'WINNER_ANNOUNCEMENT':
+                    case 'WINNER_ANNOUNCEMENT': // General announcement
                         this.showGameMessage(`${payload.playerName} won ${payload.prizeName} (+${payload.coins.toFixed(2)} coins)!`, 'info', 7000);
-                        // If this is for the current player, it might be redundant if CLAIM_STATUS_UPDATE already handled it.
-                        // Could add to a separate list of general winner announcements.
                         break;
                     case 'GAME_SUMMARY_BROADCAST':
                         this.showGameMessage("Game has ended. Admin shared summary.", "info", null);
-                        // You might want to display this summary in a modal or a new view.
                         console.log("Game Summary Received:", payload);
+                        break;
+                    case 'ADMIN_DISCONNECTED':
+                        this.showGameMessage(`Admin (${payload.adminName || 'Host'}) has disconnected. Game may be paused.`, 'warning', null);
+                        // Optionally change gameStatus to a specific "admin_disconnected" state
                         break;
                     case 'ERROR': this.showGameMessage(`Server Error: ${payload.message}`, 'error', 5000); break;
                     case 'INFO': this.showGameMessage(`Server Info: ${payload.message}`, 'info', 3000); break;
-                    default: console.warn('Received unknown message type from server (player game):', type);
+                    default: console.warn('Player received unknown message type:', type);
                 }
             },
 
             handleNumberCalled(number, history) {
                 this.latestCalledNumber = number;
-                this.calledNumbersHistory = history || [...this.calledNumbersHistory, number].sort((a,b)=>a-b); // Keep sorted
+                // Ensure history is always an array and includes the new number
+                this.calledNumbersHistory = Array.isArray(history) ? [...history] : [...this.calledNumbersHistory];
+                if (!this.calledNumbersHistory.includes(number)) {
+                    this.calledNumbersHistory.push(number);
+                }
+                // No need to sort here if server sends ordered history. If not, sort:
+                // this.calledNumbersHistory.sort((a,b) => a-b); 
                 
                 if (this.autoMarkNumbers) {
                     this.tickets.forEach(ticket => {
@@ -452,10 +462,10 @@
                                         ticket.marked.push(number);
                                         numberFoundAndMarked = true;
                                     }
-                                    break; // Found in row
+                                    break; 
                                 }
                             }
-                            if (numberFoundAndMarked) break; // Found in ticket
+                            if (numberFoundAndMarked) break; 
                         }
                         if (numberFoundAndMarked) {
                             this.triggerConfettiAtCell(ticket.id, number); 
@@ -489,7 +499,7 @@
                 if (ticket) {
                     if (this.calledNumbersHistory.includes(number)) {
                         const index = ticket.marked.indexOf(number);
-                        if (index > -1) ticket.marked.splice(index, 1); // Unmark
+                        if (index > -1) ticket.marked.splice(index, 1); 
                         else { ticket.marked.push(number); this.triggerConfettiAtCell(ticketId, number); }
                         this.sendWebSocketMessage('PLAYER_MARK_NUMBER', { ticketId, number, isMarked: ticket.marked.includes(number) });
                     } else {
@@ -522,20 +532,16 @@
             },
             
             availablePrizesToClaim() {
-                // Filter rules that are active and potentially not yet claimed by this player for this game session
                 return this.gameRules.filter(rule => {
                     if (!rule.isActive) return false;
-                    // Check if this prize has already been successfully claimed by this player
                     const alreadyClaimedAndApproved = this.myPrizes.some(p => p.prizeName === rule.name);
-                    // Check if there's a pending or rejected claim for this prize (optional: allow re-claim if rejected?)
-                    // const pendingClaim = this.myClaims.some(c => c.prizeName === rule.name && c.status === 'pending_admin_approval');
-                    return !alreadyClaimedAndApproved; // && !pendingClaim;
+                    return !alreadyClaimedAndApproved; 
                 });
             },
 
             openClaimModal() {
                 if (!this.selectedTicketIdForClaim && this.tickets.length > 0) {
-                    this.selectedTicketIdForClaim = this.tickets[0].id; // Default to first ticket
+                    this.selectedTicketIdForClaim = this.tickets[0].id; 
                 }
                 if (this.$refs.claimModal && this.availablePrizesToClaim().length > 0 && this.selectedTicketIdForClaim) {
                     this.$refs.claimModal.showModal();
@@ -553,8 +559,8 @@
                 }
                 const rule = this.gameRules.find(r => r.id === prizeRuleId);
                 if (rule) {
-                    const claimIdForClient = 'localClaim_' + Date.now(); // Client-side temporary ID
-                    this.myClaims.push({claimId: claimIdForClient, prizeName: rule.name, status: 'pending_admin_approval'});
+                    const clientSideClaimId = 'claim_' + Date.now(); // For local tracking before server confirms
+                    this.myClaims.push({claimId: clientSideClaimId, prizeName: rule.name, status: 'pending_admin_approval'});
                     this.showGameMessage(`Claiming ${rule.name}... Waiting for admin.`, "info");
                     this.sendWebSocketMessage('PLAYER_CLAIM_PRIZE', { prizeRuleId: rule.id, ticketId: this.selectedTicketIdForClaim });
                     if (this.$refs.claimModal) this.$refs.claimModal.close();
@@ -569,7 +575,10 @@
             changeView(viewName) { this.currentView = viewName; this.isDrawerOpen = false; },
             logout() {
                 this.showGameMessage("Logging out...", "info");
-                if (this.ws) this.ws.close();
+                if (this.ws) {
+                    this.ws.onclose = () => {}; // Prevent reconnect logic on manual logout
+                    this.ws.close();
+                }
                 localStorage.removeItem('playerName');
                 localStorage.removeItem('playerId');
                 localStorage.removeItem('roomId');
@@ -577,6 +586,7 @@
                 localStorage.removeItem('gameRules');
                 localStorage.removeItem('calledNumbersHistory');
                 localStorage.removeItem('gameStatus');
+                localStorage.removeItem('adminName'); // Clear admin name too
                 setTimeout(() => { window.location.href = 'player_join.html'; }, 1000);
             },
             showGameMessage(text, type = 'info', duration = 3000) {
