@@ -1,596 +1,820 @@
-// backend/server.js
-// Main Express server for the Tambola game backend.
-console.log("--- Tambola Server (v5 - Route Order & Debug) Starting ---"); // Version log
+// server.js
+// Tambola Game Backend
+// Uses Express for basic HTTP and 'ws' for WebSockets
 
 const express = require('express');
-const path = require('path');
-const cors = require('cors');
-const ticketStore = require('./ticketStore.js'); 
+const http = require('http');
+const WebSocket = require('ws');
+const cors = require('cors'); // For handling Cross-Origin Resource Sharing
+
+const PORT = process.env.PORT || 3000; // Port for Render or local development
 
 const app = express();
-const PORT = process.env.PORT || 3000; 
+app.use(cors()); // Enable CORS for all routes
+app.use(express.json()); // Middleware to parse JSON bodies
 
-// --- CORS Configuration ---
-const allowedOrigins = [
-    'https://mytambola.netlify.app',    
-    'https://3kzbl6hqlkkh8t7s5097ut5oaydnlllm9655d6162p5vx5d14z-h752753355.scf.usercontent.goog', // From previous logs
-    'http://localhost:3000',           
-    'http://127.0.0.1:5500',          
-];
+// In-memory storage
+let rooms = {}; 
+// Structure for a room:
+// roomId: {
+//     id: string,
+//     admin: { id: string, name: string, ws: WebSocket },
+//     players: [{ id: string, name: string, ws: WebSocket, tickets: [{id: string, numbers: number[][], marked: number[]}], coins: number }],
+//     numbersCalled: number[],
+//     availableNumbers: number[],
+//     gameStatus: 'idle' | 'running' | 'paused' | 'stopped',
+//     rules: any[], // Array of rule objects configured by admin
+//     totalMoneyCollected: number,
+//     callingMode: 'manual' | 'auto',
+//     autoCallInterval: number, // in seconds for auto mode
+//     winners: any[], // Stores { claimId, playerId, playerName, prizeName, coins, timestamp }
+//     createdAt: string
+// }
+let playerConnections = new Map(); // ws -> { roomId, playerId, type: 'admin'/'player' }
 
-const corsOptions = {
-    origin: function (origin, callback) {
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            console.warn(`CORS Error: Origin ${origin} not allowed.`);
-            callback(new Error(`Origin ${origin} not allowed by CORS`));
-        }
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
-    allowedHeaders: ['Content-Type', 'Authorization'], 
-    credentials: true, 
-    optionsSuccessStatus: 200 
-};
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-app.use(cors(corsOptions)); 
-app.use(express.json());     
-
-// --- In-Memory Game State Storage ---
-const activeRooms = new Map(); 
+console.log(`Tambola backend server starting on port ${PORT}...`);
 
 // --- Helper Functions ---
-function getRoomState(roomId) {
-    if (!activeRooms.has(roomId)) {
-        activeRooms.set(roomId, {
-            roomId: roomId,
-            gameStarted: false,
-            gameOver: false,
-            currentNumber: null,
-            drawnNumbers: [], 
-            allPossibleNumbers: Array.from({ length: 90 }, (_, i) => i + 1), 
-            availableNumbers: [...Array.from({ length: 90 }, (_, i) => i + 1)], 
-            gameMode: 'manual', 
-            gameConfig: { rules: {} },
-            winners: {}, 
-            players: new Map(), 
-            ticketRequests: [], 
-        });
-        console.log(`Initialized new room state for: ${roomId}`);
-    }
-    return activeRooms.get(roomId);
+
+function generateUniqueId() {
+    return Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
 }
 
-function resetRoomForNewGame(roomId) {
-    if (activeRooms.has(roomId)) {
-        const room = activeRooms.get(roomId);
-        room.gameStarted = false;
-        room.gameOver = false;
-        room.currentNumber = null;
-        room.drawnNumbers = [];
-        room.availableNumbers = [...room.allPossibleNumbers];
-        room.winners = {}; 
-        room.players.forEach(player => {
-            player.claims = []; 
+/**
+ * Generates a Tambola ticket.
+ * - 3 rows, 9 columns.
+ * - Each row has exactly 5 numbers.
+ * - Each column has numbers from its specific range (1-9, 10-19, ..., 80-90).
+ * - Numbers in a column are sorted top to bottom.
+ * - No duplicate numbers on a single ticket.
+ * @returns {Array<Array<number|null>>} A 2D array representing the ticket.
+ */
+function generateTambolaTicket() {
+    let ticket = Array(3).fill(null).map(() => Array(9).fill(null));
+    const numbersOnTicket = new Set(); // To ensure uniqueness across the ticket
+
+    // Define column ranges
+    const colRanges = [
+        { min: 1, max: 9 }, { min: 10, max: 19 }, { min: 20, max: 29 },
+        { min: 30, max: 39 }, { min: 40, max: 49 }, { min: 50, max: 59 },
+        { min: 60, max: 69 }, { min: 70, max: 79 }, { min: 80, max: 90 }
+    ];
+
+    // Helper to get a random number in a range, excluding already picked numbers for the ticket
+    function getRandomUniqueNumber(min, max, existingNumbers) {
+        let num;
+        let attempts = 0;
+        do {
+            num = Math.floor(Math.random() * (max - min + 1)) + min;
+            attempts++;
+        } while (existingNumbers.has(num) && attempts < 50); // Limit attempts to prevent infinite loops
+        return existingNumbers.has(num) ? null : num; // Return null if unique not found quickly
+    }
+
+    // Distribute numbers: 15 numbers total, 5 per row.
+    // Columns 0-8: typically 1 or 2 numbers, some columns can have 3. No column empty.
+    let placedNumbers = 0;
+    
+    // Step 1: Ensure each column gets at least one number
+    for (let col = 0; col < 9; col++) {
+        let placedInCol = false;
+        for (let attempt = 0; attempt < 3 && !placedInCol; attempt++) { // Try to place in any row
+            let row = Math.floor(Math.random() * 3);
+            if (ticket[row][col] === null) {
+                const num = getRandomUniqueNumber(colRanges[col].min, colRanges[col].max, numbersOnTicket);
+                if (num !== null) {
+                    ticket[row][col] = num;
+                    numbersOnTicket.add(num);
+                    placedInCol = true;
+                    placedNumbers++;
+                }
+            }
+        }
+    }
+
+    // Step 2: Fill remaining spots to reach 15 numbers, respecting 5 per row
+    let rowCounts = ticket.map(r => r.filter(n => n !== null).length);
+    
+    while (placedNumbers < 15) {
+        let bestRow = -1, bestCol = -1, maxEmptySlotsInCol = -1;
+
+        // Try to find a row that needs numbers
+        for (let r = 0; r < 3; r++) {
+            if (rowCounts[r] < 5) {
+                // Find a column in this row that is empty and can accept a number
+                for (let c = 0; c < 9; c++) {
+                    if (ticket[r][c] === null) {
+                        // Check how many numbers are already in this column
+                        let numsInThisCol = 0;
+                        for (let i = 0; i < 3; i++) if (ticket[i][c] !== null) numsInThisCol++;
+                        
+                        if (numsInThisCol < 3) { // Max 3 numbers per column (typical rule)
+                             const num = getRandomUniqueNumber(colRanges[c].min, colRanges[c].max, numbersOnTicket);
+                             if (num !== null) {
+                                ticket[r][c] = num;
+                                numbersOnTicket.add(num);
+                                rowCounts[r]++;
+                                placedNumbers++;
+                                if (placedNumbers === 15) break;
+                             }
+                        }
+                    }
+                }
+            }
+            if (placedNumbers === 15) break;
+        }
+        if (placedNumbers === 15) break;
+        // If the loop finishes and not 15, it means constraints are hard to meet with pure random.
+        // This simple generator might sometimes produce slightly less than 15 or not perfectly distributed.
+        // For a production game, a more deterministic or backtracking algorithm is needed.
+        if (bestRow === -1) break; // Cannot place more numbers
+    }
+
+
+    // Step 3: Ensure each row has exactly 5 numbers (if possible with placed numbers)
+    // This might involve removing/moving numbers if previous steps overfilled a row while others are empty
+    // For simplicity, this step is kept minimal. A more robust solution is complex.
+    for (let r = 0; r < 3; r++) {
+        let currentNumbersInRow = ticket[r].filter(n => n !== null).length;
+        let attempts = 0;
+        while (currentNumbersInRow < 5 && attempts < 50) { // Try to add if less than 5
+            attempts++;
+            let emptyColIndices = [];
+            for(let c=0; c<9; c++) if(ticket[r][c] === null) emptyColIndices.push(c);
+            if(emptyColIndices.length === 0) break;
+
+            let c = emptyColIndices[Math.floor(Math.random() * emptyColIndices.length)];
+            let numsInThisCol = 0;
+            for (let i = 0; i < 3; i++) if (ticket[i][c] !== null) numsInThisCol++;
+
+            if (numsInThisCol < 3) {
+                const num = getRandomUniqueNumber(colRanges[c].min, colRanges[c].max, numbersOnTicket);
+                if (num !== null) {
+                    ticket[r][c] = num;
+                    numbersOnTicket.add(num);
+                    currentNumbersInRow++;
+                }
+            }
+        }
+        while (currentNumbersInRow > 5 && attempts < 100) { // Try to remove if more than 5
+             attempts++;
+             let filledColIndices = [];
+             for(let c=0; c<9; c++) if(ticket[r][c] !== null) filledColIndices.push(c);
+             if(filledColIndices.length === 0) break;
+
+             let c = filledColIndices[Math.floor(Math.random() * filledColIndices.length)];
+             numbersOnTicket.delete(ticket[r][c]);
+             ticket[r][c] = null;
+             currentNumbersInRow--;
+        }
+    }
+
+
+    // Step 4: Sort numbers within each column
+    for (let c = 0; c < 9; c++) {
+        let colValues = [];
+        for (let r = 0; r < 3; r++) if (ticket[r][c] !== null) colValues.push(ticket[r][c]);
+        colValues.sort((a, b) => a - b);
+        let currentIdx = 0;
+        for (let r = 0; r < 3; r++) if (ticket[r][c] !== null) ticket[r][c] = colValues[currentIdx++];
+    }
+    return ticket;
+}
+
+
+function broadcastToRoom(roomId, message, excludeWs = null) {
+    const room = rooms[roomId];
+    if (room) {
+        const recipients = [];
+        if (room.admin && room.admin.ws) recipients.push(room.admin.ws);
+        room.players.forEach(p => { if (p.ws) recipients.push(p.ws); });
+
+        recipients.forEach(clientWs => {
+            if (clientWs !== excludeWs && clientWs.readyState === WebSocket.OPEN) {
+                try { clientWs.send(JSON.stringify(message)); }
+                catch (e) { console.error('Broadcast error:', e); }
+            }
         });
-        console.log(`Game state soft-reset for a new round in room: ${roomId}`);
-    } else {
-        console.warn(`Attempted to reset non-existent room: ${roomId} for a new game.`);
     }
 }
 
-function fullServerReset() { 
-    console.log("!!! Resetting ENTIRE SERVER: Clearing all rooms and ticket store !!!");
-    activeRooms.clear();
-    if (ticketStore.clearAllTickets) { 
-        ticketStore.clearAllTickets(); 
-    } else {
-        console.warn("ticketStore.clearAllTickets function not found. Tickets may not be cleared.");
+function sendMessageToClient(ws, message) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify(message)); }
+        catch (e) { console.error('Send message error:', e); }
     }
 }
 
-function generateId() {
-    return Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+// --- Prize Validation Helper Functions ---
+function getAllNumbersOnTicket(ticketNumbers) {
+    return ticketNumbers.flat().filter(num => num !== null);
 }
 
-// --- API Endpoints (Define BEFORE static serving) ---
+function getNumbersInRow(ticketNumbers, rowIndex) {
+    if (rowIndex < 0 || rowIndex >= ticketNumbers.length) return [];
+    return ticketNumbers[rowIndex].filter(num => num !== null);
+}
 
-app.get('/api/health', (req, res) => { // Simple health check endpoint
-    console.log(`[API] GET /api/health | Origin: ${req.get('origin')}`);
-    res.status(200).json({ status: 'UP', message: 'Tambola backend is running', version: 'v5' });
-});
+function allNumbersAreCalled(numbersToCheck, calledNumbers) {
+    if (!numbersToCheck || numbersToCheck.length === 0) return false; 
+    return numbersToCheck.every(num => calledNumbers.includes(num));
+}
 
+function validatePrizeClaim(ticketNumbers, calledNumbers, prizeRuleName) {
+    const allTicketNums = getAllNumbersOnTicket(ticketNumbers);
 
-app.post('/api/player/join-game', (req, res) => {
-    console.log(`[API] POST /api/player/join-game | Origin: ${req.get('origin')}`);
-    console.log("Request Body:", req.body);
+    switch (prizeRuleName) {
+        case 'Top Line':
+            return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 0), calledNumbers);
+        
+        case 'Middle Line':
+            return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 1), calledNumbers);
 
-    const { playerName, roomId, playerId: existingPlayerId } = req.body;
+        case 'Bottom Line':
+            return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 2), calledNumbers);
 
-    if (!playerName || !playerName.trim() || !roomId || !roomId.trim()) {
-        console.error("Join Game Error: Player name and Room ID are mandatory.");
-        return res.status(400).json({ message: "Player name and Room ID are mandatory." });
+        case 'Full House':
+            // A standard Tambola ticket should have 15 numbers.
+            // If ticket generation is imperfect, this check might be too strict.
+            // For now, we assume a valid ticket would have 15 numbers for Full House.
+            return allTicketNums.length === 15 && allNumbersAreCalled(allTicketNums, calledNumbers);
+
+        case 'Early 5': {
+            const markedCount = allTicketNums.filter(num => calledNumbers.includes(num)).length;
+            return markedCount >= 5;
+        }
+        case 'Early 7': {
+            const markedCount = allTicketNums.filter(num => calledNumbers.includes(num)).length;
+            return markedCount >= 7;
+        }
+        case 'Corners': {
+            const topRowActual = getNumbersInRow(ticketNumbers, 0);
+            const bottomRowActual = getNumbersInRow(ticketNumbers, 2);
+
+            // Ensure rows have enough numbers to define corners (at least 2 for 1st and last concept)
+            if (topRowActual.length < 2 || bottomRowActual.length < 2) return false; 
+            
+            // Find the actual first and last numbers in the rows
+            const corners = [
+                topRowActual[0], topRowActual[topRowActual.length - 1],
+                bottomRowActual[0], bottomRowActual[bottomRowActual.length - 1]
+            ];
+            // Ensure all 4 distinct corner positions had numbers and are called
+            return corners.length === 4 && allNumbersAreCalled(corners, calledNumbers);
+        }
+        case '1-2-3': {
+            const r0_actual = getNumbersInRow(ticketNumbers, 0);
+            const r1_actual = getNumbersInRow(ticketNumbers, 1);
+            const r2_actual = getNumbersInRow(ticketNumbers, 2);
+
+            if (r0_actual.length < 1 || r1_actual.length < 2 || r2_actual.length < 3) return false;
+
+            const numbersFor123 = [
+                r0_actual[0],
+                r1_actual[0], r1_actual[1],
+                r2_actual[0], r2_actual[1], r2_actual[2]
+            ];
+            return allNumbersAreCalled(numbersFor123, calledNumbers);
+        }
+        case 'BP (Bull\'s Eye)': { 
+            if (allTicketNums.length === 0) return false;
+            const minNum = Math.min(...allTicketNums);
+            const maxNum = Math.max(...allTicketNums);
+            return calledNumbers.includes(minNum) && calledNumbers.includes(maxNum);
+        }
+        case 'Breakfast': { 
+            const breakfastNumsOnTicket = allTicketNums.filter(num => num >= 1 && num <= 30);
+            if (breakfastNumsOnTicket.length === 0) return false; 
+            return allNumbersAreCalled(breakfastNumsOnTicket, calledNumbers);
+        }
+        case 'Dinner': { 
+            const dinnerNumsOnTicket = allTicketNums.filter(num => num >= 61 && num <= 90);
+            if (dinnerNumsOnTicket.length === 0) return false;
+            return allNumbersAreCalled(dinnerNumsOnTicket, calledNumbers);
+        }
+        case 'Fat Ladies': {
+            const fatLadyNumbersOnTicket = allTicketNums.filter(num => num.toString().includes('8'));
+            if (fatLadyNumbersOnTicket.length === 0) return false;
+            return allNumbersAreCalled(fatLadyNumbersOnTicket, calledNumbers);
+        }
+        case 'Unlucky 1':
+            console.warn(`Prize validation for "Unlucky 1" is not implemented on server.`);
+            return false;
+
+        default:
+            console.warn(`Unknown prize rule name for validation: ${prizeRuleName}`);
+            return false;
     }
+}
 
-    const room = getRoomState(roomId); 
 
-    let playerId = existingPlayerId;
-    let player = existingPlayerId ? room.players.get(existingPlayerId) : null;
+// --- WebSocket Connection Handling ---
+wss.on('connection', (ws) => {
+    console.log('Client connected');
 
-    if (player && player.name.toLowerCase() !== playerName.toLowerCase()) {
-        player.name = playerName;
-        console.log(`Player ${playerName} (ID: ${playerId}) re-joined room ${roomId} (name updated).`);
-    } else if (!player) { 
-        playerId = generateId();
-        player = {
-            id: playerId,
-            name: playerName,
-            tickets: [], 
-            claims: []   
-        };
-        room.players.set(playerId, player);
-        console.log(`New player ${playerName} (ID: ${playerId}) joined room ${roomId}.`);
-    } else {
-         console.log(`Player ${playerName} (ID: ${playerId}) re-joined room ${roomId}.`);
-    }
-    
-    const playerSpecificState = {
-        roomId: room.roomId,
-        drawnNumbers: room.drawnNumbers,
-        currentNumber: room.currentNumber,
-        gameStarted: room.gameStarted,
-        gameOver: room.gameOver,
-        winningRules: room.gameConfig.rules,
-        winners: room.winners,
-        playerTickets: player.tickets.map(ticketId => ticketStore.getTicketById(ticketId)).filter(t => t),
-        myClaims: player.claims,
-        playerId: player.id, 
-        playerName: player.name
-    };
+    ws.on('message', (messageString) => {
+        let message;
+        try {
+            message = JSON.parse(messageString);
+            console.log(`Received from client:`, message);
+        } catch (e) {
+            console.error('Failed to parse message:', messageString, e);
+            sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Invalid message format.' } });
+            return;
+        }
 
-    res.json({ 
-        message: `Successfully joined room ${roomId} as ${playerName}.`,
-        playerId: player.id,
-        gameState: playerSpecificState
-    });
-});
+        const { type, payload } = message;
+        const connectionInfo = playerConnections.get(ws);
 
-app.get('/api/player/state', (req, res) => {
-    const { playerId, roomId } = req.query;
-    // console.log(`[API] GET /api/player/state | Origin: ${req.get('origin')}, Query:`, req.query);
-
-    if (!playerId || !roomId) {
-        return res.status(400).json({ message: "Player ID and Room ID are required." });
-    }
-    
-    const room = activeRooms.get(roomId);
-    if (!room) {
-        return res.status(404).json({ message: "Room not found." });
-    }
-
-    const player = room.players.get(playerId);
-    if (!player) {
-        return res.status(401).json({ message: "Player not found in this room. Please rejoin." });
-    }
-
-    res.json({
-        roomId: room.roomId,
-        drawnNumbers: room.drawnNumbers,
-        currentNumber: room.currentNumber,
-        gameStarted: room.gameStarted,
-        gameOver: room.gameOver,
-        winningRules: room.gameConfig.rules,
-        winners: room.winners,
-        playerTickets: player.tickets.map(ticketId => ticketStore.getTicketById(ticketId)).filter(t => t),
-        myClaims: player.claims,
-    });
-});
-
-app.get('/api/admin/state', (req, res) => {
-    // ***** SPECIFIC DEBUG LOG FOR THIS ROUTE *****
-    console.log(`--- SERVER HIT: GET /api/admin/state --- ROUTE HANDLER REACHED ---`);
-    // ********************************************
-    const adminViewingRoomId = req.query.roomId; 
-    console.log(`[API] GET /api/admin/state | Origin: ${req.get('origin')}, Query:`, req.query);
-    
-    if (!adminViewingRoomId) {
-        console.log("[API /api/admin/state] Error: Room ID is required.");
-        return res.status(400).json({ 
-            message: "Room ID is required to fetch admin state.",
-            availableRooms: Array.from(activeRooms.keys()) 
-        });
-    }
-    
-    const room = activeRooms.get(adminViewingRoomId);
-    if (!room) {
-        console.log(`[API /api/admin/state] Error: Room '${adminViewingRoomId}' not found.`);
-        return res.status(404).json({ 
-            message: `Room '${adminViewingRoomId}' not found.`,
-            availableRooms: Array.from(activeRooms.keys())
-        });
-    }
-    
-    let aggregatedPendingClaims = [];
-    room.players.forEach(p => {
-        (p.claims || []).forEach(c => { 
-            if (c.status === 'pending') { 
-                aggregatedPendingClaims.push({ 
-                    claimId: c.claimId, 
-                    prizeType: c.prizeType,
-                    ticketId: c.ticketId, 
-                    playerId: p.id, 
-                    playerName: p.name 
+        switch (type) {
+            case 'ADMIN_CREATE_JOIN_ROOM': {
+                const { adminName, roomId } = payload;
+                if (!adminName || !roomId) {
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Admin name and Room ID are required.' } });
+                }
+                if (rooms[roomId] && rooms[roomId].admin.id && rooms[roomId].admin.name !== adminName) {
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Room already exists with a different admin.' } });
+                }
+                
+                let adminId;
+                let isNewRoom = false;
+                if (rooms[roomId] && rooms[roomId].admin.name === adminName) { // Admin rejoining
+                    adminId = rooms[roomId].admin.id;
+                    rooms[roomId].admin.ws = ws; // Update WebSocket
+                } else { // New room or new admin for an empty room shell
+                    adminId = generateUniqueId();
+                    isNewRoom = true;
+                    rooms[roomId] = {
+                        id: roomId,
+                        admin: { id: adminId, name: adminName, ws },
+                        players: [],
+                        numbersCalled: [],
+                        availableNumbers: Array.from({ length: 90 }, (_, i) => i + 1),
+                        gameStatus: 'idle',
+                        rules: [], // Admin will configure these
+                        totalMoneyCollected: 0,
+                        callingMode: 'manual',
+                        autoCallInterval: 5,
+                        createdAt: new Date().toISOString(),
+                        winners: [] 
+                    };
+                }
+                playerConnections.set(ws, { roomId, playerId: adminId, type: 'admin' });
+                
+                const roomDetailsPayload = {
+                    id: rooms[roomId].id,
+                    admin: { id: rooms[roomId].admin.id, name: rooms[roomId].admin.name }, 
+                    players: rooms[roomId].players.map(p => ({ id: p.id, name: p.name, tickets: p.tickets, coins: p.coins, ticketCount: p.tickets.length })),
+                    numbersCalled: rooms[roomId].numbersCalled,
+                    gameStatus: rooms[roomId].gameStatus,
+                    rules: rooms[roomId].rules,
+                    totalMoneyCollected: rooms[roomId].totalMoneyCollected,
+                    callingMode: rooms[roomId].callingMode,
+                    autoCallInterval: rooms[roomId].autoCallInterval
+                };
+                sendMessageToClient(ws, { 
+                    type: isNewRoom ? 'ROOM_CREATED_SUCCESS' : 'ROOM_JOINED_SUCCESS', 
+                    payload: { roomId, role: 'admin', adminId, roomDetails: roomDetailsPayload } 
                 });
+                console.log(`Admin ${adminName} (ID: ${adminId}) ${isNewRoom ? 'created' : 'rejoined'} room ${roomId}`);
+                break;
             }
-        });
-    });
-    console.log(`[API /api/admin/state] Successfully found room ${adminViewingRoomId}. Sending state.`);
-    res.json({
-        roomId: room.roomId,
-        drawnNumbers: room.drawnNumbers,
-        currentNumber: room.currentNumber,
-        gameStarted: room.gameStarted,
-        gameOver: room.gameOver,
-        numbersLeft: room.availableNumbers.length,
-        gameMode: room.gameMode,
-        gameConfig: room.gameConfig,
-        winners: room.winners,
-        players: Array.from(room.players.values()).map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length })),
-        ticketRequests: room.ticketRequests.filter(req => !req.approved && req.roomId === room.roomId),
-        claims: aggregatedPendingClaims, 
-    });
-});
 
+            case 'ADMIN_START_GAME': {
+                if (!connectionInfo || connectionInfo.type !== 'admin') return;
+                const room = rooms[connectionInfo.roomId];
+                if (room && room.admin.id === connectionInfo.playerId && room.gameStatus === 'idle') {
+                    if (!payload.rulesConfig || payload.rulesConfig.filter(r => r.isActive).length === 0) {
+                        return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Cannot start game without active rules.'}});
+                    }
+                    if (payload.totalMoneyCollected === undefined || parseFloat(payload.totalMoneyCollected) < 0) {
+                        return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Invalid total money collected.'}});
+                    }
+                    room.gameStatus = 'running';
+                    room.numbersCalled = [];
+                    room.availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
+                    room.rules = payload.rulesConfig; 
+                    room.totalMoneyCollected = parseFloat(payload.totalMoneyCollected);
+                    room.callingMode = payload.callingMode || 'manual';
+                    room.autoCallInterval = payload.autoCallInterval || 5;
+                    room.winners = []; 
 
-app.post('/api/admin/start-game', (req, res) => {
-    console.log(`[API] POST /api/admin/start-game | Origin: ${req.get('origin')}, Body:`, req.body);
-    const { roomId, rules, mode } = req.body;
-
-    if (!roomId) return res.status(400).json({ message: "Room ID is required to start a game." });
-    
-    const room = getRoomState(roomId); 
-
-    if (room.gameStarted && !room.gameOver) {
-        return res.status(400).json({ message: "Game already in progress in this room. Stop or reset first." });
-    }
-    
-    resetRoomForNewGame(roomId); 
-
-    room.gameStarted = true;
-    room.gameOver = false; 
-    room.gameMode = mode || 'manual';
-    room.gameConfig.rules = rules || {}; 
-
-    console.log(`Game started by admin. Room: ${room.roomId}, Mode: ${room.gameMode}, Rules:`, room.gameConfig.rules);
-    res.json({ message: "Game started successfully.", roomId: room.roomId, gameStarted: room.gameStarted });
-});
-
-app.post('/api/admin/draw-number', (req, res) => {
-    console.log(`[API] POST /api/admin/draw-number | Origin: ${req.get('origin')}, Body:`, req.body);
-    const { roomId } = req.body; 
-    
-    if (!roomId) return res.status(400).json({ message: "Room ID must be specified." });
-    const room = activeRooms.get(roomId);
-    if (!room) return res.status(404).json({ message: "Room not found." });
-
-    if (!room.gameStarted) {
-        return res.status(400).json({ message: "Game not started yet in this room." });
-    }
-    if (room.gameOver) {
-        return res.status(400).json({ message: "Game is over in this room.", gameOver: true });
-    }
-    if (room.availableNumbers.length === 0) {
-        room.gameOver = true;
-        room.currentNumber = null; 
-        console.log(`Game over in room ${room.roomId}. All numbers drawn.`);
-        return res.status(400).json({ message: "All numbers drawn. Game over.", drawnNumbers: room.drawnNumbers, currentNumber: null, gameOver: true });
-    }
-
-    const randomIndex = Math.floor(Math.random() * room.availableNumbers.length);
-    room.currentNumber = room.availableNumbers.splice(randomIndex, 1)[0];
-    room.drawnNumbers.push(room.currentNumber);
-    room.drawnNumbers.sort((a, b) => a - b); 
-
-    console.log(`Admin drew number: ${room.currentNumber} for room ${room.roomId}. Numbers left: ${room.availableNumbers.length}`);
-    res.json({
-        currentNumber: room.currentNumber,
-        drawnNumbers: room.drawnNumbers,
-        numbersLeft: room.availableNumbers.length
-    });
-});
-
-app.post('/api/admin/stop-game', (req, res) => {
-    console.log(`[API] POST /api/admin/stop-game | Origin: ${req.get('origin')}, Body:`, req.body);
-    const { roomId } = req.body; 
-    
-    if (!roomId) return res.status(400).json({ message: "Room ID must be specified." });
-    const room = activeRooms.get(roomId);
-    if (!room) return res.status(404).json({ message: "Room not found." });
-
-    if (!room.gameStarted) {
-        return res.status(400).json({ message: "Game not started, cannot stop." });
-    }
-    room.gameOver = true; 
-    console.log(`Game stopped by admin in room ${room.roomId}.`);
-    res.json({ message: "Game stopped successfully." });
-});
-
-app.post('/api/admin/reset-game', (req, res) => {
-    console.log(`[API] POST /api/admin/reset-game | Origin: ${req.get('origin')}`);
-    fullServerReset(); 
-    console.log("Full game server state reset by admin.");
-    res.json({ message: "Tambola server has been completely reset." });
-});
-
-
-app.post('/api/player/request-ticket', (req, res) => {
-    console.log(`[API] POST /api/player/request-ticket | Origin: ${req.get('origin')}, Body:`, req.body);
-    const { playerId, playerName, roomId } = req.body; 
-
-    if (!playerId || !roomId || !playerName) {
-        return res.status(400).json({ message: "Player ID, Player Name, and Room ID are required." });
-    }
-
-    const room = getRoomState(roomId); 
-    const player = room.players.get(playerId);
-
-    if (!player) {
-        return res.status(404).json({ message: "Player not found in this room. Please rejoin first." });
-    }
-    
-    const existingTicketCount = player.tickets.length;
-    const pendingRequestsForPlayerInRoom = room.ticketRequests.filter(r => r.playerId === playerId && r.roomId === roomId && !r.approved).length;
-
-    if (existingTicketCount + pendingRequestsForPlayerInRoom >= 5) {
-        return res.status(400).json({ message: `Ticket limit (5) reached or pending. You have ${existingTicketCount} tickets and ${pendingRequestsForPlayerInRoom} pending requests for this room.` });
-    }
-
-    const newRequest = {
-        requestId: generateId(),
-        playerId: playerId,
-        playerName: player.name, 
-        roomId: roomId, 
-        timestamp: Date.now(),
-        approved: false
-    };
-    room.ticketRequests.push(newRequest); 
-    console.log(`Ticket request from ${player.name} (ID: ${playerId}) for room ${roomId}. Request ID: ${newRequest.requestId}`);
-    res.status(201).json({ message: "Ticket requested successfully. Waiting for admin approval.", requestId: newRequest.requestId });
-});
-
-app.post('/api/admin/approve-ticket', (req, res) => {
-    console.log(`[API] POST /api/admin/approve-ticket | Origin: ${req.get('origin')}, Body:`, req.body);
-    const { requestId, roomId } = req.body; 
-
-    if (!roomId) return res.status(400).json({message: "Room ID is required to approve a ticket."});
-    const room = activeRooms.get(roomId);
-    if (!room) return res.status(404).json({message: `Room '${roomId}' not found.`});
-    
-    const requestIndex = room.ticketRequests.findIndex(r => r.requestId === requestId && r.roomId === roomId && !r.approved);
-
-    if (requestIndex === -1) {
-        return res.status(404).json({ message: "Ticket request not found or already processed in this room." });
-    }
-    const request = room.ticketRequests[requestIndex];
-    const player = room.players.get(request.playerId);
-
-    if (!player) { 
-        request.approved = false; 
-        return res.status(404).json({ message: "Player associated with request not found." });
-    }
-    if (player.tickets.length >= 5) {
-         return res.status(400).json({ message: `Player ${player.name} already has the maximum of 5 tickets.` });
-    }
-
-    try {
-        const newTicket = ticketStore.getNewTicket();
-        if (!newTicket || newTicket.id === "ERROR_TICKET") { 
-            throw new Error("Ticket generation in store failed.");
-        }
-        player.tickets.push(newTicket.id); 
-        request.approved = true;
-        request.ticketId = newTicket.id; 
-
-        console.log(`Ticket ${newTicket.id} approved for ${request.playerName} in room ${room.roomId}`);
-        res.json({ message: `Ticket approved for ${request.playerName}.`});
-    } catch (error) {
-        console.error("Error generating or assigning ticket during approval:", error);
-        res.status(500).json({ message: "Failed to generate or assign ticket." });
-    }
-});
-
-
-app.post('/api/player/claim-prize', (req, res) => {
-    console.log(`[API] POST /api/player/claim-prize | Origin: ${req.get('origin')}, Body:`, req.body);
-    const { playerId, ticketId, prizeType, playerNumbers, roomId } = req.body;
-
-    if (!playerId || !ticketId || !prizeType || !Array.isArray(playerNumbers) || !roomId) {
-        return res.status(400).json({ message: "Missing or invalid required fields for claim (playerId, ticketId, prizeType, playerNumbers array, roomId)." });
-    }
-    
-    const room = activeRooms.get(roomId);
-    if (!room) return res.status(404).json({ message: "Room not found." });
-
-    if (!room.gameStarted || room.gameOver) {
-        return res.status(400).json({ message: "Cannot claim prize: Game not active or is over." });
-    }
-
-    const player = room.players.get(playerId);
-    if (!player || !player.tickets.includes(ticketId)) {
-        return res.status(404).json({ message: "Player or ticket invalid for this claim." });
-    }
-
-    const ticket = ticketStore.getTicketById(ticketId); 
-    if (!ticket) {
-        return res.status(404).json({ message: "Ticket details not found (may have expired)." });
-    }
-
-    const activeRule = room.gameConfig.rules[prizeType];
-    if (!activeRule || !activeRule.enabled) {
-        return res.status(400).json({ message: `Prize type '${prizeType}' is not active.` });
-    }
-    
-    const currentWinnersForPrize = room.winners[prizeType] ? room.winners[prizeType].length : 0;
-    if (currentWinnersForPrize >= activeRule.maxWinners) {
-         return res.status(400).json({ message: `Prize '${prizeType}' already has max ${activeRule.maxWinners} winner(s).` });
-    }
-    
-    const existingClaim = player.claims.find(c => c.ticketId === ticketId && c.prizeType === prizeType && (c.status === 'pending' || c.status === 'accepted'));
-    if(existingClaim) {
-        return res.status(400).json({ message: `You've already claimed or won '${prizeType}' with this ticket.` });
-    }
-
-    // --- Server-Side Validation of Claimed Numbers ---
-    const drawnNumbersSet = new Set(room.drawnNumbers);
-    const claimedNumbersSet = new Set(Array.isArray(playerNumbers) ? playerNumbers.map(n => parseInt(n)) : []); 
-
-    for (const num of claimedNumbersSet) {
-        if (!drawnNumbersSet.has(num)) {
-            return res.status(400).json({ message: `Invalid claim: Number ${num} not drawn.`});
-        }
-    }
-    for (const num of claimedNumbersSet) {
-         if (!ticket.numbers.includes(num)) { 
-            return res.status(400).json({ message: `Invalid claim: Number ${num} not on your ticket.`});
-        }
-    }
-    
-    let prizeConditionMet = false;
-    if (prizeType === 'fullHouse') {
-        if (ticket.numbers.every(n => claimedNumbersSet.has(n)) && claimedNumbersSet.size === ticket.numbers.length) {
-            prizeConditionMet = true;
-        }
-    } else if (prizeType.includes('Line')) { 
-        let lineIndex = -1;
-        if (prizeType === 'firstLine') lineIndex = 0;
-        else if (prizeType === 'secondLine') lineIndex = 1;
-        else if (prizeType === 'thirdLine') lineIndex = 2;
-        
-        if (lineIndex !== -1 && ticket.rows[lineIndex]) {
-            const lineNumbersOnTicket = ticket.rows[lineIndex].filter(n => n !== null);
-            if (lineNumbersOnTicket.length > 0 && lineNumbersOnTicket.every(n => claimedNumbersSet.has(n))) {
-                 prizeConditionMet = true;
+                    broadcastToRoom(connectionInfo.roomId, { 
+                        type: 'GAME_STARTED', 
+                        payload: { 
+                            rules: room.rules.filter(r => r.isActive), 
+                            callingMode: room.callingMode,
+                            autoCallInterval: room.autoCallInterval,
+                            totalMoneyCollected: room.totalMoneyCollected,
+                            startTime: new Date().toISOString(),
+                            adminName: room.admin.name
+                        } 
+                    });
+                    console.log(`Game started in room ${connectionInfo.roomId} by admin ${room.admin.name}. Mode: ${room.callingMode}`);
+                }
+                break;
             }
-        }
-    } else if (prizeType === 'earlyFive') {
-        if (claimedNumbersSet.size >= 5) { 
-             prizeConditionMet = true; 
-        }
-    } else if (prizeType === 'corners') {
-        const r0 = ticket.rows[0];
-        const r2 = ticket.rows[2];
-        if (r0 && r2) { 
-            const cornersOnTicket = [
-                r0.find(n => n !== null), 
-                r0.slice().reverse().find(n => n !== null), 
-                r2.find(n => n !== null), 
-                r2.slice().reverse().find(n => n !== null) 
-            ].filter(n => n !== null && n !== undefined); 
-            const uniqueCorners = [...new Set(cornersOnTicket)];
-            if (uniqueCorners.length === 4 && uniqueCorners.every(n => claimedNumbersSet.has(n))) {
-                prizeConditionMet = true;
+
+            case 'ADMIN_CALL_NUMBER': {
+                if (!connectionInfo || connectionInfo.type !== 'admin') return;
+                const room = rooms[connectionInfo.roomId];
+                if (room && room.admin.id === connectionInfo.playerId && room.gameStatus === 'running') {
+                    if (room.availableNumbers.length > 0) {
+                        const randomIndex = Math.floor(Math.random() * room.availableNumbers.length);
+                        const calledNumber = room.availableNumbers.splice(randomIndex, 1)[0];
+                        room.numbersCalled.push(calledNumber);
+                        // No need to sort room.numbersCalled for broadcast, order of calling matters.
+
+                        broadcastToRoom(connectionInfo.roomId, { 
+                            type: 'NUMBER_CALLED', 
+                            payload: { 
+                                number: calledNumber, 
+                                calledNumbersHistory: [...room.numbersCalled], // Send a copy
+                                remainingCount: room.availableNumbers.length 
+                            } 
+                        });
+                        console.log(`Number ${calledNumber} called in room ${connectionInfo.roomId}. Remaining: ${room.availableNumbers.length}`);
+                        
+                        if (room.availableNumbers.length === 0) {
+                            room.gameStatus = 'stopped';
+                            broadcastToRoom(connectionInfo.roomId, { type: 'GAME_OVER_ALL_NUMBERS_CALLED', payload: { finalCalledNumbers: room.numbersCalled } });
+                            console.log(`All numbers called in room ${connectionInfo.roomId}. Game over.`);
+                        }
+                    } else {
+                        sendMessageToClient(ws, {type: 'INFO', payload: {message: 'All numbers have been called.'}});
+                    }
+                }
+                break;
             }
+            
+            case 'ADMIN_PAUSE_GAME':
+            case 'ADMIN_RESUME_GAME':
+            case 'ADMIN_STOP_GAME': {
+                if (!connectionInfo || connectionInfo.type !== 'admin') return;
+                const room = rooms[connectionInfo.roomId];
+                if (room && room.admin.id === connectionInfo.playerId) {
+                    let newStatus = room.gameStatus;
+                    let eventType = '';
+                    if (type === 'ADMIN_PAUSE_GAME' && room.gameStatus === 'running' && room.callingMode === 'auto') {
+                        newStatus = 'paused';
+                        eventType = 'GAME_PAUSED';
+                    } else if (type === 'ADMIN_RESUME_GAME' && room.gameStatus === 'paused' && room.callingMode === 'auto') {
+                        newStatus = 'running';
+                        eventType = 'GAME_RESUMED';
+                    } else if (type === 'ADMIN_STOP_GAME' && (room.gameStatus === 'running' || room.gameStatus === 'paused')) {
+                        newStatus = 'stopped';
+                        eventType = 'GAME_STOPPED';
+                        const gameSummary = {
+                            totalNumbersCalled: room.numbersCalled.length,
+                            winners: room.winners,
+                            endTime: new Date().toISOString()
+                        };
+                        broadcastToRoom(connectionInfo.roomId, { type: 'GAME_SUMMARY_BROADCAST', payload: gameSummary });
+                    }
+
+                    if (eventType) {
+                        room.gameStatus = newStatus;
+                        broadcastToRoom(connectionInfo.roomId, { type: eventType, payload: { status: newStatus } });
+                        console.log(`Game ${newStatus} in room ${connectionInfo.roomId}`);
+                    }
+                }
+                break;
+            }
+
+            case 'ADMIN_UPDATE_RULES': {
+                if (!connectionInfo || connectionInfo.type !== 'admin') return;
+                const room = rooms[connectionInfo.roomId];
+                // Allow rule updates only if game is idle
+                if (room && room.admin.id === connectionInfo.playerId && room.gameStatus === 'idle' && payload.rules && payload.financials) {
+                    room.rules = payload.rules; 
+                    room.totalMoneyCollected = parseFloat(payload.financials.totalMoneyCollected);
+                    
+                    // Inform players about rule updates if they are already in the room (though game not started)
+                    broadcastToRoom(connectionInfo.roomId, { type: 'RULES_UPDATED', payload: { rules: room.rules.filter(r => r.isActive), totalMoneyCollected: room.totalMoneyCollected } }, ws);
+                    sendMessageToClient(ws, { type: 'RULES_SAVE_CONFIRMED' });
+                    console.log(`Rules updated for room ${connectionInfo.roomId} (Game Idle)`);
+                } else if (room && room.gameStatus !== 'idle') {
+                    sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Rules can only be updated before the game starts.'}});
+                }
+                break;
+            }
+            
+            case 'ADMIN_APPROVE_TICKET_REQUEST': {
+                if (!connectionInfo || connectionInfo.type !== 'admin') return;
+                const { targetPlayerId } = payload;
+                const room = rooms[connectionInfo.roomId];
+                const player = room?.players.find(p => p.id === targetPlayerId);
+
+                if (room && player) {
+                    if (player.tickets.length >= 5) {
+                        sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `${player.name} already has max tickets.` } });
+                        return;
+                    }
+                    const newTicketNumbers = generateTambolaTicket();
+                    const newTicket = { id: generateUniqueId(), numbers: newTicketNumbers, marked: [] };
+                    player.tickets.push(newTicket);
+                    if (player.ws) {
+                        sendMessageToClient(player.ws, { type: 'TICKET_APPROVED', payload: { ticket: newTicket, allTickets: player.tickets } });
+                    }
+                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Ticket approved for ${player.name}` } });
+                    broadcastToRoom(connectionInfo.roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length})) } });
+                } else {
+                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `Player ${targetPlayerId} not found.` } });
+                }
+                break;
+            }
+
+            case 'ADMIN_REJECT_TICKET_REQUEST': {
+                if (!connectionInfo || connectionInfo.type !== 'admin') return;
+                const { targetPlayerId, reason } = payload;
+                const room = rooms[connectionInfo.roomId];
+                const player = room?.players.find(p => p.id === targetPlayerId);
+                if (room && player && player.ws) {
+                    sendMessageToClient(player.ws, { type: 'TICKET_REJECTED', payload: { reason: reason || "Admin rejected the request." } });
+                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Ticket request rejected for ${player.name}` } });
+                }
+                break;
+            }
+
+            case 'ADMIN_APPROVE_PRIZE_CLAIM': {
+                if (!connectionInfo || connectionInfo.type !== 'admin') return;
+                const { claimId, targetPlayerId, prizeName, prizeRuleId } = payload; 
+                const room = rooms[connectionInfo.roomId];
+                const player = room?.players.find(p => p.id === targetPlayerId);
+                const ruleInfo = room?.rules.find(r => r.id === prizeRuleId && r.isActive);
+
+                if (room && player && player.ws && ruleInfo) {
+                    // Prevent duplicate prize wins for the same rule by the same player if rule.maxPrizes = 1
+                    // More complex logic needed if maxPrizes > 1 for a rule type
+                    const existingWinsForThisRuleByPlayer = room.winners.filter(w => w.playerId === player.id && w.prizeName === prizeName).length;
+                    const maxAllowedWinsForRule = ruleInfo.maxPrizes || 1;
+
+                    if (existingWinsForThisRuleByPlayer >= maxAllowedWinsForRule) {
+                        sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `${player.name} has already reached max wins for '${prizeName}'.` } });
+                        // Optionally inform player their claim is rejected due to max wins
+                        sendMessageToClient(player.ws, { 
+                            type: 'CLAIM_STATUS_UPDATE', 
+                            payload: { claimId, prizeName, status: 'rejected', reason: `Max winners already declared for ${prizeName}.` } 
+                        });
+                        return;
+                    }
+
+                    const coinsAwarded = parseFloat(ruleInfo.coinsPerPrize) || 0;
+                    player.coins = (player.coins || 0) + coinsAwarded;
+
+                    sendMessageToClient(player.ws, { 
+                        type: 'CLAIM_STATUS_UPDATE', 
+                        payload: { claimId, prizeName, status: 'approved', coinsAwarded, totalCoins: player.coins } 
+                    });
+                    
+                    room.winners.push({ claimId, playerId: player.id, playerName: player.name, prizeName, coins: coinsAwarded, timestamp: new Date().toISOString() });
+                    
+                    broadcastToRoom(connectionInfo.roomId, {type: 'WINNER_ANNOUNCEMENT', payload: {playerName: player.name, prizeName, coins: coinsAwarded}});
+                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Prize '${prizeName}' approved for ${player.name}. Coins: ${coinsAwarded.toFixed(2)}` } });
+                } else {
+                     sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `Could not approve claim. Player, rule not found/active, or prize already maxed out.` } });
+                }
+                break;
+            }
+            
+            case 'ADMIN_REJECT_PRIZE_CLAIM': {
+                if (!connectionInfo || connectionInfo.type !== 'admin') return;
+                const { claimId, targetPlayerId, prizeName, reason } = payload;
+                const room = rooms[connectionInfo.roomId];
+                const player = room?.players.find(p => p.id === targetPlayerId);
+                if (room && player && player.ws) {
+                    sendMessageToClient(player.ws, { 
+                        type: 'CLAIM_STATUS_UPDATE', 
+                        payload: { claimId, prizeName, status: 'rejected', reason: reason || "Claim did not meet criteria." } 
+                    });
+                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Prize '${prizeName}' rejected for ${player.name}` } });
+                }
+                break;
+            }
+
+
+            // --- Player Actions ---
+            case 'PLAYER_JOIN_ROOM': { // This is the initial message from player_join.html
+                const { playerName, roomId } = payload;
+                if (!playerName || !roomId) {
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Player name and Room ID are required.' } });
+                }
+                const room = rooms[roomId];
+                if (!room || !room.admin) { 
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Room not found or not ready.' } });
+                }
+                if (room.gameStatus === 'stopped') {
+                     return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Game has ended.' } });
+                }
+
+                const playerId = generateUniqueId();
+                const initialTicketNumbers = generateTambolaTicket();
+                const player = {
+                    id: playerId, name: playerName, ws,
+                    tickets: [{ id: generateUniqueId(), numbers: initialTicketNumbers, marked: [] }],
+                    coins: 0
+                };
+                room.players.push(player);
+                playerConnections.set(ws, { roomId, playerId, type: 'player' });
+
+                sendMessageToClient(ws, { 
+                    type: 'PLAYER_JOIN_SUCCESS', 
+                    payload: { 
+                        playerId, playerName, roomId, 
+                        tickets: player.tickets,
+                        gameStatus: room.gameStatus,
+                        calledNumbers: room.numbersCalled,
+                        rules: room.rules.filter(r => r.isActive), 
+                        totalMoneyCollected: room.totalMoneyCollected,
+                        adminName: room.admin.name,
+                        playersInRoom: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length}))
+                    } 
+                });
+                broadcastToRoom(roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length})) } }, ws);
+                console.log(`Player ${playerName} (ID: ${playerId}) joined room ${roomId}`);
+                break;
+            }
+            // This case is for when player_game.html connects, not player_join.html
+            // case 'PLAYER_READY_FOR_GAME': {
+            //     if (!connectionInfo || connectionInfo.type !== 'player') return;
+            //     const room = rooms[connectionInfo.roomId];
+            //     const player = room?.players.find(p => p.id === connectionInfo.playerId);
+            //     if(room && player) {
+            //         // Send current game state to this specific player
+            //         sendMessageToClient(ws, {
+            //             type: 'GAME_STATE_UPDATE',
+            //             payload: {
+            //                 gameStatus: room.gameStatus,
+            //                 calledNumbers: room.numbersCalled,
+            //                 rules: room.rules.filter(r => r.isActive),
+            //                 latestCalledNumber: room.numbersCalled.length > 0 ? room.numbersCalled[room.numbersCalled.length -1] : null,
+            //                 // otherPlayers: room.players.filter(op => op.id !== player.id).map(op => ({id: op.id, name: op.name, ticketCount: op.tickets.length})),
+            //                 adminName: room.admin.name
+            //             }
+            //         });
+            //     }
+            //     break;
+            // }
+
+
+            case 'PLAYER_REQUEST_TICKET': {
+                if (!connectionInfo || connectionInfo.type !== 'player') return;
+                const room = rooms[connectionInfo.roomId];
+                const player = room?.players.find(p => p.id === connectionInfo.playerId);
+                if (room && player) {
+                    if (player.tickets.length >= 5) {
+                        return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Maximum 5 tickets allowed.' }});
+                    }
+                    if (room.admin && room.admin.ws) {
+                        sendMessageToClient(room.admin.ws, { 
+                            type: 'ADMIN_TICKET_REQUEST_RECEIVED', 
+                            payload: { playerId: player.id, playerName: player.name, currentTickets: player.tickets.length }
+                        });
+                        sendMessageToClient(ws, { type: 'PLAYER_TICKET_REQUEST_SENT' });
+                    } else {
+                        sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Admin not available to approve ticket.' }});
+                    }
+                }
+                break;
+            }
+
+            case 'PLAYER_CLAIM_PRIZE': {
+                if (!connectionInfo || connectionInfo.type !== 'player') return;
+                const { prizeRuleId, ticketId } = payload; 
+                const room = rooms[connectionInfo.roomId];
+                const player = room?.players.find(p => p.id === connectionInfo.playerId);
+                const ruleToClaim = room?.rules.find(r => r.id === prizeRuleId && r.isActive);
+                const ticketForClaim = player?.tickets.find(t => t.id === ticketId);
+
+                if (!room || !player || !ruleToClaim || !ticketForClaim) {
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Invalid claim request details.' } });
+                }
+                if (room.gameStatus !== 'running') {
+                    return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Game is not currently running.'}});
+                }
+
+                if (room.winners && room.winners.some(w => w.playerId === player.id && w.prizeName === ruleToClaim.name)) {
+                    return sendMessageToClient(ws, {type: 'ERROR', payload: {message: `You have already claimed or won '${ruleToClaim.name}'.`}});
+                }
+                
+                const isValidClaim = validatePrizeClaim(ticketForClaim.numbers, room.numbersCalled, ruleToClaim.name);
+                const claimId = generateUniqueId();
+
+                if (room.admin && room.admin.ws) {
+                    sendMessageToClient(room.admin.ws, {
+                        type: 'ADMIN_PRIZE_CLAIM_RECEIVED',
+                        payload: {
+                            claimId,
+                            playerId: player.id,
+                            playerName: player.name,
+                            prizeName: ruleToClaim.name,
+                            prizeRuleId: ruleToClaim.id, 
+                            ticketId: ticketForClaim.id,
+                            ticketNumbers: ticketForClaim.numbers, 
+                            serverValidationResult: isValidClaim 
+                        }
+                    });
+                    // Add to player's local claims as pending
+                     sendMessageToClient(ws, { type: 'PLAYER_CLAIM_SUBMITTED', payload: { claimId, prizeName: ruleToClaim.name, status: 'pending_admin_approval' } });
+                } else {
+                     sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Admin not available to verify claim.' } });
+                }
+                break;
+            }
+            
+            case 'PLAYER_MARK_NUMBER': { 
+                // This message is primarily for logging or advanced features.
+                // The client handles the visual marking and "boogie" logic.
+                // if (!connectionInfo || connectionInfo.type !== 'player') return;
+                // const { ticketId, number, isMarked } = payload;
+                // console.log(`Player ${connectionInfo.playerId} client-side ${isMarked ? 'marked' : 'unmarked'} ${number} on ticket ${ticketId} in room ${connectionInfo.roomId}`);
+                break;
+            }
+
+
+            default:
+                sendMessageToClient(ws, { type: 'ERROR', payload: { message: `Unknown message type: ${type}` } });
         }
-    }
+    });
 
-    if (!prizeConditionMet) {
-         return res.status(400).json({ message: `Claim conditions for ${prizeType} not met based on marked numbers and drawn numbers.` });
-    }
-    // --- End Server-Side Validation ---
+    ws.on('close', () => {
+        console.log('Client disconnected');
+        const connectionInfo = playerConnections.get(ws);
+        if (connectionInfo) {
+            const { roomId, playerId, type } = connectionInfo;
+            const room = rooms[roomId];
+            if (room) {
+                if (type === 'admin' && room.admin && room.admin.id === playerId) {
+                    console.log(`Admin ${room.admin.name} disconnected from room ${roomId}.`);
+                    room.admin.ws = null; // Mark admin as disconnected but keep their info for potential rejoin
+                    broadcastToRoom(roomId, { type: 'ADMIN_DISCONNECTED', payload: { adminName: room.admin.name } });
+                    // If game was running in auto mode, server might need to pause it.
+                    if (room.gameStatus === 'running' && room.callingMode === 'auto') {
+                        // room.gameStatus = 'paused'; // Or a specific "admin_disconnected_pause"
+                        // broadcastToRoom(roomId, {type: 'GAME_PAUSED_ADMIN_DISCONNECT'});
+                        console.log(`Game in room ${roomId} was in auto mode, might need manual intervention or auto-pause.`);
+                    }
+                } else if (type === 'player') {
+                    const playerIndex = room.players.findIndex(p => p.id === playerId);
+                    if (playerIndex > -1) {
+                        const playerName = room.players[playerIndex].name;
+                        room.players.splice(playerIndex, 1);
+                        broadcastToRoom(roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length})) } });
+                        console.log(`Player ${playerName} (ID: ${playerId}) disconnected from room ${roomId}`);
+                    }
+                }
+                // Consider cleaning up room if admin.ws is null AND no players are left for a while
+                if (room.players.length === 0 && (!room.admin || !room.admin.ws)) {
+                    console.log(`Room ${roomId} is effectively empty, cleaning up.`);
+                    delete rooms[roomId];
+                }
+            }
+            playerConnections.delete(ws);
+        }
+    });
 
-    const newClaim = {
-        claimId: generateId(),
-        ticketId,
-        prizeType,
-        playerNumbers: Array.from(claimedNumbersSet), 
-        timestamp: Date.now(),
-        status: 'pending' 
-    };
-    player.claims.push(newClaim);
-
-    console.log(`Claim submitted in room ${roomId}: ${prizeType} by ${player.name}. Claim ID: ${newClaim.claimId}`);
-    res.json({ message: `Claim for '${prizeType}' submitted. Waiting for admin.`, claimId: newClaim.claimId });
+    ws.on('error', (error) => {
+        console.error('WebSocket error with client:', error);
+        const connectionInfo = playerConnections.get(ws);
+        if (connectionInfo) playerConnections.delete(ws); 
+    });
 });
 
-app.post('/api/admin/process-claim', (req, res) => {
-    console.log(`[API] POST /api/admin/process-claim | Origin: ${req.get('origin')}, Body:`, req.body);
-    const { claimId, action, roomId } = req.body; 
-    
-    if (!roomId) return res.status(400).json({message: "Room ID is required to process a claim."});
-    const room = activeRooms.get(roomId);
-    if (!room) return res.status(404).json({message: `Room '${roomId}' not found.`});
 
-    let claimToProcess = null;
-    let playerOfClaim = null;
-
-    for (const player of room.players.values()) {
-        const foundClaim = (player.claims || []).find(c => c.claimId === claimId && c.status === 'pending');
-        if (foundClaim) {
-            claimToProcess = foundClaim;
-            playerOfClaim = player;
-            break; 
-        }
+// --- Basic HTTP Routes ---
+app.get('/', (req, res) => res.send('Tambola Game Backend is running!'));
+app.get('/health', (req, res) => res.status(200).json({ status: 'UP', timestamp: new Date().toISOString() }));
+app.get('/debug/rooms', (req, res) => {
+    const simplifiedRooms = {};
+    for (const roomId in rooms) {
+        simplifiedRooms[roomId] = {
+            id: rooms[roomId].id,
+            adminName: rooms[roomId].admin?.name,
+            adminConnected: !!(rooms[roomId].admin?.ws && rooms[roomId].admin.ws.readyState === WebSocket.OPEN),
+            playerCount: rooms[roomId].players.length,
+            gameStatus: rooms[roomId].gameStatus,
+            calledCount: rooms[roomId].numbersCalled.length,
+            rulesCount: rooms[roomId].rules.length,
+            winnersCount: rooms[roomId].winners?.length || 0
+        };
     }
-
-    if (!claimToProcess) {
-        return res.status(404).json({ message: "Pending claim not found in this room." });
-    }
-
-    if (action === 'accept') {
-        const activeRule = room.gameConfig.rules[claimToProcess.prizeType];
-        if (!activeRule || !activeRule.enabled) {
-             claimToProcess.status = 'rejected';
-             claimToProcess.reason = 'Prize type no longer active.';
-            console.warn(`Rejecting claim ${claimId}: Prize type ${claimToProcess.prizeType} not active.`);
-            return res.status(400).json({ message: `Cannot accept: Prize type '${claimToProcess.prizeType}' is not active.` });
-        }
-
-        if (!room.winners[claimToProcess.prizeType]) room.winners[claimToProcess.prizeType] = [];
-        
-        if (room.winners[claimToProcess.prizeType].length >= activeRule.maxWinners) {
-            claimToProcess.status = 'rejected';
-            claimToProcess.reason = 'Maximum winners already reached.';
-             console.warn(`Rejecting claim ${claimId}: Max winners reached for ${claimToProcess.prizeType}.`);
-            return res.status(400).json({ message: `Cannot accept: Prize '${claimToProcess.prizeType}' has max ${activeRule.maxWinners} winner(s).` });
-        }
-        
-        claimToProcess.status = 'accepted';
-        room.winners[claimToProcess.prizeType].push({ 
-            playerId: playerOfClaim.id, 
-            playerName: playerOfClaim.name, 
-            ticketId: claimToProcess.ticketId, 
-            claimedAt: Date.now() 
-        });
-        
-        console.log(`Claim ${claimId} (${claimToProcess.prizeType} by ${playerOfClaim.name}) accepted in room ${roomId}.`);
-        res.json({ message: `Claim accepted.` });
-
-    } else if (action === 'reject') {
-        claimToProcess.status = 'rejected';
-        claimToProcess.reason = req.body.reason || 'Rejected by admin.'; 
-        console.log(`Claim ${claimId} (${claimToProcess.prizeType} by ${playerOfClaim.name}) rejected in room ${roomId}. Reason: ${claimToProcess.reason}`);
-        res.json({ message: `Claim rejected.` });
-    } else {
-        return res.status(400).json({ message: "Invalid action specified." });
-    }
+    res.json(simplifiedRooms);
 });
 
-
-// --- Static File Serving (AFTER API routes) ---
-// This is primarily for local development convenience.
-// In a typical Netlify (frontend) + Render (backend) setup,
-// Netlify serves the frontend, and these routes might not be hit by external users.
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-// Catch-all for frontend routes (if SPA, and for local dev)
-// Ensure this is AFTER all API routes.
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+server.listen(PORT, () => {
+    console.log(`HTTP and WebSocket server listening on ws://localhost:${PORT}`);
 });
 
-
-// --- Server Listen ---
-app.listen(PORT, '0.0.0.0', () => { 
-    console.log(`Tambola server (v5) running on port ${PORT}`);
-    console.log(`Accepting requests from origins: ${allowedOrigins.join(', ')}`);
+process.on('SIGINT', () => {
+    console.log('Shutting down server...');
+    wss.clients.forEach(client => client.close());
+    server.close(() => {
+        console.log('Server shut down gracefully.');
+        rooms = {}; 
+        playerConnections.clear();
+        process.exit(0);
+    });
 });
