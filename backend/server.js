@@ -63,7 +63,7 @@ function generateTambolaTicket() {
     }
     let rowCounts = ticket.map(r => r.filter(n => n !== null).length);
     while (placedNumbers < 15) {
-        let bestRow = -1;
+        let breakOuter = false;
         for (let r = 0; r < 3; r++) {
             if (rowCounts[r] < 5) {
                 for (let c = 0; c < 9; c++) {
@@ -77,18 +77,17 @@ function generateTambolaTicket() {
                                 numbersOnTicket.add(num);
                                 rowCounts[r]++;
                                 placedNumbers++;
-                                if (placedNumbers === 15) break;
+                                if (placedNumbers === 15) {breakOuter = true; break;}
                              }
                         }
                     }
                 }
             }
-            if (placedNumbers === 15) break;
+            if (breakOuter) break;
         }
-        if (bestRow === -1 && placedNumbers < 15) { // Failsafe break if stuck
-            // console.warn("Ticket generation might be incomplete, stuck at " + placedNumbers + " numbers.");
-            break; 
-        }
+        if (breakOuter || placedNumbers === 15) break; 
+        // Failsafe if stuck in loop (e.g. cannot place more due to constraints)
+        if (!breakOuter && placedNumbers < 15 && !ticket.flat().some(cell => cell === null)) break;
     }
     for (let r = 0; r < 3; r++) {
         let currentNumbersInRow = ticket[r].filter(n => n !== null).length;
@@ -135,10 +134,10 @@ function broadcastToRoom(roomId, message, excludeWs = null) {
     const room = rooms[roomId];
     if (room) {
         const recipients = [];
-        if (room.admin && room.admin.ws) recipients.push(room.admin.ws);
-        room.players.forEach(p => { if (p.ws) recipients.push(p.ws); });
+        if (room.admin && room.admin.ws && room.admin.ws.readyState === WebSocket.OPEN) recipients.push(room.admin.ws);
+        room.players.forEach(p => { if (p.ws && p.ws.readyState === WebSocket.OPEN) recipients.push(p.ws); });
         recipients.forEach(clientWs => {
-            if (clientWs !== excludeWs && clientWs.readyState === WebSocket.OPEN) {
+            if (clientWs !== excludeWs) { // Check readyState inside loop if needed, but initial filter is good
                 try { clientWs.send(JSON.stringify(message)); }
                 catch (e) { console.error('Broadcast error:', e); }
             }
@@ -163,7 +162,7 @@ function validatePrizeClaim(ticketNumbers, calledNumbers, prizeRuleName) {
         case 'Top Line': return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 0), calledNumbers);
         case 'Middle Line': return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 1), calledNumbers);
         case 'Bottom Line': return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 2), calledNumbers);
-        case 'Full House': return allTicketNums.length >= 15 && allNumbersAreCalled(allTicketNums, calledNumbers); // Allow for slightly imperfect ticket gen
+        case 'Full House': return allTicketNums.length >= 15 && allNumbersAreCalled(allTicketNums, calledNumbers);
         case 'Early 5': return allTicketNums.filter(num => calledNumbers.includes(num)).length >= 5;
         case 'Early 7': return allTicketNums.filter(num => calledNumbers.includes(num)).length >= 7;
         case 'Corners': {
@@ -209,20 +208,25 @@ wss.on('connection', (ws) => {
                 
                 let adminId;
                 let isNewRoom = false;
-                if (rooms[roomId]) { // Room exists
-                    if(rooms[roomId].admin && rooms[roomId].admin.name === adminName) { // Admin rejoining
+                if (rooms[roomId]) { 
+                    if(rooms[roomId].admin && rooms[roomId].admin.name === adminName) { 
                         adminId = rooms[roomId].admin.id;
-                        rooms[roomId].admin.ws = ws; // Update WebSocket
+                        rooms[roomId].admin.ws = ws; 
                         console.log(`Admin ${adminName} (ID: ${adminId}) rejoined room ${roomId}`);
-                    } else if (rooms[roomId].admin && rooms[roomId].admin.name !== adminName) { // Different admin trying to join existing room
-                        return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Room already exists with a different admin.' } });
-                    } else { // Room might exist from a previous session but no active admin
-                        adminId = generateUniqueId();
+                    } else if (rooms[roomId].admin && rooms[roomId].admin.name !== adminName && rooms[roomId].admin.ws && rooms[roomId].admin.ws.readyState === WebSocket.OPEN) { 
+                        return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Room already exists with an active admin.' } });
+                    } else { 
+                        adminId = rooms[roomId].admin?.id || generateUniqueId(); // Reuse ID if admin object exists but ws was null
                         rooms[roomId].admin = { id: adminId, name: adminName, ws };
-                        rooms[roomId].gameStatus = 'idle'; // Reset status if re-admining
-                        console.log(`Admin ${adminName} (ID: ${adminId}) took over existing room shell ${roomId}`);
+                        // If re-admining a room that might have been in progress, reset to idle.
+                        // Or, if you want to allow rejoining a game in progress, handle that state.
+                        // For now, assume re-admining an old/stale room means it's idle.
+                        if(rooms[roomId].gameStatus !== 'idle') {
+                             // rooms[roomId].gameStatus = 'idle'; // Or send current state
+                        }
+                        console.log(`Admin ${adminName} (ID: ${adminId}) took over/reconnected to room ${roomId}`);
                     }
-                } else { // New room
+                } else { 
                     adminId = generateUniqueId();
                     isNewRoom = true;
                     rooms[roomId] = {
@@ -236,13 +240,13 @@ wss.on('connection', (ws) => {
                 }
                 playerConnections.set(ws, { roomId, playerId: adminId, type: 'admin' });
                 
-                const roomDetailsPayload = {
+                const roomDetailsPayload = { // Send a sanitized version of room details
                     id: rooms[roomId].id,
                     admin: { id: rooms[roomId].admin.id, name: rooms[roomId].admin.name }, 
-                    players: rooms[roomId].players.map(p => ({ id: p.id, name: p.name, tickets: p.tickets, coins: p.coins, ticketCount: p.tickets.length })),
+                    players: rooms[roomId].players.map(p => ({ id: p.id, name: p.name, ticketCount: p.tickets.length })),
                     numbersCalled: rooms[roomId].numbersCalled,
                     gameStatus: rooms[roomId].gameStatus,
-                    rules: rooms[roomId].rules, // Send current rules, even if empty for new room
+                    rules: rooms[roomId].rules, 
                     totalMoneyCollected: rooms[roomId].totalMoneyCollected,
                     callingMode: rooms[roomId].callingMode,
                     autoCallInterval: rooms[roomId].autoCallInterval
@@ -259,10 +263,10 @@ wss.on('connection', (ws) => {
                 const room = rooms[connectionInfo.roomId];
                 if (room && room.admin.id === connectionInfo.playerId && room.gameStatus === 'idle') {
                     if (!payload.rulesConfig || payload.rulesConfig.filter(r => r.isActive).length === 0) {
-                        return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Cannot start game without active rules.'}});
+                        return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Cannot start: No active rules configured.'}});
                     }
-                    if (payload.totalMoneyCollected === undefined || parseFloat(payload.totalMoneyCollected) < 0) {
-                        return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Invalid total money collected.'}});
+                    if (payload.totalMoneyCollected === undefined || parseFloat(payload.totalMoneyCollected) <= 0) { // Ensure positive money
+                        return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Cannot start: Invalid total money collected.'}});
                     }
                     room.gameStatus = 'running';
                     room.numbersCalled = [];
@@ -284,9 +288,9 @@ wss.on('connection', (ws) => {
                             adminName: room.admin.name
                         } 
                     });
-                    console.log(`Game started in room ${connectionInfo.roomId} by admin ${room.admin.name}. Mode: ${room.callingMode}`);
+                    console.log(`Game started in room ${connectionInfo.roomId}. Mode: ${room.callingMode}`);
                 } else if (room && room.gameStatus !== 'idle') {
-                    sendMessageToClient(ws, {type: 'ERROR', payload: {message: `Game cannot be started. Current status: ${room.gameStatus}`}});
+                    sendMessageToClient(ws, {type: 'ERROR', payload: {message: `Game already ${room.gameStatus}.`}});
                 }
                 break;
             }
@@ -303,21 +307,21 @@ wss.on('connection', (ws) => {
                             type: 'NUMBER_CALLED', 
                             payload: { number: calledNumber, calledNumbersHistory: [...room.numbersCalled], remainingCount: room.availableNumbers.length } 
                         });
-                        console.log(`Number ${calledNumber} called in room ${connectionInfo.roomId}. Remaining: ${room.availableNumbers.length}`);
+                        console.log(`Number ${calledNumber} called in ${connectionInfo.roomId}. Remaining: ${room.availableNumbers.length}`);
                         if (room.availableNumbers.length === 0) {
                             room.gameStatus = 'stopped';
                             broadcastToRoom(connectionInfo.roomId, { type: 'GAME_OVER_ALL_NUMBERS_CALLED', payload: { finalCalledNumbers: room.numbersCalled } });
-                            console.log(`All numbers called in room ${connectionInfo.roomId}. Game over.`);
+                            console.log(`All numbers called in ${connectionInfo.roomId}. Game over.`);
                         }
                     } else {
-                        sendMessageToClient(ws, {type: 'INFO', payload: {message: 'All numbers have been called.'}});
+                        sendMessageToClient(ws, {type: 'INFO', payload: {message: 'All numbers called.'}});
                     }
                 }
                 break;
             }
             
-            case 'ADMIN_PAUSE_GAME':
-            case 'ADMIN_RESUME_GAME':
+            case 'ADMIN_PAUSE_GAME': // Only if auto mode
+            case 'ADMIN_RESUME_GAME': // Only if auto mode and paused
             case 'ADMIN_STOP_GAME': {
                 if (!connectionInfo || connectionInfo.type !== 'admin') return;
                 const room = rooms[connectionInfo.roomId];
@@ -346,13 +350,12 @@ wss.on('connection', (ws) => {
                 if (!connectionInfo || connectionInfo.type !== 'admin') return;
                 const room = rooms[connectionInfo.roomId];
                 if (room && room.admin.id === connectionInfo.playerId && payload.rules && payload.financials) {
-                    // Rules can be updated anytime before game starts, or if game is stopped and being reset.
-                    // For simplicity, let's allow update if game is 'idle'.
                     if (room.gameStatus === 'idle') {
                         room.rules = payload.rules; 
                         room.totalMoneyCollected = parseFloat(payload.financials.totalMoneyCollected);
-                        broadcastToRoom(connectionInfo.roomId, { type: 'RULES_UPDATED', payload: { rules: room.rules.filter(r => r.isActive), totalMoneyCollected: room.totalMoneyCollected } }, ws);
-                        sendMessageToClient(ws, { type: 'RULES_SAVE_CONFIRMED' });
+                        // No need to broadcast rules here, they are sent when game starts or player joins.
+                        // Admin client will update its own view.
+                        sendMessageToClient(ws, { type: 'RULES_SAVE_CONFIRMED', payload: {message: "Rules and financials saved successfully."} });
                         console.log(`Rules updated for room ${connectionInfo.roomId}`);
                     } else {
                          sendMessageToClient(ws, {type: 'ERROR', payload: {message: `Rules can only be updated when game is idle. Current status: ${room.gameStatus}`}});
@@ -368,7 +371,7 @@ wss.on('connection', (ws) => {
                 const player = room?.players.find(p => p.id === targetPlayerId);
                 if (room && player) {
                     if (player.tickets.length >= 5) {
-                        return sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `${player.name} already has max tickets.` } });
+                        return sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `${player.name} has max tickets.` } });
                     }
                     const newTicket = { id: generateUniqueId(), numbers: generateTambolaTicket(), marked: [] };
                     player.tickets.push(newTicket);
@@ -405,7 +408,7 @@ wss.on('connection', (ws) => {
                     const maxAllowedWinsForRule = ruleInfo.maxPrizes || 1;
 
                     if (existingWinsForThisRuleByPlayer >= maxAllowedWinsForRule) {
-                        sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `${player.name} has already reached max wins for '${prizeName}'.` } });
+                        sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `${player.name} reached max wins for '${prizeName}'.` } });
                         if (player.ws) sendMessageToClient(player.ws, { type: 'CLAIM_STATUS_UPDATE', payload: { claimId, prizeName, status: 'rejected', reason: `Max winners for ${prizeName}.` } });
                         return;
                     }
@@ -413,10 +416,10 @@ wss.on('connection', (ws) => {
                     player.coins = (player.coins || 0) + coinsAwarded;
                     sendMessageToClient(player.ws, { type: 'CLAIM_STATUS_UPDATE', payload: { claimId, prizeName, status: 'approved', coinsAwarded, totalCoins: player.coins } });
                     room.winners.push({ claimId, playerId: player.id, playerName: player.name, prizeName, coins: coinsAwarded, timestamp: new Date().toISOString() });
-                    broadcastToRoom(connectionInfo.roomId, {type: 'WINNER_ANNOUNCEMENT', payload: {playerName: player.name, prizeName, coins: coinsAwarded}});
+                    broadcastToRoom(connectionInfo.roomId, {type: 'WINNER_ANNOUNCEMENT', payload: {playerName: player.name, prizeName, coins: coinsAwarded, claimId}});
                     sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Prize '${prizeName}' approved for ${player.name}. Coins: ${coinsAwarded.toFixed(2)}` } });
                 } else {
-                     sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `Could not approve claim. Player, rule not found/active.` } });
+                     sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `Could not approve claim. Player/rule not found/active.` } });
                 }
                 break;
             }
@@ -437,8 +440,9 @@ wss.on('connection', (ws) => {
                 const { playerName, roomId } = payload;
                 if (!playerName || !roomId) return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Player name and Room ID required.' } });
                 const room = rooms[roomId];
-                if (!room || !room.admin || !room.admin.ws) { // Check if admin is actively connected
-                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Room not found or admin not ready.' } });
+                // Player can only join if an admin is actively connected and the room is initialized
+                if (!room || !room.admin || !room.admin.ws || room.admin.ws.readyState !== WebSocket.OPEN) {
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Room not found or not ready.' } });
                 }
                 if (room.gameStatus === 'stopped') return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Game has ended.' } });
 
@@ -467,8 +471,8 @@ wss.on('connection', (ws) => {
                 const player = room?.players.find(p => p.id === connectionInfo.playerId);
                 if (room && player) {
                     if (player.tickets.length >= 5) return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Max 5 tickets.' }});
-                    if (room.admin && room.admin.ws) {
-                        sendMessageToClient(room.admin.ws, { type: 'ADMIN_TICKET_REQUEST_RECEIVED', payload: { playerId: player.id, playerName: player.name, currentTickets: player.tickets.length } });
+                    if (room.admin && room.admin.ws && room.admin.ws.readyState === WebSocket.OPEN) {
+                        sendMessageToClient(room.admin.ws, { type: 'ADMIN_TICKET_REQUEST_RECEIVED', payload: { playerId: player.id, playerName: player.name, currentTickets: player.tickets.length, timestamp: Date.now() } });
                         sendMessageToClient(ws, { type: 'PLAYER_TICKET_REQUEST_SENT' });
                     } else sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Admin not available.' }});
                 }
@@ -485,14 +489,17 @@ wss.on('connection', (ws) => {
 
                 if (!room || !player || !ruleToClaim || !ticketForClaim) return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Invalid claim details.' } });
                 if (room.gameStatus !== 'running') return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Game not running.'}});
-                if (room.winners && room.winners.some(w => w.playerId === player.id && w.prizeName === ruleToClaim.name && (ruleToClaim.maxPrizes || 1) === 1 )) { // More robust check for single winner prizes
-                    return sendMessageToClient(ws, {type: 'ERROR', payload: {message: `You already won '${ruleToClaim.name}'.`}});
+                
+                const existingWinsForThisRuleByPlayer = room.winners.filter(w => w.playerId === player.id && w.prizeName === ruleToClaim.name).length;
+                const maxAllowedWinsForRule = ruleToClaim.maxPrizes || 1;
+                if (existingWinsForThisRuleByPlayer >= maxAllowedWinsForRule) {
+                     return sendMessageToClient(ws, {type: 'ERROR', payload: {message: `You already won max times for '${ruleToClaim.name}'.`}});
                 }
                 
                 const isValidClaim = validatePrizeClaim(ticketForClaim.numbers, room.numbersCalled, ruleToClaim.name);
                 const claimId = generateUniqueId();
 
-                if (room.admin && room.admin.ws) {
+                if (room.admin && room.admin.ws && room.admin.ws.readyState === WebSocket.OPEN) {
                     sendMessageToClient(room.admin.ws, {
                         type: 'ADMIN_PRIZE_CLAIM_RECEIVED',
                         payload: { claimId, playerId: player.id, playerName: player.name, prizeName: ruleToClaim.name, prizeRuleId: ruleToClaim.id, ticketId: ticketForClaim.id, ticketNumbers: ticketForClaim.numbers, serverValidationResult: isValidClaim }
@@ -502,7 +509,7 @@ wss.on('connection', (ws) => {
                 break;
             }
             
-            case 'PLAYER_MARK_NUMBER': break; // Primarily client-side visual
+            case 'PLAYER_MARK_NUMBER': break; 
 
             default: sendMessageToClient(ws, { type: 'ERROR', payload: { message: `Unknown message type: ${type}` } });
         }
@@ -529,7 +536,7 @@ wss.on('connection', (ws) => {
                     }
                 }
                 if (room.players.length === 0 && (!room.admin || !room.admin.ws)) {
-                    console.log(`Room ${roomId} is empty or admin disconnected, cleaning up.`);
+                    console.log(`Room ${roomId} is empty and admin disconnected, cleaning up.`);
                     delete rooms[roomId];
                 }
             }
@@ -548,7 +555,9 @@ app.get('/debug/rooms', (req, res) => {
             id: rooms[roomId].id, adminName: rooms[roomId].admin?.name,
             adminConnected: !!(rooms[roomId].admin?.ws && rooms[roomId].admin.ws.readyState === WebSocket.OPEN),
             playerCount: rooms[roomId].players.length, gameStatus: rooms[roomId].gameStatus,
-            calledCount: rooms[roomId].numbersCalled.length, rulesCount: rooms[roomId].rules.length,
+            calledCount: rooms[roomId].numbersCalled.length, 
+            rulesActiveCount: rooms[roomId].rules?.filter(r => r.isActive).length || 0,
+            totalMoney: rooms[roomId].totalMoneyCollected,
             winnersCount: rooms[roomId].winners?.length || 0
         };
     }
