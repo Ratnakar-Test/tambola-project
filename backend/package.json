@@ -1,24 +1,27 @@
 {
-  "name": "tambola-game-backend",
+  "name": "tambola-backend",
   "version": "1.0.0",
   "description": "Backend server for the Tambola game.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon server.js"
   },
   "keywords": [
     "tambola",
-    "housie",
     "bingo",
     "game",
-    "express",
-    "nodejs"
+    "realtime",
+    "websocket"
   ],
-  "author": "",
+  "author": "Your Name/Project Name",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "express": "^4.17.1",  // Or a newer version like ^4.19.2
+    "ws": "^8.5.0"        // Or a newer version like ^8.17.0
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.15" // Or a newer version like ^3.1.0
   }
 }
