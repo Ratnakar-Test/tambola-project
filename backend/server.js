@@ -1,27 +1,33 @@
 // server.js
-// Tambola Game Backend - Enhanced Sync & Broadcast
+// Tambola Game Backend
+// Uses Express for basic HTTP and 'ws' for WebSockets
 
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-const cors = require('cors');
+const cors = require('cors'); // For handling Cross-Origin Resource Sharing
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000; // Port for Render or local development
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.use(cors()); // Enable CORS for all routes
+app.use(express.json()); // Middleware to parse JSON bodies
 
+// In-memory storage
 let rooms = {};
-let playerConnections = new Map(); // ws -> { roomId, playerId, type: 'admin'/'player' }
+// playerConnections: ws -> { roomId, playerId, type: 'admin'/'player', ws }
+let playerConnections = new Map();
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-console.log(`Tambola backend server running on port ${PORT}`);
+console.log(`Tambola backend server starting on port ${PORT}...`);
 
 // --- Helper Functions ---
-function generateUniqueId() { return Math.random().toString(36).substr(2, 9) + Date.now().toString(36); }
+
+function generateUniqueId() {
+    return Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+}
 
 function generateTambolaTicket() {
     let ticket = Array(3).fill(null).map(() => Array(9).fill(null));
@@ -32,167 +38,246 @@ function generateTambolaTicket() {
         { min: 60, max: 69 }, { min: 70, max: 79 }, { min: 80, max: 90 }
     ];
 
-    function getRandomUniqueNumber(min, max, existingNumbers) {
-        let num; let attempts = 0;
-        do { num = Math.floor(Math.random() * (max - min + 1)) + min; attempts++; }
-        while (existingNumbers.has(num) && attempts < 50);
-        return existingNumbers.has(num) ? null : num;
-    }
+    let colNumberCounts = Array(9).fill(0);
+    let rowNumberCounts = Array(3).fill(0);
 
-    let placedNumbers = 0;
-    for (let col = 0; col < 9; col++) {
-        let placedInCol = false;
-        for (let attempt = 0; attempt < 3 && !placedInCol; attempt++) {
-            let row = Math.floor(Math.random() * 3);
-            if (ticket[row][col] === null) {
-                const num = getRandomUniqueNumber(colRanges[col].min, colRanges[col].max, numbersOnTicket);
-                if (num !== null) { ticket[row][col] = num; numbersOnTicket.add(num); placedInCol = true; placedNumbers++; }
+    // Try to place 15 numbers
+    let placedCount = 0;
+    let attemptsToPlaceAll = 0;
+
+    while (placedCount < 15 && attemptsToPlaceAll < 1000) {
+        attemptsToPlaceAll++;
+        let r = Math.floor(Math.random() * 3);
+        let c = Math.floor(Math.random() * 9);
+
+        if (ticket[r][c] === null && rowNumberCounts[r] < 5 && colNumberCounts[c] < 3) {
+            // Ensure column has numbers (e.g. no more than 2 empty cells in a col with 1 number, 1 with 2)
+            let numbersInCol = 0;
+            for(let i=0; i<3; i++) if(ticket[i][c] !== null) numbersInCol++;
+            if(numbersInCol >= colRanges[c].max - colRanges[c].min + 1) continue; // Column full for range
+
+            let num;
+            let attemptsToFindNum = 0;
+            do {
+                num = Math.floor(Math.random() * (colRanges[c].max - colRanges[c].min + 1)) + colRanges[c].min;
+                attemptsToFindNum++;
+            } while (numbersOnTicket.has(num) && attemptsToFindNum < 20);
+
+            if (!numbersOnTicket.has(num)) {
+                ticket[r][c] = num;
+                numbersOnTicket.add(num);
+                rowNumberCounts[r]++;
+                colNumberCounts[c]++;
+                placedCount++;
             }
         }
     }
 
-    let rowCounts = ticket.map(r => r.filter(n => n !== null).length);
-    while (placedNumbers < 15) {
-        let breakOuter = false; let placedThisCycle = false;
-        for (let r = 0; r < 3; r++) {
-            if (rowCounts[r] < 5) {
-                for (let c = 0; c < 9; c++) {
-                    if (ticket[r][c] === null) {
-                        let numsInThisCol = 0;
-                        for (let i = 0; i < 3; i++) if (ticket[i][c] !== null) numsInThisCol++;
-                        if (numsInThisCol < 3) {
-                             const num = getRandomUniqueNumber(colRanges[c].min, colRanges[c].max, numbersOnTicket);
-                             if (num !== null) {
-                                ticket[r][c] = num; numbersOnTicket.add(num); rowCounts[r]++; placedNumbers++; placedThisCycle = true;
-                                if (placedNumbers === 15) {breakOuter = true; break;}
-                             }
-                        }
+    // If not 15 numbers, try to fill remaining, respecting constraints
+    if (placedCount < 15) {
+        for (let r_fill = 0; r_fill < 3; r_fill++) {
+            while (rowNumberCounts[r_fill] < 5 && placedCount < 15) {
+                let filledThisIteration = false;
+                // Find an empty column slot for this row
+                let availableCols = [];
+                for (let c_fill = 0; c_fill < 9; c_fill++) {
+                    if (ticket[r_fill][c_fill] === null && colNumberCounts[c_fill] < 3) {
+                        availableCols.push(c_fill);
                     }
                 }
+                if (availableCols.length === 0) break; // No place in this row
+
+                let c_fill_choice = availableCols[Math.floor(Math.random() * availableCols.length)];
+                let num;
+                let attemptsToFindNum = 0;
+                do {
+                    num = Math.floor(Math.random() * (colRanges[c_fill_choice].max - colRanges[c_fill_choice].min + 1)) + colRanges[c_fill_choice].min;
+                    attemptsToFindNum++;
+                } while (numbersOnTicket.has(num) && attemptsToFindNum < 20);
+
+                if (!numbersOnTicket.has(num)) {
+                    ticket[r_fill][c_fill_choice] = num;
+                    numbersOnTicket.add(num);
+                    rowNumberCounts[r_fill]++;
+                    colNumberCounts[c_fill_choice]++;
+                    placedCount++;
+                    filledThisIteration = true;
+                }
+                if (!filledThisIteration && attemptsToPlaceAll > 100) break; // Safety break
             }
-            if (breakOuter) break;
-        }
-        if (breakOuter || placedNumbers === 15) break;
-        if (!placedThisCycle && placedNumbers < 15) { break; }
-    }
-    for (let r = 0; r < 3; r++) {
-        let currentNumbersInRow = ticket[r].filter(n => n !== null).length; let attempts = 0;
-        while (currentNumbersInRow < 5 && attempts < 50) { 
-            attempts++; let emptyColIndices = [];
-            for(let c=0; c<9; c++) if(ticket[r][c] === null) emptyColIndices.push(c);
-            if(emptyColIndices.length === 0) break;
-            let c = emptyColIndices[Math.floor(Math.random() * emptyColIndices.length)];
-            let numsInThisCol = 0; for (let i = 0; i < 3; i++) if (ticket[i][c] !== null) numsInThisCol++;
-            if (numsInThisCol < 3) {
-                const num = getRandomUniqueNumber(colRanges[c].min, colRanges[c].max, numbersOnTicket);
-                if (num !== null) { ticket[r][c] = num; numbersOnTicket.add(num); currentNumbersInRow++; }
-            }
-        }
-        while (currentNumbersInRow > 5 && attempts < 100) { 
-             attempts++; let filledColIndices = [];
-             for(let c=0; c<9; c++) if(ticket[r][c] !== null) filledColIndices.push(c);
-             if(filledColIndices.length === 0) break;
-             let c = filledColIndices[Math.floor(Math.random() * filledColIndices.length)];
-             numbersOnTicket.delete(ticket[r][c]); ticket[r][c] = null; currentNumbersInRow--;
         }
     }
+
+
+    // Sort numbers within each column
     for (let c = 0; c < 9; c++) {
-        let colVals = []; for (let r = 0; r < 3; r++) if (ticket[r][c] !== null) colVals.push(ticket[r][c]);
-        colVals.sort((a, b) => a - b); let currentIdx = 0;
-        for (let r = 0; r < 3; r++) if (ticket[r][c] !== null) ticket[r][c] = colVals[currentIdx++];
+        let colVals = [];
+        for (let r_sort = 0; r_sort < 3; r_sort++) {
+            if (ticket[r_sort][c] !== null) {
+                colVals.push(ticket[r_sort][c]);
+            }
+        }
+        colVals.sort((a, b) => a - b);
+        let currentIdx = 0;
+        for (let r_sort = 0; r_sort < 3; r_sort++) {
+            if (ticket[r_sort][c] !== null) {
+                ticket[r_sort][c] = colVals[currentIdx++];
+            }
+        }
     }
+    // console.log("Generated ticket with numbers: ", numbersOnTicket.size, JSON.stringify(ticket));
     return ticket;
 }
+
 
 function broadcastToRoom(roomId, message, excludeWs = null) {
     const room = rooms[roomId];
     if (room) {
         const recipients = [];
+        // Add admin if connected
         if (room.admin && room.admin.ws && room.admin.ws.readyState === WebSocket.OPEN) {
             recipients.push(room.admin.ws);
         }
+        // Add players if connected
         room.players.forEach(player => {
             if (player.ws && player.ws.readyState === WebSocket.OPEN) {
                 recipients.push(player.ws);
             }
         });
 
-        // console.log(`Broadcasting to room ${roomId} (Admin: ${room.admin && room.admin.ws ? 'connected' : 'not connected'}, Players: ${room.players.length}):`, message.type);
-        
         recipients.forEach(clientWs => {
-            if (clientWs !== excludeWs) {
+            if (clientWs !== excludeWs) { // Check if clientWs is not the one to exclude
                 try {
                     clientWs.send(JSON.stringify(message));
-                } catch (error) {
-                    console.error('Error sending message during broadcast:', error);
+                } catch (e) {
+                    console.error('Broadcast error to client:', e);
+                    // Optionally remove problematic client from connections if error persists
                 }
             }
         });
-    } else {
-        console.warn(`Attempted to broadcast to non-existent room: ${roomId}`);
     }
 }
+
 
 function sendMessageToClient(ws, message) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         try {
             ws.send(JSON.stringify(message));
-        } catch (error) {
-            console.error('Error sending message to client:', error);
+        } catch (e) {
+            console.error('Send message error:', e);
         }
     }
 }
 
-function getAllNumbersOnTicket(ticketNumbers) { return ticketNumbers.flat().filter(num => num !== null); }
-function getNumbersInRow(ticketNumbers, rowIndex) { if (rowIndex < 0 || rowIndex >= ticketNumbers.length) return []; return ticketNumbers[rowIndex].filter(num => num !== null); }
-function allNumbersAreCalled(numbersToCheck, calledNumbers) { if (!numbersToCheck || numbersToCheck.length === 0) return false; return numbersToCheck.every(num => calledNumbers.includes(num)); }
-
+// --- Prize Validation Helper Functions --- (Copied from original, assuming they are okay)
+function getAllNumbersOnTicket(ticketNumbers) {
+    return ticketNumbers.flat().filter(num => num !== null);
+}
+function getNumbersInRow(ticketNumbers, rowIndex) {
+    if (rowIndex < 0 || rowIndex >= ticketNumbers.length) return [];
+    return ticketNumbers[rowIndex].filter(num => num !== null);
+}
+function allNumbersAreCalled(numbersToCheck, calledNumbers) {
+    if (!numbersToCheck || numbersToCheck.length === 0) return false;
+    return numbersToCheck.every(num => calledNumbers.includes(num));
+}
 function validatePrizeClaim(ticketNumbers, calledNumbers, prizeRuleName) {
     const allTicketNums = getAllNumbersOnTicket(ticketNumbers);
+    if (allTicketNums.length === 0 && prizeRuleName !== 'Unlucky 1') return false; // Most prizes need numbers
+
     switch (prizeRuleName) {
-        case 'Top Line': return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 0), calledNumbers);
-        case 'Middle Line': return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 1), calledNumbers);
-        case 'Bottom Line': return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 2), calledNumbers);
-        case 'Full House': return allTicketNums.length >= 15 && allNumbersAreCalled(allTicketNums, calledNumbers);
-        case 'Early 5': return allTicketNums.filter(num => calledNumbers.includes(num)).length >= 5;
-        case 'Early 7': return allTicketNums.filter(num => calledNumbers.includes(num)).length >= 7;
+        case 'Top Line':
+            return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 0), calledNumbers);
+        case 'Middle Line':
+            return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 1), calledNumbers);
+        case 'Bottom Line':
+            return allNumbersAreCalled(getNumbersInRow(ticketNumbers, 2), calledNumbers);
+        case 'Full House':
+            // A standard Tambola ticket aims for 15 numbers.
+            // If ticket generation is imperfect, check if all *present* numbers are called.
+            return allTicketNums.length > 0 && allNumbersAreCalled(allTicketNums, calledNumbers);
+        case 'Early 5': {
+            const markedCount = allTicketNums.filter(num => calledNumbers.includes(num)).length;
+            return markedCount >= 5;
+        }
+        case 'Early 7': {
+            const markedCount = allTicketNums.filter(num => calledNumbers.includes(num)).length;
+            return markedCount >= 7;
+        }
         case 'Corners': {
-            const topRowActual = getNumbersInRow(ticketNumbers, 0); const bottomRowActual = getNumbersInRow(ticketNumbers, 2);
-            if (topRowActual.length < 2 || bottomRowActual.length < 2) return false; 
-            const cornerNumbers = [topRowActual[0], topRowActual[topRowActual.length - 1], bottomRowActual[0], bottomRowActual[bottomRowActual.length - 1]];
-            return cornerNumbers.filter(n => n !== undefined && n !== null).length === 4 && allNumbersAreCalled(cornerNumbers.filter(n => n !== undefined && n !== null), calledNumbers);
+            const topRowActual = getNumbersInRow(ticketNumbers, 0);
+            const bottomRowActual = getNumbersInRow(ticketNumbers, 2);
+            if (topRowActual.length === 0 || bottomRowActual.length === 0) return false;
+
+            const cornerNumbers = [];
+            if (topRowActual.length > 0) cornerNumbers.push(topRowActual[0]);
+            if (topRowActual.length > 1) cornerNumbers.push(topRowActual[topRowActual.length -1]); // Last actual number
+            if (bottomRowActual.length > 0) cornerNumbers.push(bottomRowActual[0]);
+            if (bottomRowActual.length > 1) cornerNumbers.push(bottomRowActual[bottomRowActual.length-1]); // Last actual number
+            
+            const uniqueCornerNumbers = [...new Set(cornerNumbers)]; // Ensure unique numbers if e.g. only one number in row
+            return uniqueCornerNumbers.length >= 2 && allNumbersAreCalled(uniqueCornerNumbers, calledNumbers); // Need at least 2 distinct corners
         }
         case '1-2-3': {
-            const r0 = getNumbersInRow(ticketNumbers, 0); const r1 = getNumbersInRow(ticketNumbers, 1); const r2 = getNumbersInRow(ticketNumbers, 2);
-            if (r0.length < 1 || r1.length < 2 || r2.length < 3) return false;
-            return allNumbersAreCalled([r0[0], r1[0], r1[1], r2[0], r2[1], r2[2]], calledNumbers);
+            const r0_actual = getNumbersInRow(ticketNumbers, 0);
+            const r1_actual = getNumbersInRow(ticketNumbers, 1);
+            const r2_actual = getNumbersInRow(ticketNumbers, 2);
+            if (r0_actual.length < 1 || r1_actual.length < 2 || r2_actual.length < 3) return false;
+            const numbersFor123 = [
+                r0_actual[0], r1_actual[0], r1_actual[1],
+                r2_actual[0], r2_actual[1], r2_actual[2]
+            ];
+            return allNumbersAreCalled(numbersFor123, calledNumbers);
         }
-        case 'BP (Bull\'s Eye)': { if (allTicketNums.length === 0) return false; return calledNumbers.includes(Math.min(...allTicketNums)) && calledNumbers.includes(Math.max(...allTicketNums)); }
-        case 'Breakfast': { const nums = allTicketNums.filter(n => n >= 1 && n <= 30); return nums.length > 0 && allNumbersAreCalled(nums, calledNumbers); }
-        case 'Dinner': { const nums = allTicketNums.filter(n => n >= 61 && n <= 90); return nums.length > 0 && allNumbersAreCalled(nums, calledNumbers); }
-        case 'Fat Ladies': { const nums = allTicketNums.filter(n => n.toString().includes('8')); return nums.length > 0 && allNumbersAreCalled(nums, calledNumbers); }
-        case 'Unlucky 1': console.warn(`"Unlucky 1" validation N/A.`); return false;
-        default: console.warn(`Unknown prize rule: ${prizeRuleName}`); return false;
+        case 'BP (Bull\'s Eye)': {
+            if (allTicketNums.length < 2) return false; // Need at least two numbers to have a min and max
+            const minNum = Math.min(...allTicketNums);
+            const maxNum = Math.max(...allTicketNums);
+            return calledNumbers.includes(minNum) && calledNumbers.includes(maxNum);
+        }
+        case 'Breakfast': {
+            const breakfastNumsOnTicket = allTicketNums.filter(num => num >= 1 && num <= 30);
+            if (breakfastNumsOnTicket.length === 0) return false;
+            return allNumbersAreCalled(breakfastNumsOnTicket, calledNumbers);
+        }
+        case 'Dinner': {
+            const dinnerNumsOnTicket = allTicketNums.filter(num => num >= 61 && num <= 90);
+            if (dinnerNumsOnTicket.length === 0) return false;
+            return allNumbersAreCalled(dinnerNumsOnTicket, calledNumbers);
+        }
+        case 'Fat Ladies': {
+            const fatLadyNumbersOnTicket = allTicketNums.filter(num => num.toString().includes('8'));
+            if (fatLadyNumbersOnTicket.length === 0) return false;
+            return allNumbersAreCalled(fatLadyNumbersOnTicket, calledNumbers);
+        }
+        case 'Unlucky 1':
+            console.warn(`Prize validation for "Unlucky 1" is complex and typically game-event based; not fully implemented here.`);
+            return false; // Requires tracking more game state than just called numbers.
+        default:
+            console.warn(`Unknown prize rule name for validation: ${prizeRuleName}`);
+            return false;
     }
 }
 
-wss.on('connection', (ws, req) => {
-    const connectionId = generateUniqueId(); // For logging
-    console.log(`Client ${connectionId} connected.`);
+// --- WebSocket Connection Handling ---
+wss.on('connection', (ws) => {
+    console.log('Client connected');
+    // ws.id = generateUniqueId(); // Assign a unique ID to the WebSocket connection itself for easier tracking if needed
 
     ws.on('message', (messageString) => {
         let message;
         try {
             message = JSON.parse(messageString);
-            console.log(`Received from ${connectionId}:`, message);
+            // console.log(`Received from client ${ws.id}:`, message);
+            console.log(`Received from client:`, message);
         } catch (e) {
-            console.error(`Failed to parse message from ${connectionId}:`, messageString, e);
+            console.error('Failed to parse message:', messageString, e);
             sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Invalid message format.' } });
             return;
         }
 
         const { type, payload } = message;
-        let connectionInfo = playerConnections.get(ws); // Get existing info if available
+        let connectionInfo = playerConnections.get(ws); // Get existing info
 
         switch (type) {
             case 'ADMIN_CREATE_JOIN_ROOM': {
@@ -200,332 +285,452 @@ wss.on('connection', (ws, req) => {
                 if (!adminName || !roomId) {
                     return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Admin name and Room ID are required.' } });
                 }
-                
+
                 let adminId;
-                let isNewRoom = false;
-                if (rooms[roomId]) { 
-                    if(rooms[roomId].admin && rooms[roomId].admin.name === adminName) { 
+                if (rooms[roomId]) { // Room exists
+                    if (rooms[roomId].admin.name === adminName) { // Admin rejoining
                         adminId = rooms[roomId].admin.id;
-                        rooms[roomId].admin.ws = ws; 
-                        console.log(`Admin ${adminName} (ID: ${adminId}) rejoined room ${roomId}`);
-                    } else if (rooms[roomId].admin && rooms[roomId].admin.name !== adminName && rooms[roomId].admin.ws && rooms[roomId].admin.ws.readyState === WebSocket.OPEN) { 
-                        return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Room already exists with an active admin.' } });
-                    } else { 
-                        adminId = rooms[roomId].admin?.id || generateUniqueId(); 
-                        rooms[roomId].admin = { id: adminId, name: adminName, ws };
-                        // If re-admining a room that might have been in progress, ensure it's idle or send current state
-                        // For simplicity, let's assume it should be idle or will be reset by admin actions.
-                        // rooms[roomId].gameStatus = 'idle'; // Or send current state
-                        console.log(`Admin ${adminName} (ID: ${adminId}) took over/reconnected to room ${roomId}`);
+                        rooms[roomId].admin.ws = ws; // Update WebSocket
+                        console.log(`Admin ${adminName} (ID: ${adminId}) reconnected to room ${roomId}`);
+                    } else if (!rooms[roomId].admin.id || !rooms[roomId].admin.ws || rooms[roomId].admin.ws.readyState !== WebSocket.OPEN) {
+                        // Room exists, but admin is different or disconnected, allow new admin to take over if old one is gone
+                        console.warn(`Room ${roomId} existed. Previous admin ${rooms[roomId].admin.name}. New admin ${adminName} taking over.`);
+                        adminId = generateUniqueId();
+                        rooms[roomId].admin = { id: adminId, name: adminName, ws: ws };
+                    } else {
+                        return sendMessageToClient(ws, { type: 'ERROR', payload: { message: `Room ${roomId} already exists with a different active admin (${rooms[roomId].admin.name}).` } });
                     }
-                } else { 
+                } else { // New room
                     adminId = generateUniqueId();
-                    isNewRoom = true;
                     rooms[roomId] = {
-                        id: roomId, admin: { id: adminId, name: adminName, ws }, players: [], 
-                        numbersCalled: [], availableNumbers: Array.from({ length: 90 }, (_, i) => i + 1),
-                        gameStatus: 'idle', rules: [], totalMoneyCollected: 0, callingMode: 'manual',
-                        autoCallInterval: 5, createdAt: new Date().toISOString(), winners: [] 
+                        id: roomId,
+                        admin: { id: adminId, name: adminName, ws: ws },
+                        players: [],
+                        numbersCalled: [],
+                        availableNumbers: Array.from({ length: 90 }, (_, i) => i + 1),
+                        gameStatus: 'idle', // 'idle', 'running', 'paused', 'stopped'
+                        rules: [],
+                        totalMoneyCollected: 0,
+                        callingMode: 'manual',
+                        autoCallInterval: 5, // seconds
+                        createdAt: new Date().toISOString(),
+                        winners: [],
+                        autoCallTimerId: null, // For server-side auto-call
                     };
-                    console.log(`Admin ${adminName} (ID: ${adminId}) created room ${roomId}`);
+                    console.log(`Admin ${adminName} (ID: ${adminId}) created and connected to room ${roomId}`);
                 }
-                playerConnections.set(ws, { roomId, playerId: adminId, type: 'admin' });
-                
-                const roomDetailsPayload = { 
-                    id: rooms[roomId].id,
-                    admin: { id: rooms[roomId].admin.id, name: rooms[roomId].admin.name }, 
+                playerConnections.set(ws, { roomId, playerId: adminId, type: 'admin', ws });
+
+                const roomDetailsPayload = {
+                    roomId,
+                    role: 'admin',
+                    adminId,
+                    adminName: rooms[roomId].admin.name,
+                    gameStatus: rooms[roomId].gameStatus,
                     players: rooms[roomId].players.map(p => ({ id: p.id, name: p.name, ticketCount: p.tickets.length })),
-                    numbersCalled: rooms[roomId].numbersCalled, gameStatus: rooms[roomId].gameStatus,
-                    rules: rooms[roomId].rules, totalMoneyCollected: rooms[roomId].totalMoneyCollected,
-                    callingMode: rooms[roomId].callingMode, autoCallInterval: rooms[roomId].autoCallInterval
+                    rules: rooms[roomId].rules, // Send current rules
+                    totalMoneyCollected: rooms[roomId].totalMoneyCollected,
+                    calledNumbers: rooms[roomId].numbersCalled,
+                    // any other relevant details for admin rejoining
                 };
-                sendMessageToClient(ws, { 
-                    type: isNewRoom ? 'ROOM_CREATED_SUCCESS' : 'ROOM_JOINED_SUCCESS', 
-                    payload: { roomId, role: 'admin', adminId, roomDetails: roomDetailsPayload } 
-                });
-                // Send player list to admin if rejoining a room with players
-                if (!isNewRoom && rooms[roomId].players.length > 0) {
-                    sendMessageToClient(ws, { type: 'PLAYER_LIST_UPDATE', payload: { players: rooms[roomId].players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length})) } });
-                }
-                break;
-            }
-
-            case 'ADMIN_START_GAME': {
-                if (!connectionInfo || connectionInfo.type !== 'admin') return;
-                const room = rooms[connectionInfo.roomId];
-                if (room && room.admin.id === connectionInfo.playerId && room.gameStatus === 'idle') {
-                    if (!payload.rulesConfig || payload.rulesConfig.filter(r => r.isActive).length === 0) {
-                        return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Cannot start game without active rules.'}});
-                    }
-                    if (payload.totalMoneyCollected === undefined || parseFloat(payload.totalMoneyCollected) <= 0) {
-                        return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Invalid total money collected.'}});
-                    }
-                    room.gameStatus = 'running';
-                    room.numbersCalled = [];
-                    room.availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
-                    room.rules = payload.rulesConfig; 
-                    room.totalMoneyCollected = parseFloat(payload.totalMoneyCollected);
-                    room.callingMode = payload.callingMode || 'manual';
-                    room.autoCallInterval = payload.autoCallInterval || 5;
-                    room.winners = []; 
-
-                    broadcastToRoom(connectionInfo.roomId, { 
-                        type: 'GAME_STARTED', 
-                        payload: { 
-                            rules: room.rules.filter(r => r.isActive), 
-                            callingMode: room.callingMode,
-                            autoCallInterval: room.autoCallInterval,
-                            totalMoneyCollected: room.totalMoneyCollected,
-                            startTime: new Date().toISOString(),
-                            adminName: room.admin.name // Ensure adminName is sent
-                        } 
-                    });
-                    console.log(`Game started in room ${connectionInfo.roomId} by admin ${room.admin.name}. Mode: ${room.callingMode}`);
-                } else if (room && room.gameStatus !== 'idle') {
-                    sendMessageToClient(ws, {type: 'ERROR', payload: {message: `Game cannot be started. Current status: ${room.gameStatus}`}});
-                } else if (!room) {
-                     sendMessageToClient(ws, {type: 'ERROR', payload: {message: `Room not found.`}});
-                }
-                break;
-            }
-
-            case 'ADMIN_CALL_NUMBER': {
-                if (!connectionInfo || connectionInfo.type !== 'admin') return;
-                const room = rooms[connectionInfo.roomId];
-                if (room && room.admin.id === connectionInfo.playerId && room.gameStatus === 'running') {
-                    if (room.availableNumbers.length > 0) {
-                        const randomIndex = Math.floor(Math.random() * room.availableNumbers.length);
-                        const calledNumber = room.availableNumbers.splice(randomIndex, 1)[0];
-                        room.numbersCalled.push(calledNumber);
-                        
-                        broadcastToRoom(connectionInfo.roomId, { 
-                            type: 'NUMBER_CALLED', 
-                            payload: { 
-                                number: calledNumber, 
-                                calledNumbersHistory: [...room.numbersCalled], // Send a copy of the history
-                                remainingCount: room.availableNumbers.length 
-                            } 
-                        });
-                        console.log(`Number ${calledNumber} called in room ${connectionInfo.roomId}. Remaining: ${room.availableNumbers.length}`);
-                        
-                        if (room.availableNumbers.length === 0) {
-                            room.gameStatus = 'stopped';
-                            broadcastToRoom(connectionInfo.roomId, { type: 'GAME_OVER_ALL_NUMBERS_CALLED', payload: { finalCalledNumbers: room.numbersCalled } });
-                            console.log(`All numbers called in room ${connectionInfo.roomId}. Game over.`);
-                        }
-                    } else {
-                        sendMessageToClient(ws, {type: 'INFO', payload: {message: 'All numbers have been called.'}});
-                    }
-                }
-                break;
-            }
-            
-            case 'ADMIN_PAUSE_GAME':
-            case 'ADMIN_RESUME_GAME':
-            case 'ADMIN_STOP_GAME': {
-                if (!connectionInfo || connectionInfo.type !== 'admin') return;
-                const room = rooms[connectionInfo.roomId];
-                if (room && room.admin.id === connectionInfo.playerId) {
-                    let newStatus = room.gameStatus; let eventType = '';
-                    if (type === 'ADMIN_PAUSE_GAME' && room.gameStatus === 'running' && room.callingMode === 'auto') {
-                        newStatus = 'paused'; eventType = 'GAME_PAUSED';
-                    } else if (type === 'ADMIN_RESUME_GAME' && room.gameStatus === 'paused' && room.callingMode === 'auto') {
-                        newStatus = 'running'; eventType = 'GAME_RESUMED';
-                    } else if (type === 'ADMIN_STOP_GAME' && (room.gameStatus === 'running' || room.gameStatus === 'paused')) {
-                        newStatus = 'stopped'; eventType = 'GAME_STOPPED';
-                        const gameSummary = { totalNumbersCalled: room.numbersCalled.length, winners: room.winners, endTime: new Date().toISOString() };
-                        broadcastToRoom(connectionInfo.roomId, { type: 'GAME_SUMMARY_BROADCAST', payload: gameSummary });
-                    }
-                    if (eventType) {
-                        room.gameStatus = newStatus;
-                        broadcastToRoom(connectionInfo.roomId, { type: eventType, payload: { status: newStatus } });
-                        console.log(`Game ${newStatus} in room ${connectionInfo.roomId}`);
-                    }
-                }
-                break;
-            }
-
-            case 'ADMIN_UPDATE_RULES': {
-                if (!connectionInfo || connectionInfo.type !== 'admin') return;
-                const room = rooms[connectionInfo.roomId];
-                if (room && room.admin.id === connectionInfo.playerId && payload.rules && payload.financials) {
-                    if (room.gameStatus === 'idle') {
-                        room.rules = payload.rules; 
-                        room.totalMoneyCollected = parseFloat(payload.financials.totalMoneyCollected);
-                        sendMessageToClient(ws, { type: 'RULES_SAVE_CONFIRMED', payload: {message: "Rules and financials saved successfully."} });
-                        console.log(`Rules updated for room ${connectionInfo.roomId}`);
-                        // Broadcast updated rules to any players already in the room (if any)
-                        broadcastToRoom(connectionInfo.roomId, { type: 'RULES_UPDATED', payload: { rules: room.rules.filter(r => r.isActive), totalMoneyCollected: room.totalMoneyCollected } }, ws);
-                    } else {
-                         sendMessageToClient(ws, {type: 'ERROR', payload: {message: `Rules can only be updated when game is idle. Current status: ${room.gameStatus}`}});
-                    }
-                }
-                break;
-            }
-            
-            case 'ADMIN_APPROVE_TICKET_REQUEST': {
-                if (!connectionInfo || connectionInfo.type !== 'admin') return;
-                const { targetPlayerId } = payload;
-                const room = rooms[connectionInfo.roomId];
-                const player = room?.players.find(p => p.id === targetPlayerId);
-                if (room && player) {
-                    if (player.tickets.length >= 5) {
-                        return sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `${player.name} has max tickets.` } });
-                    }
-                    const newTicket = { id: generateUniqueId(), numbers: generateTambolaTicket(), marked: [] };
-                    player.tickets.push(newTicket);
-                    if (player.ws) sendMessageToClient(player.ws, { type: 'TICKET_APPROVED', payload: { ticket: newTicket, allTickets: player.tickets } });
-                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Ticket approved for ${player.name}` } });
-                    broadcastToRoom(connectionInfo.roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length})) } });
-                } else {
-                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `Player ${targetPlayerId} not found.` } });
-                }
-                break;
-            }
-
-            case 'ADMIN_REJECT_TICKET_REQUEST': {
-                if (!connectionInfo || connectionInfo.type !== 'admin') return;
-                const { targetPlayerId, reason } = payload;
-                const room = rooms[connectionInfo.roomId];
-                const player = room?.players.find(p => p.id === targetPlayerId);
-                if (room && player && player.ws) {
-                    sendMessageToClient(player.ws, { type: 'TICKET_REJECTED', payload: { reason: reason || "Admin rejected." } });
-                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Ticket request rejected for ${player.name}` } });
-                }
-                break;
-            }
-
-            case 'ADMIN_APPROVE_PRIZE_CLAIM': {
-                if (!connectionInfo || connectionInfo.type !== 'admin') return;
-                const { claimId, targetPlayerId, prizeName, prizeRuleId } = payload; 
-                const room = rooms[connectionInfo.roomId];
-                const player = room?.players.find(p => p.id === targetPlayerId);
-                const ruleInfo = room?.rules.find(r => r.id === prizeRuleId && r.isActive);
-
-                if (room && player && player.ws && ruleInfo) {
-                    const existingWinsForThisRuleByPlayer = room.winners.filter(w => w.playerId === player.id && w.prizeName === prizeName).length;
-                    const maxAllowedWinsForRule = ruleInfo.maxPrizes || 1;
-
-                    if (existingWinsForThisRuleByPlayer >= maxAllowedWinsForRule) {
-                        sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `${player.name} reached max wins for '${prizeName}'.` } });
-                        if (player.ws) sendMessageToClient(player.ws, { type: 'CLAIM_STATUS_UPDATE', payload: { claimId, prizeName, status: 'rejected', reason: `Max winners already declared for ${prizeName}.` } });
-                        return;
-                    }
-                    const coinsAwarded = parseFloat(ruleInfo.coinsPerPrize) || 0;
-                    player.coins = (player.coins || 0) + coinsAwarded;
-                    sendMessageToClient(player.ws, { 
-                        type: 'CLAIM_STATUS_UPDATE', 
-                        payload: { claimId, prizeName, status: 'approved', coinsAwarded, totalCoins: player.coins } 
-                    });
-                    
-                    room.winners.push({ claimId, playerId: player.id, playerName: player.name, prizeName, coins: coinsAwarded, timestamp: new Date().toISOString() });
-                    
-                    broadcastToRoom(connectionInfo.roomId, {type: 'WINNER_ANNOUNCEMENT', payload: {playerName: player.name, prizeName, coins: coinsAwarded, claimId}});
-                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Prize '${prizeName}' approved for ${player.name}. Coins: ${coinsAwarded.toFixed(2)}` } });
-                } else {
-                     sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `Could not approve claim. Player, rule not found/active.` } });
-                }
-                break;
-            }
-            
-            case 'ADMIN_REJECT_PRIZE_CLAIM': {
-                if (!connectionInfo || connectionInfo.type !== 'admin') return;
-                const { claimId, targetPlayerId, prizeName, reason } = payload;
-                const room = rooms[connectionInfo.roomId];
-                const player = room?.players.find(p => p.id === targetPlayerId);
-                if (room && player && player.ws) {
-                    sendMessageToClient(player.ws, { 
-                        type: 'CLAIM_STATUS_UPDATE', 
-                        payload: { claimId, prizeName, status: 'rejected', reason: reason || "Not valid." } 
-                    });
-                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Prize '${prizeName}' rejected for ${player.name}` } });
-                }
+                sendMessageToClient(ws, { type: 'ROOM_JOINED_SUCCESS', payload: roomDetailsPayload });
+                broadcastToRoom(roomId, { type: 'ADMIN_STATUS_UPDATE', payload: { adminName: rooms[roomId].admin.name, isConnected: true } }, ws);
                 break;
             }
 
             case 'PLAYER_JOIN_ROOM': {
                 const { playerName, roomId } = payload;
-                if (!playerName || !roomId) return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Player name and Room ID required.' } });
+                if (!playerName || !roomId) {
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Player name and Room ID are required.' } });
+                }
                 const room = rooms[roomId];
-                if (!room || !room.admin || !room.admin.ws || room.admin.ws.readyState !== WebSocket.OPEN) {
+                if (!room || !room.admin) {
                     return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Room not found or not ready.' } });
                 }
-                if (room.gameStatus === 'stopped') return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Game has ended.' } });
+                if (room.players.find(p => p.name === playerName && p.ws && p.ws.readyState === WebSocket.OPEN)) {
+                    // Optional: Allow rejoin or handle as error
+                     console.log(`Player ${playerName} attempting to rejoin room ${roomId}.`);
+                     // For simplicity, let's update their WS. A more robust system might prevent duplicate active sessions.
+                     const existingPlayer = room.players.find(p => p.name === playerName);
+                     if(existingPlayer){
+                        existingPlayer.ws = ws;
+                        playerConnections.set(ws, { roomId, playerId: existingPlayer.id, type: 'player', ws });
+                        sendMessageToClient(ws, {type: 'INFO', payload: { message: 'Rejoined successfully.'}});
+                        // Send them current game state
+                         sendMessageToClient(ws, {
+                            type: 'PLAYER_JOIN_SUCCESS', // Resend join success to resync client
+                            payload: {
+                                playerId: existingPlayer.id,
+                                playerName: existingPlayer.name,
+                                roomId,
+                                tickets: existingPlayer.tickets,
+                                gameStatus: room.gameStatus,
+                                calledNumbers: room.numbersCalled,
+                                rules: room.rules.filter(r => r.isActive),
+                                totalMoneyCollected: room.totalMoneyCollected,
+                                adminName: room.admin.name,
+                                playersInRoom: room.players.map(p => ({ id: p.id, name: p.name, ticketCount: p.tickets.length }))
+                            }
+                        });
+                        return;
+                     }
+                }
+
+                if (room.gameStatus === 'stopped') {
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Game has already ended in this room.' } });
+                }
 
                 const playerId = generateUniqueId();
-                const player = { id: playerId, name: playerName, ws, tickets: [{ id: generateUniqueId(), numbers: generateTambolaTicket(), marked: [] }], coins: 0 };
+                const initialTicketNumbers = generateTambolaTicket(); // Server generates the first ticket
+                const player = {
+                    id: playerId,
+                    name: playerName,
+                    ws,
+                    tickets: [{ id: generateUniqueId(), numbers: initialTicketNumbers, marked: [] }], // Auto 1 ticket
+                    coins: 0
+                };
                 room.players.push(player);
-                playerConnections.set(ws, { roomId, playerId, type: 'player' });
+                playerConnections.set(ws, { roomId, playerId, type: 'player', ws });
 
-                sendMessageToClient(ws, { 
-                    type: 'PLAYER_JOIN_SUCCESS', 
-                    payload: { 
-                        playerId, playerName, roomId, tickets: player.tickets, gameStatus: room.gameStatus,
-                        calledNumbers: [...room.numbersCalled], // Send a copy
-                        rules: room.rules.filter(r => r.isActive), 
-                        totalMoneyCollected: room.totalMoneyCollected, 
-                        adminName: room.admin.name, // Send adminName
-                        playersInRoom: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length}))
-                    } 
+                sendMessageToClient(ws, {
+                    type: 'PLAYER_JOIN_SUCCESS',
+                    payload: {
+                        playerId,
+                        playerName,
+                        roomId,
+                        tickets: player.tickets,
+                        gameStatus: room.gameStatus,
+                        calledNumbers: room.numbersCalled,
+                        rules: room.rules.filter(r => r.isActive),
+                        totalMoneyCollected: room.totalMoneyCollected,
+                        adminName: room.admin.name,
+                        playersInRoom: room.players.map(p => ({ id: p.id, name: p.name, ticketCount: p.tickets.length }))
+                    }
                 });
-                // Broadcast updated player list to everyone in the room (including admin and other players)
-                broadcastToRoom(roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length})) } });
+                broadcastToRoom(roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: room.players.map(p => ({ id: p.id, name: p.name, ticketCount: p.tickets.length })) } }, ws);
                 console.log(`Player ${playerName} (ID: ${playerId}) joined room ${roomId}`);
                 break;
             }
 
+            // --- Admin Actions ---
+            case 'ADMIN_START_GAME': {
+                if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Unauthorized or room not found.' } });
+                const room = rooms[connectionInfo.roomId];
+
+                if (room.gameStatus !== 'idle' && room.gameStatus !== 'stopped') {
+                     return sendMessageToClient(ws, {type: 'ERROR', payload: {message: `Game cannot be started. Current status: ${room.gameStatus}`}});
+                }
+
+                if (!payload.rulesConfig || payload.rulesConfig.filter(r => r.isActive).length === 0) {
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Cannot start game without active rules.' } });
+                }
+                if (payload.totalMoneyCollected === undefined || parseFloat(payload.totalMoneyCollected) < 0) { // Allow 0 for free games
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Invalid total money collected.' } });
+                }
+
+                room.gameStatus = 'running';
+                room.numbersCalled = [];
+                room.availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
+                room.rules = payload.rulesConfig; // Admin client sends the rules with calculated coinsPerPrize
+                room.totalMoneyCollected = parseFloat(payload.totalMoneyCollected);
+                room.callingMode = payload.callingMode || 'manual';
+                room.autoCallInterval = parseInt(payload.autoCallInterval, 10) || 5;
+                room.winners = []; // Reset winners for a new game
+                if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId); // Clear any old timer
+
+                broadcastToRoom(connectionInfo.roomId, {
+                    type: 'GAME_STARTED',
+                    payload: {
+                        rules: room.rules.filter(r => r.isActive),
+                        callingMode: room.callingMode,
+                        autoCallInterval: room.autoCallInterval,
+                        totalMoneyCollected: room.totalMoneyCollected,
+                        startTime: new Date().toISOString(),
+                        adminName: room.admin.name // For player display
+                    }
+                });
+                console.log(`Game started in room ${connectionInfo.roomId} by admin ${room.admin.name}. Mode: ${room.callingMode}`);
+                if (room.callingMode === 'auto' && room.gameStatus === 'running') {
+                    // Start server-side auto-calling
+                    const autoCallFn = () => {
+                        if (room.gameStatus === 'running' && room.callingMode === 'auto' && room.availableNumbers.length > 0) {
+                            callNextNumberForRoom(connectionInfo.roomId);
+                            room.autoCallTimerId = setTimeout(autoCallFn, room.autoCallInterval * 1000);
+                        } else {
+                            if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
+                        }
+                    };
+                    room.autoCallTimerId = setTimeout(autoCallFn, room.autoCallInterval * 1000); // Initial call after interval
+                }
+                break;
+            }
+
+            case 'ADMIN_CALL_NUMBER': { // Only for manual mode
+                if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
+                const room = rooms[connectionInfo.roomId];
+                if (room && room.gameStatus === 'running' && room.callingMode === 'manual') {
+                    callNextNumberForRoom(connectionInfo.roomId);
+                } else {
+                    sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Cannot call number. Game not running or not in manual mode.'}});
+                }
+                break;
+            }
+            
+            case 'ADMIN_PAUSE_GAME': {
+                if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
+                const room = rooms[connectionInfo.roomId];
+                if (room && room.gameStatus === 'running' && room.callingMode === 'auto') {
+                    if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
+                    room.gameStatus = 'paused';
+                    broadcastToRoom(connectionInfo.roomId, { type: 'GAME_PAUSED', payload: { status: room.gameStatus } });
+                    console.log(`Game paused in room ${connectionInfo.roomId}`);
+                }
+                break;
+            }
+
+            case 'ADMIN_RESUME_GAME': {
+                if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
+                const room = rooms[connectionInfo.roomId];
+                if (room && room.gameStatus === 'paused' && room.callingMode === 'auto') {
+                    room.gameStatus = 'running';
+                    broadcastToRoom(connectionInfo.roomId, { type: 'GAME_RESUMED', payload: { status: room.gameStatus } });
+                    console.log(`Game resumed in room ${connectionInfo.roomId}`);
+                    // Restart server-side auto-calling
+                    const autoCallFn = () => {
+                        if (room.gameStatus === 'running' && room.callingMode === 'auto' && room.availableNumbers.length > 0) {
+                            callNextNumberForRoom(connectionInfo.roomId);
+                            room.autoCallTimerId = setTimeout(autoCallFn, room.autoCallInterval * 1000);
+                        } else {
+                            if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
+                        }
+                    };
+                    autoCallFn(); // Call immediately then set timer
+                }
+                break;
+            }
+            
+            case 'ADMIN_STOP_GAME': {
+                if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
+                const room = rooms[connectionInfo.roomId];
+                if (room && (room.gameStatus === 'running' || room.gameStatus === 'paused')) {
+                    if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
+                    room.gameStatus = 'stopped';
+                    broadcastToRoom(connectionInfo.roomId, { type: 'GAME_STOPPED', payload: { status: room.gameStatus } });
+                    console.log(`Game stopped in room ${connectionInfo.roomId}`);
+                    // Optionally, prepare and broadcast a game summary
+                    const gameSummary = {
+                        totalNumbersCalled: room.numbersCalled.length,
+                        winners: room.winners,
+                        players: room.players.map(p => ({name: p.name, tickets: p.tickets.length, coins: p.coins}))
+                    };
+                    broadcastToRoom(connectionInfo.roomId, { type: 'GAME_SUMMARY_BROADCAST', payload: gameSummary });
+                }
+                break;
+            }
+
+            case 'ADMIN_UPDATE_RULES': { // This implies rules can be changed mid-game, which might be complex. Usually set before start.
+                if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
+                const room = rooms[connectionInfo.roomId];
+                if (room && payload.rules && payload.financials) {
+                    room.rules = payload.rules;
+                    room.totalMoneyCollected = parseFloat(payload.financials.totalMoneyCollected);
+                    
+                    // Broadcast updated rules to players
+                    broadcastToRoom(connectionInfo.roomId, { type: 'RULES_UPDATED', payload: { rules: room.rules.filter(r => r.isActive), totalMoneyCollected: room.totalMoneyCollected } }, ws); // Exclude admin who sent it
+                    sendMessageToClient(ws, { type: 'RULES_SAVE_CONFIRMED', payload: {message: "Rules and financials updated on server."} });
+                    console.log(`Rules updated for room ${connectionInfo.roomId}`);
+                }
+                break;
+            }
+            
+            case 'ADMIN_APPROVE_TICKET_REQUEST': {
+                if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
+                const { targetPlayerId } = payload; // Admin client sends targetPlayerId
+                const room = rooms[connectionInfo.roomId];
+                const player = room?.players.find(p => p.id === targetPlayerId);
+
+                if (room && player) {
+                    if (player.tickets.length >= 5) {
+                        return sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `${player.name} already has the maximum of 5 tickets.` } });
+                    }
+                    const newTicketNumbers = generateTambolaTicket();
+                    const newTicket = { id: generateUniqueId(), numbers: newTicketNumbers, marked: [] };
+                    player.tickets.push(newTicket);
+
+                    if (player.ws) { // If player is connected
+                        sendMessageToClient(player.ws, { type: 'TICKET_APPROVED', payload: { ticket: newTicket, allTickets: player.tickets } });
+                    }
+                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Ticket approved for ${player.name}. They now have ${player.tickets.length} tickets.` } });
+                    broadcastToRoom(connectionInfo.roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length})) } });
+                } else {
+                    sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `Player ${targetPlayerId} not found in room ${connectionInfo.roomId}.` } });
+                }
+                break;
+            }
+
+            case 'ADMIN_REJECT_TICKET_REQUEST': {
+                if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
+                const { targetPlayerId, reason } = payload;
+                const room = rooms[connectionInfo.roomId];
+                const player = room?.players.find(p => p.id === targetPlayerId);
+
+                if (room && player && player.ws) {
+                    sendMessageToClient(player.ws, { type: 'TICKET_REJECTED', payload: { reason: reason || "Admin rejected the ticket request." } });
+                }
+                sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Ticket request for ${player ? player.name : targetPlayerId} rejected.` } });
+                break;
+            }
+
+            case 'ADMIN_APPROVE_PRIZE_CLAIM': {
+                if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
+                const { claimId, targetPlayerId, prizeName, prizeRuleId } = payload; // Admin client sends these after reviewing
+                const room = rooms[connectionInfo.roomId];
+                const player = room?.players.find(p => p.id === targetPlayerId);
+                const ruleInfo = room?.rules.find(r => r.id === prizeRuleId && r.isActive);
+
+                if (!room || !player || !ruleInfo) {
+                    return sendMessageToClient(ws, { type: 'ADMIN_ACTION_FAIL', payload: { message: `Cannot approve claim. Player, room, or rule not found/active.` } });
+                }
+                 // Check maxPrizes for the rule
+                const winnersForThisRule = room.winners.filter(w => w.prizeRuleId === prizeRuleId).length;
+                if (winnersForThisRule >= (ruleInfo.maxPrizes || 1)) {
+                     return sendMessageToClient(ws, {type: 'ADMIN_ACTION_FAIL', payload: {message: `Max winners already reached for '${prizeName}'.`}});
+                }
+
+
+                const coinsAwarded = parseFloat(ruleInfo.coinsPerPrize) || 0;
+                player.coins = parseFloat(((player.coins || 0) + coinsAwarded).toFixed(2));
+
+                // Store winner info
+                room.winners.push({
+                    claimId, // Use the claimId that was part of the approval request
+                    playerId: player.id,
+                    playerName: player.name,
+                    prizeName, // Use prizeName from payload for consistency
+                    prizeRuleId, // Store the rule ID
+                    coins: coinsAwarded,
+                    timestamp: new Date().toISOString()
+                });
+
+                if (player.ws) { // If player is connected
+                    sendMessageToClient(player.ws, {
+                        type: 'CLAIM_STATUS_UPDATE',
+                        payload: { claimId, prizeName, status: 'approved', coinsAwarded, totalCoins: player.coins }
+                    });
+                }
+                // Announce winner to the room
+                broadcastToRoom(connectionInfo.roomId, { type: 'WINNER_ANNOUNCEMENT', payload: { playerName: player.name, prizeName, coins: coinsAwarded } });
+                sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Prize '${prizeName}' approved for ${player.name}. Coins: ${coinsAwarded.toFixed(2)}` } });
+                break;
+            }
+
+            case 'ADMIN_REJECT_PRIZE_CLAIM': {
+                if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
+                const { claimId, targetPlayerId, prizeName, reason } = payload;
+                const room = rooms[connectionInfo.roomId];
+                const player = room?.players.find(p => p.id === targetPlayerId);
+
+                if (room && player && player.ws) { // If player is connected
+                    sendMessageToClient(player.ws, {
+                        type: 'CLAIM_STATUS_UPDATE',
+                        payload: { claimId, prizeName, status: 'rejected', reason: reason || "Claim did not meet criteria." }
+                    });
+                }
+                sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Prize claim for '${prizeName}' by ${player ? player.name : targetPlayerId} rejected.` } });
+                break;
+            }
+
+
+            // --- Player Actions ---
             case 'PLAYER_REQUEST_TICKET': {
                 if (!connectionInfo || connectionInfo.type !== 'player') return;
                 const room = rooms[connectionInfo.roomId];
                 const player = room?.players.find(p => p.id === connectionInfo.playerId);
+
                 if (room && player) {
-                    if (player.tickets.length >= 5) return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Max 5 tickets.' }});
+                    if (player.tickets.length >= 5) {
+                        return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Maximum 5 tickets allowed.' } });
+                    }
                     if (room.admin && room.admin.ws && room.admin.ws.readyState === WebSocket.OPEN) {
-                        sendMessageToClient(room.admin.ws, { type: 'ADMIN_TICKET_REQUEST_RECEIVED', payload: { playerId: player.id, playerName: player.name, currentTickets: player.tickets.length, timestamp: Date.now() } });
-                        sendMessageToClient(ws, { type: 'PLAYER_TICKET_REQUEST_SENT' });
-                    } else sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Admin not available.' }});
+                        sendMessageToClient(room.admin.ws, {
+                            type: 'ADMIN_TICKET_REQUEST_RECEIVED',
+                            payload: { playerId: player.id, playerName: player.name, currentTickets: player.tickets.length }
+                        });
+                        sendMessageToClient(ws, { type: 'PLAYER_TICKET_REQUEST_SENT', payload: {message: "Ticket request sent to admin."} });
+                    } else {
+                        sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Admin not available to approve ticket.' } });
+                    }
                 }
                 break;
             }
 
             case 'PLAYER_CLAIM_PRIZE': {
                 if (!connectionInfo || connectionInfo.type !== 'player') return;
-                const { prizeRuleId, ticketId } = payload; 
+                const { prizeRuleId, ticketId } = payload; // Player client sends prizeRuleId and relevant ticketId
                 const room = rooms[connectionInfo.roomId];
                 const player = room?.players.find(p => p.id === connectionInfo.playerId);
-                const ruleToClaim = room?.rules.find(r => r.id === prizeRuleId && r.isActive);
+                const ruleToClaim = room?.rules?.find(r => r.id === prizeRuleId && r.isActive);
                 const ticketForClaim = player?.tickets.find(t => t.id === ticketId);
 
-                if (!room || !player || !ruleToClaim || !ticketForClaim) return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Invalid claim details.' } });
-                if (room.gameStatus !== 'running') return sendMessageToClient(ws, {type: 'ERROR', payload: {message: 'Game not running.'}});
-                
-                const existingWinsForThisRuleByPlayer = room.winners.filter(w => w.playerId === player.id && w.prizeName === ruleToClaim.name).length;
-                const maxAllowedWinsForRule = ruleToClaim.maxPrizes || 1;
-                if (existingWinsForThisRuleByPlayer >= maxAllowedWinsForRule) {
-                     return sendMessageToClient(ws, {type: 'ERROR', payload: {message: `You already won max times for '${ruleToClaim.name}'.`}});
+                if (!room || !player || !ruleToClaim || !ticketForClaim) {
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Invalid claim: Room, player, rule, or ticket not found.' } });
                 }
-                
-                const isValidClaim = validatePrizeClaim(ticketForClaim.numbers, room.numbersCalled, ruleToClaim.name);
-                const claimId = generateUniqueId();
+                if (room.gameStatus !== 'running') {
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Game is not currently running.' } });
+                }
+
+                // Server-side check for maxPrizes limit before forwarding to admin
+                const winnersForThisRule = room.winners.filter(w => w.prizeRuleId === prizeRuleId).length;
+                if (winnersForThisRule >= (ruleToClaim.maxPrizes || 1)) {
+                     return sendMessageToClient(ws, {type: 'ERROR', payload: {message: `Max winners already reached for '${ruleToClaim.name}'.`}});
+                }
+                 // Prevent duplicate claims if already won this specific rule instance
+                const alreadyWonThisRuleByPlayer = room.winners.some(w => w.playerId === player.id && w.prizeRuleId === prizeRuleId);
+                if (alreadyWonThisRuleByPlayer) {
+                    return sendMessageToClient(ws, {type: 'ERROR', payload: {message: `You have already won or claimed '${ruleToClaim.name}'.`}});
+                }
+
+
+                const isValidClaimByServer = validatePrizeClaim(ticketForClaim.numbers, room.numbersCalled, ruleToClaim.name);
+                const claimId = generateUniqueId(); // Server generates the authoritative claimId
 
                 if (room.admin && room.admin.ws && room.admin.ws.readyState === WebSocket.OPEN) {
                     sendMessageToClient(room.admin.ws, {
                         type: 'ADMIN_PRIZE_CLAIM_RECEIVED',
-                        payload: { claimId, playerId: player.id, playerName: player.name, prizeName: ruleToClaim.name, prizeRuleId: ruleToClaim.id, ticketId: ticketForClaim.id, ticketNumbers: ticketForClaim.numbers, serverValidationResult: isValidClaim }
+                        payload: {
+                            claimId, // Server-generated claimId
+                            playerId: player.id,
+                            playerName: player.name,
+                            prizeName: ruleToClaim.name,
+                            prizeRuleId: ruleToClaim.id,
+                            ticketId: ticketForClaim.id,
+                            ticketNumbers: ticketForClaim.numbers,
+                            serverValidationResult: isValidClaimByServer
+                        }
                     });
                     sendMessageToClient(ws, { type: 'PLAYER_CLAIM_SUBMITTED', payload: { claimId, prizeName: ruleToClaim.name, status: 'pending_admin_approval' } });
-                } else sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Admin not available.' } });
+                } else {
+                    sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Admin not available to verify claim.' } });
+                }
                 break;
             }
-            
-            case 'PLAYER_MARK_NUMBER': break; 
 
-            default: sendMessageToClient(ws, { type: 'ERROR', payload: { message: `Unknown message type: ${type}` } });
+            case 'PLAYER_MARK_NUMBER': {
+                // This is mostly for client-side logic, server doesn't need to act on manual marks unless for boogie validation.
+                // For now, just log it.
+                if (!connectionInfo || connectionInfo.type !== 'player') return;
+                // console.log(`Player ${connectionInfo.playerId} in room ${connectionInfo.roomId} client-side mark:`, payload);
+                break;
+            }
+
+            default:
+                sendMessageToClient(ws, { type: 'ERROR', payload: { message: `Unknown message type: ${type}` } });
         }
     });
 
     ws.on('close', () => {
-        console.log('Client disconnected');
+        // console.log(`Client ${ws.id} disconnected`);
+        console.log(`Client disconnected`);
         const connectionInfo = playerConnections.get(ws);
         if (connectionInfo) {
             const { roomId, playerId, type } = connectionInfo;
@@ -533,45 +738,135 @@ wss.on('connection', (ws, req) => {
             if (room) {
                 if (type === 'admin' && room.admin && room.admin.id === playerId) {
                     console.log(`Admin ${room.admin.name} disconnected from room ${roomId}.`);
-                    room.admin.ws = null; 
-                    broadcastToRoom(roomId, { type: 'ADMIN_DISCONNECTED', payload: { adminName: room.admin.name } });
+                    room.admin.ws = null; // Mark admin as disconnected
+                    if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId); // Stop auto-calls if admin leaves
+                    broadcastToRoom(roomId, { type: 'ADMIN_STATUS_UPDATE', payload: { adminName: room.admin.name, isConnected: false } });
+                    // Consider pausing the game if admin disconnects and game was running
+                    // if (room.gameStatus === 'running') room.gameStatus = 'paused'; // Or some other state
                 } else if (type === 'player') {
                     const playerIndex = room.players.findIndex(p => p.id === playerId);
                     if (playerIndex > -1) {
                         const playerName = room.players[playerIndex].name;
                         room.players.splice(playerIndex, 1);
-                        broadcastToRoom(roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length})) } });
+                        broadcastToRoom(roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: room.players.map(p => ({ id: p.id, name: p.name, ticketCount: p.tickets.length })) } });
                         console.log(`Player ${playerName} (ID: ${playerId}) disconnected from room ${roomId}`);
                     }
                 }
+
+                // Optional: Cleanup room if admin is gone AND no players are left
                 if (room.players.length === 0 && (!room.admin || !room.admin.ws)) {
                     console.log(`Room ${roomId} is empty and admin disconnected, cleaning up.`);
+                    if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
                     delete rooms[roomId];
                 }
             }
             playerConnections.delete(ws);
         }
     });
-    ws.on('error', (error) => { console.error('WebSocket error:', error); if (playerConnections.has(ws)) playerConnections.delete(ws); });
+
+    ws.on('error', (error) => {
+        console.error('WebSocket error with client:', error);
+        // Clean up connection if it was tracked
+        const connectionInfo = playerConnections.get(ws);
+        if (connectionInfo) playerConnections.delete(ws);
+    });
 });
 
-app.get('/', (req, res) => res.send('Tambola Game Backend is running!'));
-app.get('/health', (req, res) => res.status(200).json({ status: 'UP', timestamp: new Date().toISOString() });
-app.get('/debug/rooms', (req, res) => {
+
+function callNextNumberForRoom(roomId) {
+    const room = rooms[roomId];
+    if (room && room.gameStatus === 'running' && room.availableNumbers.length > 0) {
+        const randomIndex = Math.floor(Math.random() * room.availableNumbers.length);
+        const calledNumber = room.availableNumbers.splice(randomIndex, 1)[0];
+        room.numbersCalled.push(calledNumber);
+        // room.numbersCalled.sort((a, b) => a - b); // Optional: keep history sorted
+
+        broadcastToRoom(roomId, {
+            type: 'NUMBER_CALLED',
+            payload: {
+                number: calledNumber,
+                calledNumbersHistory: [...room.numbersCalled], // Send a copy
+                remainingCount: room.availableNumbers.length
+            }
+        });
+        console.log(`Number ${calledNumber} called in room ${roomId}. Remaining: ${room.availableNumbers.length}`);
+
+        if (room.availableNumbers.length === 0) {
+            if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
+            room.gameStatus = 'stopped'; // Or a specific "all_numbers_called" status
+            broadcastToRoom(roomId, { type: 'GAME_OVER_ALL_NUMBERS_CALLED', payload: { finalCalledNumbers: [...room.numbersCalled] } });
+            console.log(`All numbers called in room ${roomId}. Game over.`);
+            // Optionally, prepare and broadcast a game summary
+            const gameSummary = {
+                totalNumbersCalled: room.numbersCalled.length,
+                winners: room.winners,
+                 players: room.players.map(p => ({name: p.name, tickets: p.tickets.length, coins: p.coins}))
+            };
+            broadcastToRoom(roomId, { type: 'GAME_SUMMARY_BROADCAST', payload: gameSummary });
+        }
+    } else if (room && room.availableNumbers.length === 0 && room.gameStatus === 'running') {
+        // This case should ideally be caught by the check above, but as a fallback:
+        if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
+        room.gameStatus = 'stopped';
+        broadcastToRoom(roomId, { type: 'GAME_OVER_ALL_NUMBERS_CALLED', payload: { finalCalledNumbers: [...room.numbersCalled] } });
+        console.log(`Attempted to call number, but all numbers already called in room ${roomId}.`);
+    }
+}
+
+
+// --- Basic HTTP Routes (Mostly for health checks/debug) ---
+app.get('/', (req, res) => res.send('Tambola Game Backend is running! Access the game through the HTML files.'));
+
+app.get('/health', (req, res) => res.status(200).json({ status: 'UP', timestamp: new Date().toISOString(), version: '1.1.0' }));
+
+app.get('/debug/rooms', (req, res) => { // For admin/debug purposes
     const simplifiedRooms = {};
     for (const roomId in rooms) {
         simplifiedRooms[roomId] = {
-            id: rooms[roomId].id, adminName: rooms[roomId].admin?.name,
+            id: rooms[roomId].id,
+            adminName: rooms[roomId].admin?.name,
             adminConnected: !!(rooms[roomId].admin?.ws && rooms[roomId].admin.ws.readyState === WebSocket.OPEN),
-            playerCount: rooms[roomId].players.length, gameStatus: rooms[roomId].gameStatus,
-            calledCount: rooms[roomId].numbersCalled.length, 
-            rulesActiveCount: rooms[roomId].rules?.filter(r => r.isActive).length || 0,
-            totalMoney: rooms[roomId].totalMoneyCollected,
-            winnersCount: rooms[roomId].winners?.length || 0
+            playerCount: rooms[roomId].players.length,
+            playersConnectedCount: rooms[roomId].players.filter(p => p.ws && p.ws.readyState === WebSocket.OPEN).length,
+            gameStatus: rooms[roomId].gameStatus,
+            callingMode: rooms[roomId].callingMode,
+            calledCount: rooms[roomId].numbersCalled.length,
+            rulesCount: rooms[roomId].rules.filter(r => r.isActive).length,
+            winnersCount: rooms[roomId].winners?.length || 0,
+            createdAt: rooms[roomId].createdAt
         };
     }
     res.json(simplifiedRooms);
 });
 
-server.listen(PORT, () => { console.log(`HTTP and WebSocket server listening on ws://localhost:${PORT}`); });
-process.on('SIGINT', () => { console.log('Shutting down...'); wss.clients.forEach(c => c.close()); server.close(() => { console.log('Server shut down.'); rooms = {}; playerConnections.clear(); process.exit(0); }); });
+// Example: To serve your HTML files (admin_join.html, player_join.html etc.)
+// Create a 'public' folder, put your HTML files there, and uncomment the next line:
+// app.use(express.static('public'));
+// Then you can access them via http://localhost:3000/admin_join.html etc.
+
+server.listen(PORT, () => {
+    console.log(`HTTP and WebSocket server listening on ws://localhost:${PORT}`);
+});
+
+process.on('SIGINT', () => {
+    console.log('Shutting down server...');
+    if (wss) {
+        wss.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.close(1001, "Server is shutting down.");
+            }
+        });
+    }
+    server.close(() => {
+        console.log('Server shut down gracefully.');
+        // Clear timers and states
+        for (const roomId in rooms) {
+            if (rooms[roomId].autoCallTimerId) {
+                clearTimeout(rooms[roomId].autoCallTimerId);
+            }
+        }
+        rooms = {};
+        playerConnections.clear();
+        process.exit(0);
+    });
+});
