@@ -239,7 +239,7 @@
                 this.playerName = localStorage.getItem('playerName') || 'Player';
                 this.playerId = localStorage.getItem('playerId'); 
                 this.roomId = localStorage.getItem('roomId') || 'N/A';
-                this.adminName = localStorage.getItem('adminName') || 'Admin'; // Load admin name if set by join page
+                this.adminName = localStorage.getItem('adminName') || 'Admin'; // Load admin name
 
                 if (!this.playerId || this.roomId === 'N/A') {
                     this.showGameMessage("Player data missing. Please rejoin.", "error", null);
@@ -251,17 +251,19 @@
                     const storedTickets = localStorage.getItem('playerTickets');
                     if (storedTickets) this.tickets = JSON.parse(storedTickets);
                     
-                    const storedRules = localStorage.getItem('gameRules'); // Rules from join success
+                    const storedRules = localStorage.getItem('gameRules'); 
                     if (storedRules) this.gameRules = JSON.parse(storedRules);
                     
-                    const storedCalledNumbers = localStorage.getItem('calledNumbersHistory'); // From join success
+                    const storedCalledNumbers = localStorage.getItem('calledNumbersHistory'); 
                     if (storedCalledNumbers) {
                         this.calledNumbersHistory = JSON.parse(storedCalledNumbers);
                         if (this.calledNumbersHistory.length > 0) {
                             this.latestCalledNumber = this.calledNumbersHistory[this.calledNumbersHistory.length - 1];
                         }
                     }
-                    this.gameStatus = localStorage.getItem('gameStatus') || 'idle'; // From join success
+                    this.gameStatus = localStorage.getItem('gameStatus') || 'idle'; 
+                    this.adminName = localStorage.getItem('adminName') || 'Admin'; // Ensure adminName is loaded
+
                 } catch (e) {
                     console.error("Error parsing data from localStorage:", e);
                     this.showGameMessage("Error loading initial game data. Please try rejoining.", "error");
@@ -291,11 +293,12 @@
                     console.log('Player WebSocket connection established.');
                     this.isConnected = true;
                     this.reconnectAttempts = 0;
-                    this.gameStatus = 'connected'; // Or 'idle' if server confirms
+                    // this.gameStatus = 'connected'; // Server will confirm actual game status
                     this.showGameMessage('Connected to Tambola Game!', 'success', 2000);
-                    // Server might send an initial state upon connection, or we might need to request it.
-                    // For now, we rely on data from player_join.html and subsequent broadcasts.
-                    // If rejoining, server should ideally send current state.
+                    // Player is already "joined" from player_join.html.
+                    // Server should send current game state if player reconnects or if game is in progress.
+                    // For a fresh connection after join, localStorage state is used initially.
+                    // Server broadcasts will keep it updated.
                 };
 
                 this.ws.onmessage = (event) => {
@@ -311,7 +314,7 @@
                        this.showGameMessage('Disconnected. Attempting to reconnect...', 'warning', null);
                         if (this.reconnectAttempts < this.maxReconnectAttempts) {
                             this.reconnectAttempts++;
-                            setTimeout(() => this.connectWebSocket(), 5000 * this.reconnectAttempts);
+                            setTimeout(() => this.connectWebSocket(), 3000 * this.reconnectAttempts);
                         } else {
                             this.gameStatus = 'connecting_failed';
                             this.showGameMessage('Could not reconnect. Please refresh.', 'error', null);
@@ -346,7 +349,7 @@
                     case 'NUMBER_CALLED':
                         this.handleNumberCalled(payload.number, payload.calledNumbersHistory);
                         break;
-                    case 'GAME_RULES_UPDATE':
+                    case 'GAME_RULES_UPDATE': // Server sends only active rules
                         this.gameRules = payload.rules || [];
                         this.updateCanClaimPrize();
                         this.showGameMessage("Game rules updated by admin.", "info");
@@ -355,7 +358,10 @@
                         if (payload.allTickets) {
                             this.tickets = payload.allTickets;
                         } else if (payload.ticket) {
-                            this.tickets.push(payload.ticket);
+                            // Ensure not to add duplicate if server sends individual approval
+                            if(!this.tickets.find(t => t.id === payload.ticket.id)) {
+                                this.tickets.push(payload.ticket);
+                            }
                         }
                         this.waitingForTicketApproval = false;
                         this.showGameMessage("New ticket added!", "success");
@@ -373,14 +379,13 @@
                         if (existingClaimIndex !== -1) {
                             this.myClaims[existingClaimIndex].status = payload.status;
                             this.myClaims[existingClaimIndex].reason = payload.reason || '';
-                            this.myClaims[existingClaimIndex].claimId = payload.claimId; // Ensure claimId is updated
+                            this.myClaims[existingClaimIndex].claimId = payload.claimId; 
                         } else if (payload.status === 'approved' || payload.status === 'rejected') { 
                              this.myClaims.push({claimId: payload.claimId, prizeName: payload.prizeName, status: payload.status, reason: payload.reason || ''});
                         }
 
                         if (payload.status === 'approved') {
-                            // Ensure prize isn't added multiple times if message is re-received
-                            if (!this.myPrizes.find(p => p.claimId === payload.claimId)) {
+                            if (!this.myPrizes.find(p => p.claimId === payload.claimId)) { // Prevent duplicate prize entries
                                 this.myPrizes.push({ claimId: payload.claimId, prizeName: payload.prizeName, coinsAwarded: payload.coinsAwarded });
                                 this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));
                             }
@@ -392,20 +397,18 @@
                         break;
                     case 'PLAYER_LIST_UPDATE':
                         this.otherPlayers = payload.players.filter(p => p.id !== this.playerId);
-                        // Check if admin is in the list to update adminName
-                        const adminInList = payload.players.find(p => rooms[this.roomId]?.admin?.id === p.id); // This check is flawed, admin isn't in player list.
-                                                                                                                // Admin name should come from GAME_STARTED or PLAYER_JOIN_SUCCESS
+                        // Admin name is set from GAME_STARTED or PLAYER_JOIN_SUCCESS
                         break;
                     case 'GAME_STARTED':
                         this.gameStatus = 'running';
-                        this.adminName = payload.adminName || this.adminName; // Update admin name
-                        localStorage.setItem('adminName', this.adminName); // Persist for other views
+                        this.adminName = payload.adminName || this.adminName; 
+                        localStorage.setItem('adminName', this.adminName); 
                         this.gameRules = payload.rules || [];
-                        this.calledNumbersHistory = [];
+                        this.calledNumbersHistory = []; // Reset for new game
                         this.latestCalledNumber = null;
-                        this.tickets.forEach(t => t.marked = []);
-                        this.myClaims = [];
-                        // this.myPrizes = []; // Decide if prizes reset on new game
+                        this.tickets.forEach(t => t.marked = []); // Clear markings on existing tickets
+                        this.myClaims = []; // Clear previous claims
+                        // this.myPrizes = []; // Decide if prizes reset
                         // this.coinsWon = 0; // Decide if coins reset
                         this.updateCanClaimPrize();
                         this.showGameMessage(`Game Started by ${this.adminName}! Mode: ${payload.callingMode}`, "success");
@@ -425,7 +428,7 @@
                         this.autoMarkExistingTickets(); 
                         this.showGameMessage('All numbers called! Game Over.', 'success', null);
                         break;
-                    case 'WINNER_ANNOUNCEMENT': // General announcement
+                    case 'WINNER_ANNOUNCEMENT': 
                         this.showGameMessage(`${payload.playerName} won ${payload.prizeName} (+${payload.coins.toFixed(2)} coins)!`, 'info', 7000);
                         break;
                     case 'GAME_SUMMARY_BROADCAST':
@@ -434,7 +437,6 @@
                         break;
                     case 'ADMIN_DISCONNECTED':
                         this.showGameMessage(`Admin (${payload.adminName || 'Host'}) has disconnected. Game may be paused.`, 'warning', null);
-                        // Optionally change gameStatus to a specific "admin_disconnected" state
                         break;
                     case 'ERROR': this.showGameMessage(`Server Error: ${payload.message}`, 'error', 5000); break;
                     case 'INFO': this.showGameMessage(`Server Info: ${payload.message}`, 'info', 3000); break;
@@ -444,13 +446,10 @@
 
             handleNumberCalled(number, history) {
                 this.latestCalledNumber = number;
-                // Ensure history is always an array and includes the new number
                 this.calledNumbersHistory = Array.isArray(history) ? [...history] : [...this.calledNumbersHistory];
                 if (!this.calledNumbersHistory.includes(number)) {
                     this.calledNumbersHistory.push(number);
                 }
-                // No need to sort here if server sends ordered history. If not, sort:
-                // this.calledNumbersHistory.sort((a,b) => a-b); 
                 
                 if (this.autoMarkNumbers) {
                     this.tickets.forEach(ticket => {
@@ -559,7 +558,7 @@
                 }
                 const rule = this.gameRules.find(r => r.id === prizeRuleId);
                 if (rule) {
-                    const clientSideClaimId = 'claim_' + Date.now(); // For local tracking before server confirms
+                    const clientSideClaimId = 'localClaim_' + Date.now(); 
                     this.myClaims.push({claimId: clientSideClaimId, prizeName: rule.name, status: 'pending_admin_approval'});
                     this.showGameMessage(`Claiming ${rule.name}... Waiting for admin.`, "info");
                     this.sendWebSocketMessage('PLAYER_CLAIM_PRIZE', { prizeRuleId: rule.id, ticketId: this.selectedTicketIdForClaim });
@@ -576,7 +575,7 @@
             logout() {
                 this.showGameMessage("Logging out...", "info");
                 if (this.ws) {
-                    this.ws.onclose = () => {}; // Prevent reconnect logic on manual logout
+                    this.ws.onclose = () => {}; 
                     this.ws.close();
                 }
                 localStorage.removeItem('playerName');
@@ -586,7 +585,7 @@
                 localStorage.removeItem('gameRules');
                 localStorage.removeItem('calledNumbersHistory');
                 localStorage.removeItem('gameStatus');
-                localStorage.removeItem('adminName'); // Clear admin name too
+                localStorage.removeItem('adminName'); 
                 setTimeout(() => { window.location.href = 'player_join.html'; }, 1000);
             },
             showGameMessage(text, type = 'info', duration = 3000) {
