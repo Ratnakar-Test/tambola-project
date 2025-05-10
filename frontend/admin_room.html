@@ -113,7 +113,8 @@
                             <thead><tr><th>Player Name</th><th>Player ID</th><th>Current Tickets</th><th>Action</th></tr></thead>
                             <tbody>
                                 <template x-if="ticketRequests.length === 0"><tr><td colspan="4" class="text-center">No pending ticket requests.</td></tr></template>
-                                <template x-for="request in ticketRequests" :key="request.playerId + (request.timestamp || '')"> <tr>
+                                <template x-for="request in ticketRequests" :key="request.playerId + (request.timestamp || '')"> 
+                                    <tr>
                                         <td x-text="request.playerName"></td>
                                         <td x-text="request.playerId.substring(0,8) + '...'"></td>
                                         <td x-text="request.currentTickets" class="text-center"></td>
@@ -272,7 +273,7 @@
             latestCalledNumber: null,
             callingMode: 'manual', 
             autoCallInterval: 5, 
-            gameStatus: 'connecting', // Initial status: connecting, connected_waiting_join_confirm, idle, running, paused, stopped, error, connecting_failed
+            gameStatus: 'connecting', 
             gameMessage: '',
             gameMessageType: 'info',
             gameMessageTimeout: null,
@@ -349,7 +350,7 @@
                 this.ws.onopen = () => {
                     console.log('Admin WebSocket connection established.');
                     this.isConnected = true;
-                    this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+                    this.reconnectAttempts = 0; 
                     this.gameStatus = 'connected_waiting_join_confirm'; 
                     this.showGameMessage('Connected! Joining room...', 'success', 2000);
                     this.sendWebSocketMessage('ADMIN_CREATE_JOIN_ROOM', {
@@ -367,11 +368,11 @@
                 this.ws.onclose = () => {
                     console.log('Admin WebSocket connection closed.');
                     this.isConnected = false;
-                    if (this.gameStatus !== 'error' && this.gameStatus !== 'connecting_failed') { // Don't show reconnect if it was a hard error
+                    if (this.gameStatus !== 'error' && this.gameStatus !== 'connecting_failed') { 
                        this.showGameMessage('Disconnected. Attempting to reconnect...', 'warning', null);
                         if (this.reconnectAttempts < this.maxReconnectAttempts) {
                             this.reconnectAttempts++;
-                            setTimeout(() => this.connectWebSocket(), 5000 * this.reconnectAttempts); // Exponential backoff
+                            setTimeout(() => this.connectWebSocket(), 5000 * this.reconnectAttempts); 
                         } else {
                             this.gameStatus = 'connecting_failed';
                             this.showGameMessage('Could not reconnect to server. Please refresh.', 'error', null);
@@ -382,7 +383,7 @@
                 this.ws.onerror = (error) => {
                     console.error('Admin WebSocket error:', error);
                     this.isConnected = false;
-                    this.gameStatus = 'error'; // More specific error status
+                    this.gameStatus = 'error'; 
                     this.showGameMessage('Connection error. Check server & refresh.', 'error', null);
                 };
             },
@@ -405,13 +406,12 @@
                         this.adminId = payload.adminId;
                         this.showGameMessage(`Successfully in room: ${payload.roomId} as Admin.`, 'success', 3000);
                         if (payload.roomDetails) {
-                            this.players = payload.roomDetails.players.map(p => ({...p, ticketCount: p.tickets?.length || p.ticketCount || 0 })) || [];
+                            this.players = payload.roomDetails.players.map(p => ({...p, ticketCount: p.ticketCount || p.tickets?.length || 0 })) || [];
                             this.gameStatus = payload.roomDetails.gameStatus || 'idle'; 
                             this.calledNumbersHistory = payload.roomDetails.numbersCalled || [];
                             this.latestCalledNumber = this.calledNumbersHistory.length > 0 ? this.calledNumbersHistory[this.calledNumbersHistory.length -1] : null;
                             this.updateNumbersGrid(); 
                             
-                            // Sync rules: If server sends rules, use them. Otherwise, admin needs to set and save.
                             if (payload.roomDetails.rules && payload.roomDetails.rules.length > 0) {
                                 this.gameRules = payload.roomDetails.rules.map(sr => {
                                     const localRule = this.gameRules.find(lr => lr.id === sr.id);
@@ -428,24 +428,25 @@
                             this.gameStatus = 'idle'; 
                         }
                         break;
-                    case 'PLAYER_LIST_UPDATE':
+                    case 'PLAYER_LIST_UPDATE': // This message should be received by the admin too
                         this.players = payload.players.map(p => ({...p, ticketCount: p.ticketCount || p.tickets?.length || 0 })) || [];
                         break;
                     case 'ADMIN_TICKET_REQUEST_RECEIVED':
-                        if (!this.ticketRequests.find(req => req.playerId === payload.playerId && req.timestamp === payload.timestamp)) {
-                             this.ticketRequests.push({...payload, timestamp: payload.timestamp || Date.now()});
+                        const newRequest = {...payload, timestamp: payload.timestamp || Date.now()};
+                        if (!this.ticketRequests.find(req => req.playerId === newRequest.playerId && req.timestamp === newRequest.timestamp)) {
+                             this.ticketRequests.push(newRequest);
                         }
                         this.showGameMessage(`New ticket request from ${payload.playerName}`, 'info');
                         break;
                     case 'ADMIN_PRIZE_CLAIM_RECEIVED':
                          if (!this.prizeClaims.find(cl => cl.claimId === payload.claimId)) {
-                            this.prizeClaims.push(payload); // payload should contain all necessary info like claimId, playerId, prizeName etc.
+                            this.prizeClaims.push(payload); 
                         }
                         this.showGameMessage(`New prize claim: ${payload.prizeName} by ${payload.playerName}`, 'info');
                         break;
                     case 'NUMBER_CALLED':
                         this.latestCalledNumber = payload.number;
-                        this.calledNumbersHistory = payload.calledNumbersHistory || this.calledNumbersHistory; // Use server's history
+                        this.calledNumbersHistory = payload.calledNumbersHistory || this.calledNumbersHistory; 
                         this.availableNumbersCount = payload.remainingCount;
                         this.updateNumbersGrid();
                         this.showGameMessage(`Number called: ${payload.number}`, 'info', 2000);
@@ -477,7 +478,7 @@
                         this.showGameMessage(payload.message || 'Rules configuration saved on server.', 'success'); 
                         break;
                     case 'WINNER_ANNOUNCEMENT':
-                        if (!this.winners.find(w => w.claimId === payload.claimId || (w.playerName === payload.playerName && w.prizeName === payload.prizeName && w.timestamp === payload.timestamp))) { // Check timestamp if claimId missing
+                        if (!this.winners.find(w => w.claimId === payload.claimId || (w.playerName === payload.playerName && w.prizeName === payload.prizeName && w.timestamp === payload.timestamp))) { 
                            this.winners.push({...payload, claimId: payload.claimId || generateUniqueId(), timestamp: payload.timestamp || new Date().toISOString() });
                         }
                         this.showGameMessage(`${payload.playerName} won ${payload.prizeName}! (+${payload.coins.toFixed(2)} coins)`, 'success', 5000);
@@ -549,13 +550,12 @@
             generateQRCode() { const qrCanvas = document.getElementById('qrcodeCanvas'); if (!qrCanvas) return; qrCanvas.innerHTML = ''; if (!this.roomId || this.roomId === 'N/A') { qrCanvas.innerHTML = '<p class="text-error">Room ID not set.</p>'; return; } const playerJoinUrl = `${window.location.protocol}//${window.location.host}/player_join.html?roomId=${encodeURIComponent(this.roomId)}`; try { const qr = qrcode(0, 'M'); qr.addData(playerJoinUrl); qr.make(); qrCanvas.innerHTML = qr.createImgTag(6, 8); if(qrCanvas.firstChild) { qrCanvas.firstChild.style.width = '100%'; qrCanvas.firstChild.style.maxWidth = '256px'; qrCanvas.firstChild.style.height = 'auto'; } } catch (e) { console.error("QR Code generation error:", e); qrCanvas.innerHTML = '<p class="text-error">Error generating QR code.</p>'; } },
             logoutAdminSession() {
                 if (this.ws) {
-                    this.ws.onclose = () => {}; // Prevent reconnect logic on manual logout
+                    this.ws.onclose = () => {}; 
                     this.ws.close();
                 }
                 localStorage.removeItem('adminName');
                 localStorage.removeItem('roomId');
                 localStorage.removeItem('adminId');
-                // The href on the link will handle redirection
             },
             initializeNumbers() { this.numbers = Array.from({ length: 90 }, (_, i) => ({ number: i + 1, called: false })); this.calledNumbersHistory = []; this.latestCalledNumber = null; this.availableNumbersCount = 90;}
 
