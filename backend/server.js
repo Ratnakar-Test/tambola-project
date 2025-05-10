@@ -1,6 +1,5 @@
 // server.js
-// Tambola Game Backend
-// Uses Express for basic HTTP and 'ws' for WebSockets
+// Tambola Game Backend - Enhanced Sync & Broadcast
 
 const express = require('express');
 const http = require('http');
@@ -51,17 +50,17 @@ function generateTambolaTicket() {
     }
     let rowCounts = ticket.map(r => r.filter(n => n !== null).length);
     while (placedNumbers < 15) {
-        let breakOuter = false;
+        let breakOuter = false; let placedThisCycle = false;
         for (let r = 0; r < 3; r++) {
             if (rowCounts[r] < 5) {
                 for (let c = 0; c < 9; c++) {
                     if (ticket[r][c] === null) {
                         let numsInThisCol = 0;
                         for (let i = 0; i < 3; i++) if (ticket[i][c] !== null) numsInThisCol++;
-                        if (numsInThisCol < 3) {
+                        if (numsInThisCol < 3) { // Max 3 numbers per column
                              const num = getRandomUniqueNumber(colRanges[c].min, colRanges[c].max, numbersOnTicket);
                              if (num !== null) {
-                                ticket[r][c] = num; numbersOnTicket.add(num); rowCounts[r]++; placedNumbers++;
+                                ticket[r][c] = num; numbersOnTicket.add(num); rowCounts[r]++; placedNumbers++; placedThisCycle = true;
                                 if (placedNumbers === 15) {breakOuter = true; break;}
                              }
                         }
@@ -71,32 +70,22 @@ function generateTambolaTicket() {
             if (breakOuter) break;
         }
         if (breakOuter || placedNumbers === 15) break; 
-        let canPlaceMore = false;
-        for(let r=0; r<3; r++) if(rowCounts[r] < 5) for(let c=0; c<9; c++) if(ticket[r][c] === null) { let nic=0; for(let i=0;i<3;i++) if(ticket[i][c]!==null)nic++; if(nic<3) canPlaceMore=true; }
-        if(!canPlaceMore && placedNumbers < 15) break; // Failsafe
-    }
-    for (let r = 0; r < 3; r++) {
-        let currentNumbersInRow = ticket[r].filter(n => n !== null).length; let attempts = 0;
-        while (currentNumbersInRow < 5 && attempts < 50) { 
-            attempts++; let emptyColIndices = [];
-            for(let c=0; c<9; c++) if(ticket[r][c] === null) emptyColIndices.push(c);
-            if(emptyColIndices.length === 0) break;
-            let c = emptyColIndices[Math.floor(Math.random() * emptyColIndices.length)];
-            let numsInThisCol = 0; for (let i = 0; i < 3; i++) if (ticket[i][c] !== null) numsInThisCol++;
-            if (numsInThisCol < 3) {
-                const num = getRandomUniqueNumber(colRanges[c].min, colRanges[c].max, numbersOnTicket);
-                if (num !== null) { ticket[r][c] = num; numbersOnTicket.add(num); currentNumbersInRow++; }
-            }
+        if (!placedThisCycle && placedNumbers < 15) {
+            // console.warn("Ticket generation might be stuck, trying to force completion if possible or breaking.");
+            break; // Avoid infinite loop if constraints are too tight with random placement
         }
-        while (currentNumbersInRow > 5 && attempts < 100) { 
-             attempts++; let filledColIndices = [];
+    }
+    for (let r = 0; r < 3; r++) { // Ensure 5 numbers per row by removing extras if any (less likely with above logic)
+        let currentNumbersInRow = ticket[r].filter(n => n !== null).length;
+        while (currentNumbersInRow > 5) {
+             let filledColIndices = [];
              for(let c=0; c<9; c++) if(ticket[r][c] !== null) filledColIndices.push(c);
              if(filledColIndices.length === 0) break;
              let c = filledColIndices[Math.floor(Math.random() * filledColIndices.length)];
              numbersOnTicket.delete(ticket[r][c]); ticket[r][c] = null; currentNumbersInRow--;
         }
     }
-    for (let c = 0; c < 9; c++) {
+    for (let c = 0; c < 9; c++) { // Sort numbers within each column
         let colVals = []; for (let r = 0; r < 3; r++) if (ticket[r][c] !== null) colVals.push(ticket[r][c]);
         colVals.sort((a, b) => a - b); let currentIdx = 0;
         for (let r = 0; r < 3; r++) if (ticket[r][c] !== null) ticket[r][c] = colVals[currentIdx++];
@@ -110,6 +99,9 @@ function broadcastToRoom(roomId, message, excludeWs = null) {
         const recipients = [];
         if (room.admin && room.admin.ws && room.admin.ws.readyState === WebSocket.OPEN) recipients.push(room.admin.ws);
         room.players.forEach(p => { if (p.ws && p.ws.readyState === WebSocket.OPEN) recipients.push(p.ws); });
+        
+        // console.log(`Broadcasting to room ${roomId} (Admin: ${!!room.admin.ws}, Players: ${room.players.length}):`, message.type, `Excluding: ${excludeWs ? 'Yes' : 'No'}`);
+        
         recipients.forEach(clientWs => {
             if (clientWs !== excludeWs) {
                 try { clientWs.send(JSON.stringify(message)); }
@@ -165,7 +157,7 @@ wss.on('connection', (ws) => {
         let message;
         try {
             message = JSON.parse(messageString);
-            console.log(`Received from client:`, message);
+            // console.log(`Received from client:`, message); // Keep for debugging if needed
         } catch (e) {
             console.error('Failed to parse message:', messageString, e);
             return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Invalid message format.' } });
@@ -218,8 +210,10 @@ wss.on('connection', (ws) => {
                     type: isNewRoom ? 'ROOM_CREATED_SUCCESS' : 'ROOM_JOINED_SUCCESS', 
                     payload: { roomId, role: 'admin', adminId, roomDetails: roomDetailsPayload } 
                 });
-                // If admin is rejoining, broadcast updated player list (which now includes admin as "connected")
-                broadcastToRoom(roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: rooms[roomId].players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length})) } });
+                // Broadcast updated player list to admin (especially if rejoining)
+                if (roomDetailsPayload.players.length > 0) {
+                     broadcastToRoom(roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: roomDetailsPayload.players } }, null); // Send to admin too
+                }
                 break;
             }
 
@@ -244,7 +238,7 @@ wss.on('connection', (ws) => {
                         payload: { 
                             rules: room.rules.filter(r => r.isActive), callingMode: room.callingMode,
                             autoCallInterval: room.autoCallInterval, totalMoneyCollected: room.totalMoneyCollected,
-                            startTime: new Date().toISOString(), adminName: room.admin.name
+                            startTime: new Date().toISOString(), adminName: room.admin.name // Include adminName
                         } 
                     });
                     console.log(`Game started in room ${connectionInfo.roomId}. Mode: ${room.callingMode}`);
@@ -266,7 +260,7 @@ wss.on('connection', (ws) => {
                             type: 'NUMBER_CALLED', 
                             payload: { number: calledNumber, calledNumbersHistory: [...room.numbersCalled], remainingCount: room.availableNumbers.length } 
                         });
-                        console.log(`Number ${calledNumber} called in ${connectionInfo.roomId}. Remaining: ${room.availableNumbers.length}`);
+                        // console.log(`Number ${calledNumber} called in ${connectionInfo.roomId}. Remaining: ${room.availableNumbers.length}`);
                         if (room.availableNumbers.length === 0) {
                             room.gameStatus = 'stopped';
                             broadcastToRoom(connectionInfo.roomId, { type: 'GAME_OVER_ALL_NUMBERS_CALLED', payload: { finalCalledNumbers: room.numbersCalled } });
@@ -309,10 +303,11 @@ wss.on('connection', (ws) => {
                     if (room.gameStatus === 'idle') {
                         room.rules = payload.rules; 
                         room.totalMoneyCollected = parseFloat(payload.financials.totalMoneyCollected);
+                        // Send confirmation ONLY to the admin who sent the update
                         sendMessageToClient(ws, { type: 'RULES_SAVE_CONFIRMED', payload: {message: "Rules and financials saved successfully."} });
                         console.log(`Rules updated for room ${connectionInfo.roomId}`);
                         // Broadcast updated rules to any players already in the room (though game not started)
-                        broadcastToRoom(connectionInfo.roomId, { type: 'RULES_UPDATED', payload: { rules: room.rules.filter(r => r.isActive), totalMoneyCollected: room.totalMoneyCollected } }, ws);
+                        broadcastToRoom(connectionInfo.roomId, { type: 'RULES_UPDATED', payload: { rules: room.rules.filter(r => r.isActive), totalMoneyCollected: room.totalMoneyCollected } }, ws); // Exclude self
                     } else {
                          sendMessageToClient(ws, {type: 'ERROR', payload: {message: `Rules can only be updated when game is idle. Current status: ${room.gameStatus}`}});
                     }
@@ -391,7 +386,7 @@ wss.on('connection', (ws) => {
                 if (!playerName || !roomId) return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Player name and Room ID required.' } });
                 const room = rooms[roomId];
                 if (!room || !room.admin || !room.admin.ws || room.admin.ws.readyState !== WebSocket.OPEN) {
-                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Room not found or not ready.' } });
+                    return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Room not found or admin not ready.' } });
                 }
                 if (room.gameStatus === 'stopped') return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Game has ended.' } });
 
@@ -405,12 +400,10 @@ wss.on('connection', (ws) => {
                     payload: { 
                         playerId, playerName, roomId, tickets: player.tickets, gameStatus: room.gameStatus,
                         calledNumbers: room.numbersCalled, rules: room.rules.filter(r => r.isActive), 
-                        totalMoneyCollected: room.totalMoneyCollected, adminName: room.admin.name,
-                        // Send the full player list to the new player
+                        totalMoneyCollected: room.totalMoneyCollected, adminName: room.admin.name, // Send adminName
                         playersInRoom: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length}))
                     } 
                 });
-                // Broadcast updated player list to everyone (including admin and other players)
                 broadcastToRoom(roomId, { type: 'PLAYER_LIST_UPDATE', payload: { players: room.players.map(p => ({id: p.id, name: p.name, ticketCount: p.tickets.length})) } });
                 console.log(`Player ${playerName} (ID: ${playerId}) joined room ${roomId}`);
                 break;
