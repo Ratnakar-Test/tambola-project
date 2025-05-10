@@ -49,8 +49,8 @@
                 <div class="flex-1">
                     <a class="btn btn-ghost normal-case text-xl">Tambola Admin Panel 
                         <span x-show="isConnected" class="badge badge-success badge-xs ml-2" title="Connected"></span>
-                        <span x-show="!isConnected && gameStatus !== 'error'" class="badge badge-warning badge-xs ml-2" title="Connecting..."></span>
-                        <span x-show="!isConnected && gameStatus === 'error'" class="badge badge-error badge-xs ml-2" title="Connection Error"></span>
+                        <span x-show="!isConnected && gameStatus !== 'error' && gameStatus !== 'connecting_failed'" class="badge badge-warning badge-xs ml-2" title="Connecting..."></span>
+                        <span x-show="!isConnected && (gameStatus === 'error' || gameStatus === 'connecting_failed')" class="badge badge-error badge-xs ml-2" title="Connection Error"></span>
                     </a>
                 </div>
                 <div class="flex-none">
@@ -74,6 +74,10 @@
                     </div>
                     <div class="text-center my-6" x-show="latestCalledNumber === null && (gameStatus === 'running' || gameStatus === 'idle')">
                         <span class="label-text" x-text="gameStatus === 'running' ? 'Game started. Call the first number!' : (gameStatus === 'idle' ? 'Game Ready. Configure Rules & Press Start.' : 'Waiting for server...')"></span>
+                    </div>
+                     <div class="text-center my-6" x-show="gameStatus === 'connecting' || gameStatus === 'connected_waiting_join_confirm'">
+                        <span class="loading loading-dots loading-lg"></span>
+                        <p x-text="gameStatus === 'connecting' ? 'Connecting to server...' : 'Finalizing room setup...'"></p>
                     </div>
                     <div class="number-grid p-2 bg-base-100 rounded-lg shadow">
                         <template x-for="numObj in numbers" :key="numObj.number">
@@ -109,7 +113,7 @@
                             <thead><tr><th>Player Name</th><th>Player ID</th><th>Current Tickets</th><th>Action</th></tr></thead>
                             <tbody>
                                 <template x-if="ticketRequests.length === 0"><tr><td colspan="4" class="text-center">No pending ticket requests.</td></tr></template>
-                                <template x-for="request in ticketRequests" :key="request.playerId + request.timestamp"> <tr>
+                                <template x-for="request in ticketRequests" :key="request.playerId + (request.timestamp || '')"> <tr>
                                         <td x-text="request.playerName"></td>
                                         <td x-text="request.playerId.substring(0,8) + '...'"></td>
                                         <td x-text="request.currentTickets" class="text-center"></td>
@@ -268,7 +272,7 @@
             latestCalledNumber: null,
             callingMode: 'manual', 
             autoCallInterval: 5, 
-            gameStatus: 'connecting', // Initial status
+            gameStatus: 'connecting', // Initial status: connecting, connected_waiting_join_confirm, idle, running, paused, stopped, error, connecting_failed
             gameMessage: '',
             gameMessageType: 'info',
             gameMessageTimeout: null,
@@ -279,7 +283,7 @@
             gameSummaryData: [], 
             gameRules: [
                 { id: 'rule1', name: '1-2-3', description: 'First number of first row, First 2 numbers of 2nd row and First 3 numbers of third row are cut.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 10 },
-                { id: 'rule2', name: 'Bottom Line', description: 'Bottom Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 15 }, // Default to false
+                { id: 'rule2', name: 'Bottom Line', description: 'Bottom Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 15 },
                 { id: 'rule3', name: 'BP (Bull\'s Eye)', description: 'Highest and lowest numbers of the ticket.', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 5 },
                 { id: 'rule4', name: 'Breakfast', description: 'Numbers from 1 to 30.', baseWeight: 10, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 10 },
                 { id: 'rule5', name: 'Corners', description: 'Top Row: 1st and 5th Number; Bottom Row: 1st and 5th Number.', baseWeight: 10, maxPrizes: 2, coinsPerPrize: 0, isActive: false, originalWeight: 10 },
@@ -299,6 +303,8 @@
             ws: null,
             isConnected: false,
             serverUrl: '', 
+            reconnectAttempts: 0,
+            maxReconnectAttempts: 5,
 
             init() {
                 const savedTheme = localStorage.getItem('theme') || 'light';
@@ -320,7 +326,6 @@
                 this.gameRules.forEach(rule => {
                     if (rule.originalWeight === undefined) rule.originalWeight = rule.baseWeight;
                 });
-                // Calculations will be done after syncing with server state or if loading from localStorage
                 
                 if (window.location.protocol === "https:") {
                     this.serverUrl = `wss://tambola-backend.onrender.com`;
@@ -334,15 +339,18 @@
             connectWebSocket() {
                 if (!this.roomId || !this.adminName) {
                     this.showGameMessage("Cannot connect: Room ID or Admin Name is missing.", "error", null);
+                    this.gameStatus = 'connecting_failed';
                     return;
                 }
+                this.gameStatus = 'connecting';
                 this.ws = new WebSocket(this.serverUrl);
                 this.showGameMessage('Connecting to server...', 'info');
 
                 this.ws.onopen = () => {
                     console.log('Admin WebSocket connection established.');
                     this.isConnected = true;
-                    this.gameStatus = 'connected_waiting_join_confirm'; // A temporary status
+                    this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+                    this.gameStatus = 'connected_waiting_join_confirm'; 
                     this.showGameMessage('Connected! Joining room...', 'success', 2000);
                     this.sendWebSocketMessage('ADMIN_CREATE_JOIN_ROOM', {
                         adminName: this.adminName,
@@ -359,14 +367,22 @@
                 this.ws.onclose = () => {
                     console.log('Admin WebSocket connection closed.');
                     this.isConnected = false;
-                    this.gameStatus = 'error'; 
-                    this.showGameMessage('Disconnected. Attempt to reconnect or refresh.', 'error', null);
+                    if (this.gameStatus !== 'error' && this.gameStatus !== 'connecting_failed') { // Don't show reconnect if it was a hard error
+                       this.showGameMessage('Disconnected. Attempting to reconnect...', 'warning', null);
+                        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                            this.reconnectAttempts++;
+                            setTimeout(() => this.connectWebSocket(), 5000 * this.reconnectAttempts); // Exponential backoff
+                        } else {
+                            this.gameStatus = 'connecting_failed';
+                            this.showGameMessage('Could not reconnect to server. Please refresh.', 'error', null);
+                        }
+                    }
                 };
 
                 this.ws.onerror = (error) => {
                     console.error('Admin WebSocket error:', error);
                     this.isConnected = false;
-                    this.gameStatus = 'error';
+                    this.gameStatus = 'error'; // More specific error status
                     this.showGameMessage('Connection error. Check server & refresh.', 'error', null);
                 };
             },
@@ -389,46 +405,47 @@
                         this.adminId = payload.adminId;
                         this.showGameMessage(`Successfully in room: ${payload.roomId} as Admin.`, 'success', 3000);
                         if (payload.roomDetails) {
-                            this.players = payload.roomDetails.players.map(p => ({...p, ticketCount: p.tickets?.length || 0 })) || [];
-                            this.gameStatus = payload.roomDetails.gameStatus || 'idle'; // Crucial for start button
+                            this.players = payload.roomDetails.players.map(p => ({...p, ticketCount: p.tickets?.length || p.ticketCount || 0 })) || [];
+                            this.gameStatus = payload.roomDetails.gameStatus || 'idle'; 
                             this.calledNumbersHistory = payload.roomDetails.numbersCalled || [];
                             this.latestCalledNumber = this.calledNumbersHistory.length > 0 ? this.calledNumbersHistory[this.calledNumbersHistory.length -1] : null;
                             this.updateNumbersGrid(); 
-                            // Sync rules if server sends them, otherwise client keeps its defaults until explicitly saved/loaded
+                            
+                            // Sync rules: If server sends rules, use them. Otherwise, admin needs to set and save.
                             if (payload.roomDetails.rules && payload.roomDetails.rules.length > 0) {
-                                this.gameRules = payload.roomDetails.rules;
-                            } else {
-                                // If server has no rules for this room yet (e.g. new room),
-                                // client keeps its default template. Admin needs to save them.
+                                this.gameRules = payload.roomDetails.rules.map(sr => {
+                                    const localRule = this.gameRules.find(lr => lr.id === sr.id);
+                                    return {...localRule, ...sr, originalWeight: sr.originalWeight !== undefined ? sr.originalWeight : (localRule ? localRule.originalWeight : sr.baseWeight) };
+                                });
                             }
                             this.totalMoneyCollected = payload.roomDetails.totalMoneyCollected === undefined ? null : parseFloat(payload.roomDetails.totalMoneyCollected);
                             this.callingMode = payload.roomDetails.callingMode || 'manual';
                             this.autoCallInterval = payload.roomDetails.autoCallInterval || 5;
 
-                            this.normalizeActiveRuleWeights(); // Recalculate based on potentially loaded rules
+                            this.normalizeActiveRuleWeights(); 
                             this.updateRuleCalculations();
                         } else {
-                            this.gameStatus = 'idle'; // Default to idle if no specific details
+                            this.gameStatus = 'idle'; 
                         }
                         break;
                     case 'PLAYER_LIST_UPDATE':
-                        this.players = payload.players || [];
+                        this.players = payload.players.map(p => ({...p, ticketCount: p.ticketCount || p.tickets?.length || 0 })) || [];
                         break;
                     case 'ADMIN_TICKET_REQUEST_RECEIVED':
-                        if (!this.ticketRequests.find(req => req.playerId === payload.playerId && req.timestamp === payload.timestamp)) { // Add timestamp to server payload for uniqueness
-                             this.ticketRequests.push({...payload, timestamp: payload.timestamp || Date.now()}); // Add a client-side timestamp if server doesn't
+                        if (!this.ticketRequests.find(req => req.playerId === payload.playerId && req.timestamp === payload.timestamp)) {
+                             this.ticketRequests.push({...payload, timestamp: payload.timestamp || Date.now()});
                         }
                         this.showGameMessage(`New ticket request from ${payload.playerName}`, 'info');
                         break;
                     case 'ADMIN_PRIZE_CLAIM_RECEIVED':
                          if (!this.prizeClaims.find(cl => cl.claimId === payload.claimId)) {
-                            this.prizeClaims.push(payload);
+                            this.prizeClaims.push(payload); // payload should contain all necessary info like claimId, playerId, prizeName etc.
                         }
                         this.showGameMessage(`New prize claim: ${payload.prizeName} by ${payload.playerName}`, 'info');
                         break;
                     case 'NUMBER_CALLED':
                         this.latestCalledNumber = payload.number;
-                        this.calledNumbersHistory = payload.calledNumbersHistory || this.calledNumbersHistory;
+                        this.calledNumbersHistory = payload.calledNumbersHistory || this.calledNumbersHistory; // Use server's history
                         this.availableNumbersCount = payload.remainingCount;
                         this.updateNumbersGrid();
                         this.showGameMessage(`Number called: ${payload.number}`, 'info', 2000);
@@ -441,9 +458,9 @@
                         this.normalizeActiveRuleWeights();
                         this.updateRuleCalculations();
                         this.showGameMessage('Game has started!', 'success');
-                        this.ticketRequests = []; // Clear pending requests on game start
-                        this.prizeClaims = [];   // Clear pending claims on game start
-                        this.winners = [];       // Clear previous winners
+                        this.ticketRequests = []; 
+                        this.prizeClaims = [];   
+                        this.winners = [];       
                         break;
                     case 'GAME_PAUSED': this.gameStatus = 'paused'; this.showGameMessage('Game paused.', 'info'); break;
                     case 'GAME_RESUMED': this.gameStatus = 'running'; this.showGameMessage('Game resumed.', 'info'); break;
@@ -456,10 +473,12 @@
                         this.updateRuleCalculations();
                         this.showGameMessage('Game rules have been updated by server.', 'info');
                         break;
-                    case 'RULES_SAVE_CONFIRMED': this.showGameMessage('Rules configuration saved on server.', 'success'); break;
+                    case 'RULES_SAVE_CONFIRMED': 
+                        this.showGameMessage(payload.message || 'Rules configuration saved on server.', 'success'); 
+                        break;
                     case 'WINNER_ANNOUNCEMENT':
-                        if (!this.winners.find(w => w.claimId === payload.claimId || (w.playerName === payload.playerName && w.prizeName === payload.prizeName))) {
-                           this.winners.push({...payload, claimId: payload.claimId || generateUniqueId() }); // Ensure a key for Alpine
+                        if (!this.winners.find(w => w.claimId === payload.claimId || (w.playerName === payload.playerName && w.prizeName === payload.prizeName && w.timestamp === payload.timestamp))) { // Check timestamp if claimId missing
+                           this.winners.push({...payload, claimId: payload.claimId || generateUniqueId(), timestamp: payload.timestamp || new Date().toISOString() });
                         }
                         this.showGameMessage(`${payload.playerName} won ${payload.prizeName}! (+${payload.coins.toFixed(2)} coins)`, 'success', 5000);
                         break;
@@ -472,7 +491,7 @@
                         this.currentView = 'gameSummary';
                         this.showGameMessage("Game has ended. Viewing summary.", "info", null);
                         break;
-                    case 'ADMIN_DISCONNECTED': // Another admin instance disconnected
+                    case 'ADMIN_DISCONNECTED': 
                         this.showGameMessage(`Admin ${payload.adminName} disconnected. You are the current admin.`, 'warning');
                         break;
                     case 'ERROR': this.showGameMessage(`Server Error: ${payload.message}`, 'error', 5000); break;
@@ -522,7 +541,7 @@
             showGameMessage(text, type = 'info', duration = 3000) { this.gameMessage = text; this.gameMessageType = type; if (this.gameMessageTimeout) clearTimeout(this.gameMessageTimeout); if (duration !== null) { this.gameMessageTimeout = setTimeout(() => { this.gameMessage = ''; }, duration); } },
             handleActivationToggle(ruleId) { const rule = this.gameRules.find(r => r.id === ruleId); if (rule) { if (!rule.isActive) { rule.baseWeight = rule.originalWeight; } } this.normalizeActiveRuleWeights(); this.updateRuleCalculations(); },
             handleBaseWeightInput(ruleId, inputValue) { const rule = this.gameRules.find(r => r.id === ruleId && r.isActive); if (rule) { let newWeight = parseFloat(inputValue); if (isNaN(newWeight) || newWeight < 0) newWeight = 0; rule.originalWeight = newWeight; this.normalizeActiveRuleWeights(ruleId, newWeight); this.updateRuleCalculations(); } },
-            normalizeActiveRuleWeights(editedRuleId = null, newWeightForEditedRule = null) { let activeRules = this.gameRules.filter(r => r.isActive); if (activeRules.length === 0) { this.totalSelectedWeight = 0; this.gameRules.forEach(r => { r.coinsPerPrize = 0; }); this.updateRuleCalculations(); return; } if (editedRuleId && newWeightForEditedRule !== null) { const editedRule = activeRules.find(r => r.id === editedRuleId); if (editedRule) { editedRule.baseWeight = Math.max(0, Math.min(100, newWeightForEditedRule)); if (activeRules.length === 1) { editedRule.baseWeight = 100; } else { let sumOfOtherActiveOriginalWeights = 0; activeRules.forEach(r => { if (r.id !== editedRuleId) sumOfOtherActiveOriginalWeights += r.originalWeight; }); const remainingPercentage = 100 - editedRule.baseWeight; activeRules.forEach(r => { if (r.id !== editedRuleId) { if (sumOfOtherActiveOriginalWeights > 0) { r.baseWeight = (r.originalWeight / sumOfOtherActiveOriginalWeights) * remainingPercentage; } else { r.baseWeight = remainingPercentage / (activeRules.length - 1); } } }); } } } else {  let sumOfActiveOriginalWeights = activeRules.reduce((sum, r) => sum + r.originalWeight, 0); if (sumOfActiveOriginalWeights > 0) { activeRules.forEach(r => r.baseWeight = (r.originalWeight / sumOfActiveOriginalWeights) * 100); } else if (activeRules.length > 0) { activeRules.forEach(r => r.baseWeight = 100 / activeRules.length); } } let currentSum = activeRules.reduce((sum, r) => sum + r.baseWeight, 0); if (activeRules.length > 0 && Math.abs(currentSum - 100) > 0.01) { const correctionFactor = 100 / currentSum; activeRules.forEach(r => r.baseWeight *= correctionFactor); activeRules.forEach(r => { r.baseWeight = Math.max(0, Math.min(100, r.baseWeight)); }); currentSum = activeRules.reduce((sum, r) => sum + r.baseWeight, 0); if (Math.abs(currentSum - 100) > 0.0001 && activeRules.length > 0) { activeRules[0].baseWeight += (100 - currentSum); } } activeRules.forEach(r => { r.baseWeight = parseFloat(r.baseWeight.toFixed(4)); }); this.totalSelectedWeight = activeRules.length > 0 ? 100 : 0; },
+            normalizeActiveRuleWeights(editedRuleId = null, newWeightForEditedRule = null) { let activeRules = this.gameRules.filter(r => r.isActive); if (activeRules.length === 0) { this.totalSelectedWeight = 0; this.gameRules.forEach(r => { r.coinsPerPrize = 0; }); this.updateRuleCalculations(); return; } if (editedRuleId && newWeightForEditedRule !== null) { const editedRule = activeRules.find(r => r.id === editedRuleId); if (editedRule) { editedRule.baseWeight = Math.max(0, Math.min(100, newWeightForEditedRule)); if (activeRules.length === 1) { editedRule.baseWeight = 100; } else { let sumOfOtherActiveOriginalWeights = 0; activeRules.forEach(r => { if (r.id !== editedRuleId) sumOfOtherActiveOriginalWeights += r.originalWeight; }); const remainingPercentage = 100 - editedRule.baseWeight; activeRules.forEach(r => { if (r.id !== editedRuleId) { if (sumOfOtherActiveOriginalWeights > 0) { r.baseWeight = (r.originalWeight / sumOfOtherActiveOriginalWeights) * remainingPercentage; } else { r.baseWeight = remainingPercentage / (activeRules.length - 1); } } }); } } } else {  let sumOfActiveOriginalWeights = activeRules.reduce((sum, r) => sum + r.originalWeight, 0); if (sumOfActiveOriginalWeights > 0) { activeRules.forEach(r => r.baseWeight = (r.originalWeight / sumOfActiveOriginalWeights) * 100); } else if (activeRules.length > 0) { activeRules.forEach(r => r.baseWeight = 100 / activeRules.length); } } let currentSum = activeRules.reduce((sum, r) => sum + r.baseWeight, 0); if (activeRules.length > 0 && Math.abs(currentSum - 100) > 0.01) { const correctionFactor = 100 / currentSum; activeRules.forEach(r => r.baseWeight *= correctionFactor); activeRules.forEach(r => { r.baseWeight = Math.max(0, Math.min(100, r.baseWeight)); }); currentSum = activeRules.reduce((sum, r) => sum + r.baseWeight, 0); if (Math.abs(currentSum - 100) > 0.0001 && activeRules.length > 0 && activeRules.length > 0) { activeRules[0].baseWeight += (100 - currentSum); } } activeRules.forEach(r => { r.baseWeight = parseFloat(r.baseWeight.toFixed(4)); }); this.totalSelectedWeight = activeRules.length > 0 ? 100 : 0; },
             updateRuleCalculations() { const currentTotalMoneyCollected = parseFloat(this.totalMoneyCollected) || 0; let calculatedTotalPotentialCoins = 0; this.gameRules.forEach(rule => { if (rule.isActive) { const moneyAllocatedToRule = (rule.baseWeight / 100) * currentTotalMoneyCollected; const maxPrizes = parseInt(rule.maxPrizes) || 1; rule.coinsPerPrize = maxPrizes > 0 ? (moneyAllocatedToRule / maxPrizes) : 0; calculatedTotalPotentialCoins += moneyAllocatedToRule; } else { rule.coinsPerPrize = 0; } }); this.totalPotentialCoins = calculatedTotalPotentialCoins; this.calculateCoinValue(); },
             calculateCoinValue() { const currentTotalMoneyCollected = parseFloat(this.totalMoneyCollected) || 0; if (currentTotalMoneyCollected > 0 && this.totalPotentialCoins > 0.001) { this.valuePerCoin = 1.00; } else { this.valuePerCoin = null; } },
             setTheme(themeName, event = null, closeDropdown = true) { document.documentElement.setAttribute('data-theme', themeName); localStorage.setItem('theme', themeName); if (closeDropdown && event && event.target) { const anchorElement = event.target; const dropdownRoot = anchorElement.closest('.dropdown'); const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]'); setTimeout(() => { if (document.activeElement instanceof HTMLElement && dropdownRoot?.contains(document.activeElement)) { document.activeElement.blur(); } dropdownTriggerLabel?.blur(); }, 0); } },
@@ -530,12 +549,13 @@
             generateQRCode() { const qrCanvas = document.getElementById('qrcodeCanvas'); if (!qrCanvas) return; qrCanvas.innerHTML = ''; if (!this.roomId || this.roomId === 'N/A') { qrCanvas.innerHTML = '<p class="text-error">Room ID not set.</p>'; return; } const playerJoinUrl = `${window.location.protocol}//${window.location.host}/player_join.html?roomId=${encodeURIComponent(this.roomId)}`; try { const qr = qrcode(0, 'M'); qr.addData(playerJoinUrl); qr.make(); qrCanvas.innerHTML = qr.createImgTag(6, 8); if(qrCanvas.firstChild) { qrCanvas.firstChild.style.width = '100%'; qrCanvas.firstChild.style.maxWidth = '256px'; qrCanvas.firstChild.style.height = 'auto'; } } catch (e) { console.error("QR Code generation error:", e); qrCanvas.innerHTML = '<p class="text-error">Error generating QR code.</p>'; } },
             logoutAdminSession() {
                 if (this.ws) {
+                    this.ws.onclose = () => {}; // Prevent reconnect logic on manual logout
                     this.ws.close();
                 }
                 localStorage.removeItem('adminName');
                 localStorage.removeItem('roomId');
                 localStorage.removeItem('adminId');
-                // No need to redirect here, the href on the link will do it.
+                // The href on the link will handle redirection
             },
             initializeNumbers() { this.numbers = Array.from({ length: 90 }, (_, i) => ({ number: i + 1, called: false })); this.calledNumbersHistory = []; this.latestCalledNumber = null; this.availableNumbersCount = 90;}
 
