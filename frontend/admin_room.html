@@ -245,16 +245,16 @@
         <div class="control-bar">
             <div class="form-control"><label class="label cursor-pointer"><span class="label-text mr-1 sm:mr-2">Mode:</span><select class="select select-bordered select-xs sm:select-sm" x-model="callingMode" :disabled="gameStatus !== 'idle'"><option value="manual">Manual</option><option value="auto">Auto</option></select></label></div>
             <div class="form-control" x-show="callingMode === 'auto'"><label class="label cursor-pointer"><span class="label-text mr-1 sm:mr-2">Interval:</span><select class="select select-bordered select-xs sm:select-sm" x-model.number="autoCallInterval" :disabled="gameStatus !== 'idle'"><option value="3">3s</option><option value="5">5s</option><option value="7">7s</option></select></label></div>
-            <button class="btn btn-success btn-xs sm:btn-sm" @click="startGame" 
+            <button class="btn btn-success btn-sm" @click="startGame" 
                 :disabled="gameStatus !== 'idle' || !isConnected || !gameRules.some(r => r.isActive) || totalMoneyCollected === null || totalMoneyCollected <= 0">
                 <i class="fas fa-play mr-1"></i> Start Game
             </button>
         </div>
         <div class="control-bar">
-            <button class="btn btn-primary btn-xs sm:btn-sm" @click="callNextNumber" :disabled="callingMode !== 'manual' || gameStatus !== 'running' || !isConnected"><i class="fas fa-arrow-right mr-1"></i> Call Next</button>
-            <button class="btn btn-warning btn-xs sm:btn-sm" @click="pauseGame" :disabled="callingMode !== 'auto' || gameStatus !== 'running' || !isConnected"><i class="fas fa-pause mr-1"></i> Pause</button>
-            <button class="btn btn-info btn-xs sm:btn-sm" @click="resumeGame" :disabled="callingMode !== 'auto' || gameStatus !== 'paused' || !isConnected"><i class="fas fa-play-circle mr-1"></i> Resume</button>
-            <button class="btn btn-error btn-xs sm:btn-sm" @click="stopGame" :disabled="gameStatus === 'idle' || gameStatus === 'stopped' || !isConnected"><i class="fas fa-stop mr-1"></i> Stop Game</button>
+            <button class="btn btn-primary btn-sm" @click="callNextNumber" :disabled="callingMode !== 'manual' || gameStatus !== 'running' || !isConnected"><i class="fas fa-arrow-right mr-1"></i> Call Next</button>
+            <button class="btn btn-warning btn-sm" @click="pauseGame" :disabled="callingMode !== 'auto' || gameStatus !== 'running' || !isConnected"><i class="fas fa-pause mr-1"></i> Pause</button>
+            <button class="btn btn-info btn-sm" @click="resumeGame" :disabled="callingMode !== 'auto' || gameStatus !== 'paused' || !isConnected"><i class="fas fa-play-circle mr-1"></i> Resume</button>
+            <button class="btn btn-error btn-sm" @click="stopGame" :disabled="gameStatus === 'idle' || gameStatus === 'stopped' || !isConnected"><i class="fas fa-stop mr-1"></i> Stop Game</button>
         </div>
     </div>
 
@@ -269,7 +269,7 @@
             themes: ["light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter"],
             numbers: Array.from({ length: 90 }, (_, i) => ({ number: i + 1, called: false })),
             calledNumbersHistory: [], 
-            availableNumbersCount: 90, 
+            availableNumbersCount: 90,
             latestCalledNumber: null,
             callingMode: 'manual', 
             autoCallInterval: 5, 
@@ -292,14 +292,14 @@
                 { id: 'rule7', name: 'Early 5', description: 'First Five Numbers called.', baseWeight: 20, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 20 },
                 { id: 'rule8', name: 'Early 7', description: 'First seven Numbers called of ticket.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 15 },
                 { id: 'rule9', name: 'Fat Ladies', description: 'All numbers with the digit 8 (e.g., 8, 18, ..., 88, 89).', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 5 },
-                { id: 'rule10', name: 'Full House', description: 'All 15 Numbers.', baseWeight: 30, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 30 },
+                { id: 'rule10', name: 'Full House', description: 'All 15 Numbers.', baseWeight: 30, maxPrizes: 1, coinsPerPrize: 0, isActive: true, originalWeight: 30 }, // Default one rule to active for testing
                 { id: 'rule11', name: 'Middle Line', description: 'Middle Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 15 },
                 { id: 'rule12', name: 'Top Line', description: 'Top Row: All Numbers.', baseWeight: 15, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 15 },
                 { id: 'rule13', name: 'Unlucky 1', description: 'Player who is last in having his/her first number striked.', baseWeight: 5, maxPrizes: 1, coinsPerPrize: 0, isActive: false, originalWeight: 5 },
             ],
             totalSelectedWeight: 0, 
             totalPotentialCoins: 0,
-            totalMoneyCollected: null,
+            totalMoneyCollected: 0, // Initialize to 0 to avoid null issues with <= 0 check
             valuePerCoin: null,
             ws: null,
             isConnected: false,
@@ -327,6 +327,8 @@
                 this.gameRules.forEach(rule => {
                     if (rule.originalWeight === undefined) rule.originalWeight = rule.baseWeight;
                 });
+                this.normalizeActiveRuleWeights(); // Calculate initial weights based on defaults
+                this.updateRuleCalculations();   // Calculate initial coins based on defaults
                 
                 if (window.location.protocol === "https:") {
                     this.serverUrl = `wss://tambola-backend.onrender.com`;
@@ -372,7 +374,7 @@
                        this.showGameMessage('Disconnected. Attempting to reconnect...', 'warning', null);
                         if (this.reconnectAttempts < this.maxReconnectAttempts) {
                             this.reconnectAttempts++;
-                            setTimeout(() => this.connectWebSocket(), 3000 * this.reconnectAttempts); // Increased backoff
+                            setTimeout(() => this.connectWebSocket(), 3000 * this.reconnectAttempts); 
                         } else {
                             this.gameStatus = 'connecting_failed';
                             this.showGameMessage('Could not reconnect to server. Please refresh.', 'error', null);
@@ -406,21 +408,22 @@
                         this.adminId = payload.adminId;
                         this.showGameMessage(`Successfully in room: ${payload.roomId} as Admin.`, 'success', 3000);
                         if (payload.roomDetails) {
-                            // Explicitly update players from roomDetails
                             this.players = payload.roomDetails.players.map(p => ({...p, ticketCount: p.ticketCount || p.tickets?.length || 0 })) || [];
                             this.gameStatus = payload.roomDetails.gameStatus || 'idle'; 
                             this.calledNumbersHistory = payload.roomDetails.numbersCalled || [];
                             this.latestCalledNumber = this.calledNumbersHistory.length > 0 ? this.calledNumbersHistory[this.calledNumbersHistory.length -1] : null;
                             this.updateNumbersGrid(); 
                             
+                            // Sync rules: If server sends rules, use them. Otherwise, client keeps its defaults until explicitly saved/loaded
                             if (payload.roomDetails.rules && payload.roomDetails.rules.length > 0) {
-                                this.gameRules = payload.roomDetails.rules.map(sr => {
-                                    const localRule = this.gameRules.find(lr => lr.id === sr.id);
-                                    return {...localRule, ...sr, originalWeight: sr.originalWeight !== undefined ? sr.originalWeight : (localRule ? localRule.originalWeight : sr.baseWeight) };
+                                // Preserve originalWeight from client's default if server doesn't send it
+                                this.gameRules = payload.roomDetails.rules.map(serverRule => {
+                                    const localRule = this.gameRules.find(lr => lr.id === serverRule.id);
+                                    return {
+                                        ...localRule, // Start with local defaults (like originalWeight)
+                                        ...serverRule // Override with server data
+                                    };
                                 });
-                            } else {
-                                // If server has no rules, ensure client defaults are used for calculation
-                                // This might already be handled by how gameRules is initialized
                             }
                             this.totalMoneyCollected = payload.roomDetails.totalMoneyCollected === undefined ? null : parseFloat(payload.roomDetails.totalMoneyCollected);
                             this.callingMode = payload.roomDetails.callingMode || 'manual';
@@ -479,7 +482,7 @@
                         this.showGameMessage('Game rules have been updated by server.', 'info');
                         break;
                     case 'RULES_SAVE_CONFIRMED': 
-                        this.showGameMessage(payload.message || 'Rules configuration saved on server.', 'success'); 
+                        this.showGameMessage(payload.message || 'Rules configuration saved on server.', 'success', 3000); 
                         break;
                     case 'WINNER_ANNOUNCEMENT':
                         if (!this.winners.find(w => w.claimId === payload.claimId || (w.playerName === payload.playerName && w.prizeName === payload.prizeName && w.timestamp === payload.timestamp))) { 
@@ -499,7 +502,12 @@
                     case 'ADMIN_DISCONNECTED': 
                         this.showGameMessage(`Admin ${payload.adminName} disconnected. You are the current admin.`, 'warning');
                         break;
-                    case 'ERROR': this.showGameMessage(`Server Error: ${payload.message}`, 'error', 5000); break;
+                    case 'ERROR': 
+                        this.showGameMessage(`Server Error: ${payload.message}`, 'error', 5000); 
+                        if (payload.message.toLowerCase().includes("room not found") || payload.message.toLowerCase().includes("admin not ready")) {
+                            this.gameStatus = 'error'; // A specific state for this
+                        }
+                        break;
                     case 'INFO': this.showGameMessage(`Server Info: ${payload.message}`, 'info', 3000); break;
                     default: console.warn('Admin received unknown message type:', type);
                 }
@@ -508,10 +516,17 @@
             updateNumbersGrid() { this.numbers.forEach(numObj => { numObj.called = this.calledNumbersHistory.includes(numObj.number); }); },
 
             startGame() {
-                if (this.gameStatus !== 'idle' || !this.isConnected) { this.showGameMessage("Cannot start: Not connected or game not idle.", "warning"); return; }
-                if (!this.gameRules.some(r => r.isActive)) { this.showGameMessage("Activate & configure at least one rule.", "error"); this.currentView = 'rules'; return; }
-                if (this.totalMoneyCollected === null || this.totalMoneyCollected <= 0) { this.showGameMessage("Enter a valid total money collected.", "error"); this.currentView = 'rules'; return; }
-                this.sendWebSocketMessage('ADMIN_START_GAME', { rulesConfig: this.gameRules, totalMoneyCollected: this.totalMoneyCollected, callingMode: this.callingMode, autoCallInterval: this.autoCallInterval });
+                if (!this.isConnected) { this.showGameMessage("Not connected to server.", "error"); return; }
+                if (this.gameStatus !== 'idle') { this.showGameMessage("Game can only be started when idle.", "warning"); return; }
+                if (!this.gameRules.some(r => r.isActive)) { this.showGameMessage("Activate & configure at least one rule before starting.", "error"); this.currentView = 'rules'; return; }
+                if (this.totalMoneyCollected === null || this.totalMoneyCollected <= 0) { this.showGameMessage("Enter a valid total amount collected for prizes.", "error"); this.currentView = 'rules'; return; }
+                
+                this.sendWebSocketMessage('ADMIN_START_GAME', { 
+                    rulesConfig: this.gameRules, 
+                    totalMoneyCollected: this.totalMoneyCollected, 
+                    callingMode: this.callingMode, 
+                    autoCallInterval: this.autoCallInterval 
+                });
             },
             callNextNumber() { if (this.gameStatus !== 'running' || this.callingMode !== 'manual' || !this.isConnected) return; this.sendWebSocketMessage('ADMIN_CALL_NUMBER', {}); },
             pauseGame() { if(this.gameStatus !== 'running' || this.callingMode !== 'auto' || !this.isConnected) return; this.sendWebSocketMessage('ADMIN_PAUSE_GAME', {}); },
