@@ -11,51 +11,113 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
     <style>
         body {
-            font-family: 'Inter', sans-serif; display: flex; flex-direction: column;
-            min-height: 100vh; padding-top: 70px; padding-bottom: 100px;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            /* Add padding to prevent content from being hidden by top and bottom bars */
+            padding-top: 70px; /* Approx height of top nav */
+            padding-bottom: 100px; /* Approx height of bottom nav */
         }
-        .flex-grow { flex-grow: 1; }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        .flex-grow {
+            flex-grow: 1;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
         .drawer-side > *:not(label) { overflow-y: auto; }
 
+        /* Ticket Styling */
         .ticket-grid {
-            display: grid; grid-template-columns: repeat(9, 1fr); gap: 2px;
-            border: 1px solid oklch(var(--bc)); border-radius: 0.5rem; padding: 0.25rem;
-            background-color: oklch(var(--b2)); margin-bottom: 1rem; max-width: 500px; margin-left: auto; margin-right: auto;
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 2px; /* Smaller gap for tighter ticket look */
+            border: 1px solid oklch(var(--bc)); /* Border color from DaisyUI */
+            border-radius: 0.5rem; /* rounded-lg */
+            padding: 0.25rem; /* p-1 */
+            background-color: oklch(var(--b2)); /* Base-200 for ticket background */
+            margin-bottom: 1rem; /* Space between tickets */
+            max-width: 500px; /* Max width for a ticket */
+            margin-left: auto;
+            margin-right: auto;
         }
         .ticket-cell {
-            display: flex; align-items: center; justify-content: center;
-            aspect-ratio: 1 / 1; min-height: 35px; border: 1px solid oklch(var(--b3));
-            border-radius: 0.25rem; font-weight: bold; cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            aspect-ratio: 1 / 1;
+            min-height: 35px; /* Ensure cells are not too small */
+            border: 1px solid oklch(var(--b3)); /* Base-300 for cell borders */
+            border-radius: 0.25rem; /* rounded-sm */
+            font-weight: bold;
+            cursor: pointer; /* For manual marking */
             transition: background-color 0.3s, color 0.3s, transform 0.2s;
-            background-color: oklch(var(--b1));
+            background-color: oklch(var(--b1)); /* Base-100 for empty/number cells */
         }
-        .ticket-cell.empty { background-color: oklch(var(--b2)); cursor: default; }
+        .ticket-cell.empty {
+            background-color: oklch(var(--b2)); /* Slightly different for empty cells */
+            cursor: default;
+        }
         .ticket-cell.marked {
-            background-color: oklch(var(--p)); color: oklch(var(--pc));
-            transform: scale(1.05); box-shadow: 0 0 8px oklch(var(--p));
+            background-color: oklch(var(--p)); /* Primary color for marked */
+            color: oklch(var(--pc)); /* Primary content color */
+            transform: scale(1.05);
+            box-shadow: 0 0 8px oklch(var(--p));
         }
-        .ticket-cell.marked-boogie { background-color: oklch(var(--er)); color: oklch(var(--ec)); animation: shake 0.5s; }
+        .ticket-cell.marked-boogie { /* For incorrect manual marking */
+            background-color: oklch(var(--er)); /* Error color */
+            color: oklch(var(--ec));
+            animation: shake 0.5s;
+        }
         @keyframes shake {
-            0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); }
-            50% { transform: translateX(5px); } 75% { transform: translateX(-5px); }
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
         }
+
+        /* Called Numbers Bar */
         .called-numbers-bar {
-            display: flex; overflow-x: auto; padding: 0.5rem; gap: 0.5rem;
-            background-color: oklch(var(--b2)); border-radius: 0.5rem; margin-bottom: 1rem;
+            display: flex;
+            overflow-x: auto; /* Horizontal scroll */
+            padding: 0.5rem;
+            gap: 0.5rem;
+            background-color: oklch(var(--b2));
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
         }
-        .called-number-badge { flex-shrink: 0; }
-        .top-nav-player { position: fixed; top: 0; left: 0; right: 0; z-index: 50; }
+        .called-number-badge {
+            flex-shrink: 0; /* Prevent badges from shrinking */
+        }
+        /* Floating Nav Bars */
+        .top-nav-player {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 50;
+        }
         .bottom-nav-player-controls {
-            position: fixed; bottom: 0; left: 0; right: 0;
-            background-color: oklch(var(--b1)); padding: 0.75rem; box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
-            z-index: 45; display: flex; flex-wrap: wrap; gap: 0.5rem;
-            align-items: center; justify-content: space-around;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: oklch(var(--b1));
+            padding: 0.75rem;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            z-index: 45;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+            justify-content: space-around; /* Evenly space controls */
         }
-        /* Game message styling */
+         /* Game message styling */
         .game-message-popup {
             position: fixed;
             top: 80px; /* Below navbar */
@@ -112,7 +174,18 @@
             <main class="flex-grow p-4 overflow-y-auto">
                 <div x-show="currentView === 'home'" x-transition>
                     <div class="mb-6">
-                        <h3 class="text-xl font-semibold mb-2 text-center">Room: <span x-text="roomId"></span> - Admin: <span x-text="adminName || 'N/A'"></span> - Status: <span class="badge badge-neutral" x-text="gameStatus"></span></h3>
+                        <h3 class="text-xl font-semibold mb-1 text-center">Room: <span x-text="roomId" class="font-mono"></span></h3>
+                        <div class="text-center mb-1">Admin: <span x-text="adminName || 'N/A'"></span></div>
+                        <div class="text-center mb-3">Status: <span class="badge badge-lg"
+                            :class="{
+                                'badge-neutral': gameStatus === 'idle' || gameStatus === 'connecting' || gameStatus === 'disconnected',
+                                'badge-success': gameStatus === 'running',
+                                'badge-warning': gameStatus === 'paused',
+                                'badge-error': gameStatus === 'stopped' || gameStatus === 'error'
+                            }"
+                            x-text="gameStatus"></span>
+                        </div>
+
                         <div class="flex items-center justify-center mb-3">
                             <span class="mr-2">Latest:</span>
                             <span class="badge badge-accent badge-lg p-4 text-2xl" x-text="latestCalledNumber || '---'"></span>
@@ -121,24 +194,23 @@
                             <template x-if="calledNumbersHistory.length === 0">
                                 <span class="italic text-base-content/70">No numbers called yet.</span>
                             </template>
-                            <template x-for="num in calledNumbersHistory.slice().reverse()" :key="num">
-                                <span class="badge badge-neutral called-number-badge" x-text="num"></span>
+                            <template x-for="num in calledNumbersHistory.slice().reverse()" :key="num"> <span class="badge badge-neutral called-number-badge" x-text="num"></span>
                             </template>
                         </div>
                     </div>
 
                     <div class="space-y-6">
-                        <template x-if="tickets.length === 0 && gameStatus !== 'idle' && gameStatus !== 'stopped'">
+                        <template x-if="tickets.length === 0 && gameStatus !== 'idle' && gameStatus !== 'stopped' && gameStatus !== 'connecting' && gameStatus !== 'disconnected'">
                             <div class="text-center p-6 bg-base-100 rounded-lg shadow">
                                 <p class="text-lg">You don't have any tickets yet!</p>
-                                <button @click="requestNewTicket" class="btn btn-primary mt-4" :disabled="waitingForTicketApproval || tickets.length >= 5">
+                                <button @click="requestNewTicket" class="btn btn-primary mt-4" :disabled="waitingForTicketApproval || tickets.length >= 5 || gameStatus !== 'running'">
                                     Request a Ticket <span x-show="waitingForTicketApproval">(Pending...)</span>
                                 </button>
                             </div>
                         </template>
-                         <template x-if="tickets.length === 0 && (gameStatus === 'idle' || gameStatus === 'stopped')">
+                         <template x-if="tickets.length === 0 && (gameStatus === 'idle' || gameStatus === 'stopped' || gameStatus === 'connecting' || gameStatus === 'disconnected')">
                              <div class="text-center p-6 bg-base-100 rounded-lg shadow">
-                                <p class="text-lg" x-text="gameStatus === 'idle' ? 'Waiting for game to start...' : 'Game has ended.'"></p>
+                                <p class="text-lg" x-text="gameStatusMessage"></p>
                              </div>
                          </template>
                         <template x-for="(ticket, ticketIndex) in tickets" :key="ticket.id">
@@ -173,7 +245,7 @@
                             <thead><tr><th>#</th><th>Player Name</th><th>Tickets</th></tr></thead>
                             <tbody>
                                 <template x-if="otherPlayers.length === 0 && !adminNameInPlayerList"><tr><td colspan="3" class="text-center">No other players visible yet.</td></tr></template>
-                                <tr x-show="adminNameInPlayerList"><td>👑</td><td x-text="adminNameInPlayerList"></td><td>Admin</td></tr>
+                                <tr x-show="adminNameInPlayerList"><td>👑</td><td x-text="adminNameInPlayerList.split(' (')[0]"></td><td>Admin <span x-show="adminNameInPlayerList.includes('(Disconnected)')" class="text-xs text-error">(Disconnected)</span></td></tr>
                                 <template x-for="(player, index) in otherPlayers" :key="player.id">
                                     <tr>
                                         <td x-text="index + 1"></td>
@@ -192,8 +264,7 @@
                             <p class="text-center italic bg-base-100 p-4 rounded-lg shadow">Rules not loaded yet or no rules defined by admin.</p>
                         </template>
                         <template x-for="rule in gameRules" :key="rule.id">
-                            <div class="card bg-base-100 shadow-md" :class="{'opacity-70': !rule.isActive}">
-                                <div class="card-body p-4">
+                            <div class="card bg-base-100 shadow-md" :class="{'opacity-70': !rule.isActive}"> <div class="card-body p-4">
                                     <h3 class="card-title text-lg" x-text="rule.name"></h3>
                                     <p class="text-xs text-base-content/70" x-text="rule.description"></p>
                                     <div x-show="rule.isActive" class="text-sm mt-1">
@@ -213,13 +284,13 @@
                             <thead><tr><th>Prize Claimed</th><th>Status</th><th>Reason (if rejected)</th></tr></thead>
                             <tbody>
                                 <template x-if="myClaims.length === 0"><tr><td colspan="3" class="text-center">You haven't made any claims yet.</td></tr></template>
-                                <template x-for="claim in myClaims" :key="claim.claimId"> <tr>
+                                <template x-for="claim in myClaims" :key="claim.claimId">
+                                    <tr>
                                         <td x-text="claim.prizeName"></td>
                                         <td>
                                             <span class="badge"
                                                   :class="{'badge-success': claim.status === 'approved', 'badge-error': claim.status === 'rejected', 'badge-warning': claim.status === 'pending_admin_approval' || claim.status === 'pending'}"
-                                                  x-text="claim.status.replace('_', ' ')">
-                                            </span>
+                                                  x-text="claim.status.replace(/_/g, ' ')"> </span>
                                         </td>
                                         <td x-text="claim.reason || '---'"></td>
                                     </tr>
@@ -235,8 +306,7 @@
                             <thead><tr><th>Prize Won</th><th>Value Received</th></tr></thead>
                             <tbody>
                                 <template x-if="myPrizes.length === 0"><tr><td colspan="2" class="text-center">You haven't won any prizes yet.</td></tr></template>
-                                <template x-for="prize in myPrizes" :key="prize.id">
-                                    <tr><td x-text="prize.prizeName"></td><td x-text="prize.coins.toFixed(2)"></td></tr>
+                                <template x-for="prize in myPrizes" :key="prize.id"> <tr><td x-text="prize.prizeName"></td><td x-text="prize.coins.toFixed(2)"></td></tr>
                                 </template>
                             </tbody>
                         </table>
@@ -302,13 +372,17 @@
                      <button
                         class="btn btn-outline btn-primary w-full justify-start"
                         @click="submitPrizeClaim(prize.id)"
-                        :disabled="!selectedTicketIdForClaim || prizeAlreadyClaimedOrWon(prize.id)"> <span x-text="prize.name"></span>
+                        :disabled="!selectedTicketIdForClaim || prizeAlreadyClaimedOrWon(prize.id)">
+                        <span x-text="prize.name"></span>
                         (<span x-text="prize.coinsPerPrize ? prize.coinsPerPrize.toFixed(2) : 'N/A'"></span> value)
-                        <span x-show="prizeAlreadyClaimedOrWon(prize.id)" class="text-xs text-neutral-content/50 ml-auto">(Claimed)</span>
+                        <span x-show="prizeAlreadyClaimedOrWon(prize.id)" class="text-xs text-neutral-content/50 ml-auto">(Claimed/Won)</span>
                     </button>
                 </template>
-                <template x-if="availablePrizesToClaim.length === 0">
-                    <p class="italic text-center">No prizes currently available to claim based on active rules.</p>
+                <template x-if="availablePrizesToClaim.length === 0 && gameRules.length > 0">
+                    <p class="italic text-center">All available prizes may have been claimed or won, or do not match your tickets.</p>
+                </template>
+                 <template x-if="gameRules.length === 0">
+                    <p class="italic text-center">No prize rules defined by admin for this game.</p>
                 </template>
             </div>
             <div class="modal-action"> <form method="dialog"><button class="btn">Close</button></form> </div>
@@ -320,72 +394,101 @@
     <script>
     function playerGame() {
         return {
+            // Core Player Info
             playerName: '',
-            playerId: null, // From server
+            playerId: null,
             roomId: '',
-            adminName: '', // From server
-            adminNameInPlayerList: null, // Separate for display in player list
-            socket: null, // WebSocket
+            adminName: '', // Name of the admin for display
+            adminNameInPlayerList: null, // For player list display with status
+
+            // WebSocket and UI State
+            socket: null,
             coinsWon: 0,
             isDrawerOpen: false,
             currentView: 'home',
-            themes: ["light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter"],
+            themes: [ /* Theme list from previous correct version */
+                "light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter"
+            ],
 
-            tickets: [], // { id, numbers, marked } from server
+            // Game Data
+            tickets: [],
             calledNumbersHistory: [],
             latestCalledNumber: null,
             autoMarkNumbers: true,
-            tempBoogieCells: [],
+            tempBoogieCells: [], // For visual feedback on incorrect manual marks
 
-            otherPlayers: [], // { id, name, ticketCount } from server
-            gameRules: [],    // { id, name, description, coinsPerPrize, maxPrizes, isActive }
-            myClaims: [],     // { claimId, prizeName, status, reason } - claimId is server-generated
-            myPrizes: [],     // { id (prize instance id), prizeName, coins }
+            // Room & Game Info from Server
+            otherPlayers: [],
+            gameRules: [],
+            myClaims: [],
+            myPrizes: [],
 
+            // UI Interaction State
             waitingForTicketApproval: false,
-            canClaimPrize: false, // True if game running and active rules exist
-            availablePrizesToClaim: [], // Filtered active gameRules
-            selectedTicketIdForClaim: null, // For claim modal
+            canClaimPrize: false,
+            availablePrizesToClaim: [],
+            selectedTicketIdForClaim: null,
 
-            gameStatus: 'connecting', // 'connecting', 'idle', 'running', 'paused', 'stopped'
+            // Game Status & Messaging
+            gameStatus: 'connecting', // 'connecting', 'idle', 'running', 'paused', 'stopped', 'disconnected', 'error'
             gameMessage: '',
-            gameMessageType: 'info', // 'info', 'success', 'warning', 'error'
+            gameMessageType: 'info',
             gameMessageTimeout: null,
 
+            // Computed property for game status message
+            get gameStatusMessage() {
+                switch(this.gameStatus) {
+                    case 'connecting': return 'Connecting to server...';
+                    case 'idle': return 'Waiting for the game to start...';
+                    case 'stopped': return 'The game has ended. Thank you for playing!';
+                    case 'disconnected': return 'Disconnected from server. Please refresh.';
+                    case 'error': return 'A connection error occurred. Please refresh.';
+                    default: return `Game status: ${this.gameStatus}`;
+                }
+            },
+
+
+            // Initialization
             init() {
                 const savedTheme = localStorage.getItem('theme') || 'light';
-                this.setTheme(savedTheme, null, false);
+                this.setTheme(savedTheme, null, false); // THEME SELECTOR LOGIC
 
                 const urlParams = new URLSearchParams(window.location.search);
                 this.playerName = localStorage.getItem('playerName') || urlParams.get('playerName') || null;
                 this.roomId = localStorage.getItem('roomId') || urlParams.get('roomId') || null;
 
                 if (!this.playerName || !this.roomId) {
-                    this.showGameMessage("Player Name or Room ID missing. Redirecting to join page...", "error", null);
+                    this.showGameMessage("Player Name or Room ID missing. Please join a room first.", "error", null);
+                    this.gameStatus = 'error';
+                    // Optional: Redirect to join page after a delay
                     // setTimeout(() => { window.location.href = 'player_join.html'; }, 3000);
                     return;
                 }
                 this.connectWebSocket();
-                this.$watch('tickets', () => { // When tickets array changes, update selectedTicketIdForClaim
-                    if (this.tickets.length > 0 && !this.selectedTicketIdForClaim) {
-                        this.selectedTicketIdForClaim = this.tickets[0].id;
-                    } else if (this.tickets.length === 0) {
+
+                // Watch for changes in tickets to auto-select first ticket for claim if none selected
+                this.$watch('tickets', (newTickets) => {
+                    if (newTickets.length > 0 && !this.selectedTicketIdForClaim) {
+                        this.selectedTicketIdForClaim = newTickets[0].id;
+                    } else if (newTickets.length === 0) {
                         this.selectedTicketIdForClaim = null;
                     }
                 });
             },
 
+            // WebSocket Handling
             connectWebSocket() {
                 this.gameStatus = 'connecting';
+                // IMPORTANT: Replace with your actual backend URL for production
                 const socketURL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
                     ? `ws://${window.location.hostname}:3000`
-                    : `wss://tambola-backend.onrender.com`; // REPLACE with your actual backend URL
+                    : `wss://tambola-backend.onrender.com`;
 
                 this.socket = new WebSocket(socketURL);
 
                 this.socket.onopen = () => {
                     console.log('Player WebSocket: Connection established.');
-                    this.showGameMessage('Connected to game server!', 'success', 2000);
+                    // Message shown on PLAYER_JOIN_SUCCESS
                     this.socket.send(JSON.stringify({
                         type: 'PLAYER_JOIN_ROOM',
                         payload: { playerName: this.playerName, roomId: this.roomId }
@@ -398,42 +501,41 @@
                 };
 
                 this.socket.onclose = (event) => {
-                    console.warn('Player WebSocket: Connection closed.', event.reason);
+                    console.warn('Player WebSocket: Connection closed.', event.code, event.reason);
                     this.gameStatus = 'disconnected';
-                    this.showGameMessage('Disconnected from server. Please refresh or try rejoining.', 'error', null);
-                    // Optional: implement more sophisticated reconnection logic
+                    this.showGameMessage('Disconnected from server. Please refresh to rejoin.', 'error', null);
                 };
 
                 this.socket.onerror = (error) => {
                     console.error('Player WebSocket: Error:', error);
                     this.gameStatus = 'error';
-                    this.showGameMessage('WebSocket connection error. Server might be unavailable.', 'error', null);
+                    this.showGameMessage('WebSocket connection error. Server might be unavailable or busy.', 'error', null);
                 };
             },
 
             handleWebSocketMessage(data) {
-                console.log("Player received:", data);
+                console.log("Player received WS message:", data); // For debugging
                 const { type, payload } = data;
                 switch(type) {
                     case 'PLAYER_JOIN_SUCCESS':
                         this.playerId = payload.playerId;
-                        this.playerName = payload.playerName; // Confirm from server
+                        this.playerName = payload.playerName;
                         this.tickets = payload.tickets || [];
                         this.gameStatus = payload.gameStatus || 'idle';
                         this.calledNumbersHistory = payload.calledNumbers || [];
                         this.gameRules = payload.rules || [];
                         this.adminName = payload.adminName || 'N/A';
+                        this.adminNameInPlayerList = payload.adminName; // For player list
                         this.otherPlayers = payload.playersInRoom?.filter(p => p.id !== this.playerId) || [];
-                         this.adminNameInPlayerList = payload.adminName;
 
-
-                        this.showGameMessage(`Joined Room ${this.roomId}. Game Admin: ${this.adminName}.`, 'success');
+                        this.showGameMessage(`Joined Room ${this.roomId}. Admin: ${this.adminName}.`, 'success');
                         if (this.calledNumbersHistory.length > 0) {
                             this.latestCalledNumber = this.calledNumbersHistory[this.calledNumbersHistory.length - 1];
                             if(this.autoMarkNumbers) { this.calledNumbersHistory.forEach(num => this.markNumberOnTickets(num)); }
                         }
                         this.updateAvailablePrizes();
                         this.updateCanClaimPrizeStatus();
+                        if (this.tickets.length > 0) this.selectedTicketIdForClaim = this.tickets[0].id; // Default selected ticket
                         break;
                     case 'NUMBER_CALLED':
                         this.latestCalledNumber = payload.number;
@@ -443,18 +545,19 @@
                         break;
                     case 'RULES_UPDATED':
                         this.gameRules = payload.rules || [];
-                        this.updateAvailablePrizes();
-                        this.showGameMessage("Game rules have been updated by the admin.", "info");
+                        this.updateAvailablePrizes(); // Recalculate claimable prizes
+                        this.showGameMessage("Game rules have been updated.", "info");
                         break;
                     case 'TICKET_APPROVED':
                         this.tickets.push(payload.ticket);
                         this.waitingForTicketApproval = false;
-                        this.showGameMessage("New ticket added by admin!", "success");
+                        this.showGameMessage("New ticket added by admin!", "success", 3000);
                         this.triggerConfetti();
+                        if (this.tickets.length === 1) this.selectedTicketIdForClaim = this.tickets[0].id; // Auto-select if it's the first
                         break;
                     case 'TICKET_REJECTED':
                         this.waitingForTicketApproval = false;
-                        this.showGameMessage(`Ticket request rejected. Reason: ${payload.reason || 'Not specified'}.`, "warning");
+                        this.showGameMessage(`Ticket request rejected. ${payload.reason || ''}`, "warning", 4000);
                         break;
                     case 'CLAIM_STATUS_UPDATE':
                         const claimIndex = this.myClaims.findIndex(c => c.claimId === payload.claimId);
@@ -462,36 +565,43 @@
                             this.myClaims[claimIndex].status = payload.status;
                             this.myClaims[claimIndex].reason = payload.reason || '';
                             if (payload.status === 'approved') {
-                                this.myPrizes.push({ id: 'prize_' + payload.claimId, prizeName: this.myClaims[claimIndex].prizeName, coins: payload.coinsAwarded });
-                                this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));
-                                this.showGameMessage(`Claim for ${this.myClaims[claimIndex].prizeName} APPROVED! +${payload.coinsAwarded.toFixed(2)}`, "success", 5000);
+                                const approvedPrizeName = this.myClaims[claimIndex].prizeName;
+                                // Check if this prize instance is already in myPrizes to avoid duplicates
+                                if (!this.myPrizes.some(p => p.id === 'prize_' + payload.claimId)) {
+                                    this.myPrizes.push({ id: 'prize_' + payload.claimId, prizeName: approvedPrizeName, coins: payload.coinsAwarded });
+                                    this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));
+                                }
+                                this.showGameMessage(`Claim for ${approvedPrizeName} APPROVED! +${payload.coinsAwarded.toFixed(2)}`, "success", 5000);
                                 this.triggerConfetti();
                             } else {
                                 this.showGameMessage(`Claim for ${this.myClaims[claimIndex].prizeName} REJECTED. ${payload.reason || ''}`, "error", 5000);
                             }
-                        } else if (payload.status === 'approved') { // Claim approved but not in local list (e.g. after refresh)
-                             this.myPrizes.push({ id: 'prize_' + payload.claimId, prizeName: payload.prizeName, coins: payload.coinsAwarded });
-                             this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));
+                        } else if (payload.status === 'approved') { // If claim was somehow not in local list but server approved
+                             if (!this.myPrizes.some(p => p.id === 'prize_' + payload.claimId)) {
+                                this.myPrizes.push({ id: 'prize_' + payload.claimId, prizeName: payload.prizeName, coins: payload.coinsAwarded });
+                                this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));
+                             }
                              this.showGameMessage(`${payload.prizeName} prize APPROVED! +${payload.coinsAwarded.toFixed(2)}`, "success", 5000);
                         }
-                        this.updateAvailablePrizes(); // Re-check available prizes after a claim status update
+                        this.updateAvailablePrizes(); // Re-check available prizes
                         break;
                     case 'PLAYER_LIST_UPDATE':
                         this.otherPlayers = payload.players.filter(p => p.id !== this.playerId);
                         break;
-                    case 'ADMIN_STATUS_UPDATE':
-                        this.adminName = payload.adminName;
+                    case 'ADMIN_STATUS_UPDATE': // Admin connected/disconnected
+                        this.adminName = payload.adminName; // Update admin name display
                         this.adminNameInPlayerList = payload.isConnected ? payload.adminName : `${payload.adminName} (Disconnected)`;
-                        this.showGameMessage(payload.isConnected ? `Admin ${payload.adminName} is connected.` : `Admin ${payload.adminName} has disconnected.`, "info");
+                        this.showGameMessage(payload.isConnected ? `Admin ${payload.adminName} is connected.` : `Admin ${payload.adminName} has disconnected. Game might be paused.`, "info");
                         break;
                     case 'GAME_STARTED':
                         this.gameStatus = 'running';
                         this.calledNumbersHistory = []; this.latestCalledNumber = null;
-                        this.tickets.forEach(t => t.marked = []); // Clear marks
-                        this.myClaims = []; this.myPrizes = []; this.coinsWon = 0;
+                        this.tickets.forEach(t => t.marked = []); // Clear marks on existing tickets
+                        this.myClaims = []; this.myPrizes = []; this.coinsWon = 0; // Reset claims and winnings
                         this.gameRules = payload.rules || [];
                         this.adminName = payload.adminName || this.adminName;
-                        this.showGameMessage(`Game has started! Good luck!`, "success", 5000);
+                        this.adminNameInPlayerList = this.adminName;
+                        this.showGameMessage(`Game has started by ${this.adminName}! Good luck!`, "success", 5000);
                         this.updateAvailablePrizes();
                         this.updateCanClaimPrizeStatus();
                         break;
@@ -504,58 +614,57 @@
                         if(payload.finalCalledNumbers) this.calledNumbersHistory = payload.finalCalledNumbers;
                         if(this.calledNumbersHistory.length > 0) this.latestCalledNumber = this.calledNumbersHistory[this.calledNumbersHistory.length - 1];
                         this.showGameMessage(type === 'GAME_STOPPED' ? "Game has been stopped by admin." : "All numbers called! Game Over!", "info", null);
-                        this.updateCanClaimPrizeStatus();
+                        this.updateCanClaimPrizeStatus(); // Claims usually disabled when game stops
                         break;
-                    case 'WINNER_ANNOUNCEMENT':
+                    case 'WINNER_ANNOUNCEMENT': // General announcement for all players
                         this.showGameMessage(`${payload.playerName} won ${payload.prizeName} (+${payload.coins.toFixed(2)})!`, 'info', 7000);
-                        // If this player is the winner, it's handled by CLAIM_STATUS_UPDATE. This is for general announcement.
+                        // If this announcement is for a prize *this* player won, their specific 'CLAIM_STATUS_UPDATE' handles individual prize list.
+                        // This might also be used by admin to re-announce, or for prizes not directly claimed by player UI.
                         break;
-                    case 'PLAYER_CLAIM_SUBMITTED': // Confirmation that claim was sent to admin
-                        // Add to myClaims if not already there from optimistic update
+                    case 'PLAYER_CLAIM_SUBMITTED':
                         if (!this.myClaims.find(c => c.claimId === payload.claimId)) {
-                             this.myClaims.push({ claimId: payload.claimId, prizeName: payload.prizeName, status: payload.status, reason: '' });
+                             this.myClaims.push({claimId: payload.claimId, prizeName: payload.prizeName, status: payload.status, reason: ''});
                         }
-                        this.showGameMessage(`Your claim for ${payload.prizeName} has been submitted to the admin.`, "info");
+                        this.showGameMessage(`Your claim for ${payload.prizeName} sent to admin.`, "info");
                         break;
                     case 'ERROR': this.showGameMessage(`Server Error: ${payload.message}`, 'error', null); break;
                     case 'INFO': this.showGameMessage(`Server Info: ${payload.message}`, 'info'); break;
-                    default: console.warn("Received unknown WebSocket message type:", data.type);
+                    default: console.warn("Player received unknown WebSocket message type:", data.type);
                 }
             },
 
+            // Game Actions & UI Logic
             markNumberOnTickets(numberToMark) {
                 this.tickets.forEach(ticket => {
                     let numberExistsOnTicket = false;
                     for (const row of ticket.numbers) { if (row.includes(numberToMark)) { numberExistsOnTicket = true; break; } }
                     if (numberExistsOnTicket && !ticket.marked.includes(numberToMark)) {
                         ticket.marked.push(numberToMark);
-                        // this.triggerConfettiAtCell(ticket.id, numberToMark); // Optional for individual cell
                     }
                 });
             },
             manualMarkNumber(ticketId, number) {
                 if (number === null || this.gameStatus !== 'running') return;
-                if (this.autoMarkNumbers) { this.showGameMessage("Auto-mark is ON. Numbers are marked automatically.", "info"); return; }
+                if (this.autoMarkNumbers) { this.showGameMessage("Auto-mark is ON. Called numbers are marked automatically.", "info"); return; }
 
                 const ticket = this.tickets.find(t => t.id === ticketId);
                 if (ticket) {
                     if (this.calledNumbersHistory.includes(number)) {
                         const index = ticket.marked.indexOf(number);
-                        if (index > -1) ticket.marked.splice(index, 1); // Unmark
-                        else { ticket.marked.push(number); this.triggerConfetti(); } // Mark
+                        if (index > -1) ticket.marked.splice(index, 1);
+                        else { ticket.marked.push(number); this.triggerConfetti(); }
                     } else {
-                        this.showGameMessage(`Number ${number} has not been called! Boogie!`, "error");
+                        this.showGameMessage(`Number ${number} has not been called yet! Boogie!`, "error");
                         const boogieCellId = ticketId + '-' + number;
                         this.tempBoogieCells.push(boogieCellId);
                         setTimeout(() => { this.tempBoogieCells = this.tempBoogieCells.filter(id => id !== boogieCellId); }, 1000);
                     }
-                    // this.updateCanClaimPrizeStatus(); // Manual marking doesn't auto-check claims
                 }
             },
-            toggleAutoMarkBehavior() { // Renamed from toggleAutoMarkMessage
+            toggleAutoMarkBehavior() {
                 if (this.autoMarkNumbers) {
-                    this.showGameMessage("Auto-marking ENABLED.", "info");
-                    this.calledNumbersHistory.forEach(calledNum => this.markNumberOnTickets(calledNum)); // Mark all past numbers
+                    this.showGameMessage("Auto-marking ENABLED. Called numbers will be marked.", "info");
+                    this.calledNumbersHistory.forEach(calledNum => this.markNumberOnTickets(calledNum));
                 } else {
                     this.showGameMessage("Auto-marking DISABLED. Mark your tickets manually.", "warning");
                 }
@@ -566,62 +675,75 @@
                 if (this.socket && this.socket.readyState === WebSocket.OPEN) {
                     this.socket.send(JSON.stringify({ type: 'PLAYER_REQUEST_TICKET', payload: { playerId: this.playerId } }));
                     this.waitingForTicketApproval = true;
-                    this.showGameMessage("Requesting new ticket...", "info");
-                } else { this.showGameMessage("Not connected to server.", "error"); }
+                    this.showGameMessage("Requesting new ticket from admin...", "info");
+                } else { this.showGameMessage("Not connected to server. Cannot request ticket.", "error"); }
             },
             openClaimModal() {
                 if (this.tickets.length === 0) { this.showGameMessage("You have no tickets to claim a prize on.", "warning"); return; }
-                if (!this.selectedTicketIdForClaim && this.tickets.length > 0) this.selectedTicketIdForClaim = this.tickets[0].id; // Default to first ticket
-                this.updateAvailablePrizes(); // Ensure list is fresh
+                if (!this.selectedTicketIdForClaim && this.tickets.length > 0) this.selectedTicketIdForClaim = this.tickets[0].id;
+                this.updateAvailablePrizes();
                 if (this.$refs.claimModal) this.$refs.claimModal.showModal();
             },
-            updateAvailablePrizes() { // Filters rules that can be claimed
+            updateAvailablePrizes() {
                  this.availablePrizesToClaim = this.gameRules.filter(rule => {
                     if (!rule.isActive) return false;
-                    // Check if this player has already won this prize rule OR if max winners for rule reached globally
-                    const playerWonThisRule = this.myPrizes.some(p => p.prizeName === rule.name); // Basic check by name, could be more specific by rule ID
-                    // More robust: check server's winner list for this ruleId and if this player is among them
-                    return !playerWonThisRule; // Only show if not already won by this player
+                    // A prize is available if player hasn't already won it or had an approved claim for its name.
+                    const hasWonThisPrizeName = this.myPrizes.some(p => p.prizeName === rule.name);
+                    const hasApprovedClaimForThisName = this.myClaims.some(c => c.prizeName === rule.name && c.status === 'approved');
+                    return !hasWonThisPrizeName && !hasApprovedClaimForThisName;
                 });
             },
-            prizeAlreadyClaimedOrWon(prizeRuleId) {
+            prizeAlreadyClaimedOrWon(prizeRuleId) { // Checks if this prize *rule* has been won by the player
                 const rule = this.gameRules.find(r => r.id === prizeRuleId);
-                if(!rule) return false;
-                return this.myClaims.some(claim => claim.prizeName === rule.name && claim.status === 'approved') ||
-                       this.myPrizes.some(prize => prize.prizeName === rule.name);
+                if(!rule) return false; // Should not happen if prizeRuleId comes from availablePrizesToClaim
+                return this.myPrizes.some(prize => prize.prizeName === rule.name) || // Check against official winnings
+                       this.myClaims.some(claim => claim.prizeName === rule.name && claim.status === 'approved'); // Check against approved claims
             },
-
             submitPrizeClaim(prizeRuleId) {
                 if (!this.selectedTicketIdForClaim) { this.showGameMessage("Please select a ticket to claim on.", "warning"); return; }
                 const rule = this.gameRules.find(r => r.id === prizeRuleId);
                 if (rule && this.socket && this.socket.readyState === WebSocket.OPEN) {
-                    const clientTempClaimId = 'claim_' + this.playerId + '_' + Date.now();
-                     // Optimistic update to myClaims
-                    if (!this.myClaims.find(c => c.prizeName === rule.name && c.status === 'pending_admin_approval')) {
+                    const clientTempClaimId = 'claim_' + this.playerId + '_' + prizeRuleId + '_' + Date.now();
+                    if (!this.myClaims.find(c => c.prizeName === rule.name && (c.status === 'pending_admin_approval' || c.status === 'approved'))) {
                         this.myClaims.push({claimId: clientTempClaimId, prizeName: rule.name, status: 'pending_admin_approval'});
                     }
-
                     this.socket.send(JSON.stringify({
                         type: 'PLAYER_CLAIM_PRIZE',
                         payload: { prizeRuleId: prizeRuleId, ticketId: this.selectedTicketIdForClaim }
                     }));
-                    // Message is now sent by server on PLAYER_CLAIM_SUBMITTED
+                    // Server will respond with PLAYER_CLAIM_SUBMITTED to confirm receipt and provide official claimId
                     if (this.$refs.claimModal) this.$refs.claimModal.close();
                 } else if (!rule) { this.showGameMessage("Selected prize rule not found.", "error");
-                } else { this.showGameMessage("Not connected to server.", "error"); }
+                } else { this.showGameMessage("Not connected to server. Cannot claim prize.", "error"); }
             },
-             updateCanClaimPrizeStatus() { // Renamed from updateCanClaimPrize
+            updateCanClaimPrizeStatus() {
                 this.canClaimPrize = this.gameStatus === 'running' && this.gameRules.some(rule => rule.isActive) && this.tickets.length > 0;
             },
 
+            // Utility Functions
             triggerConfetti() { if (typeof confetti === 'function') confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } }); },
-            setTheme(themeName, event = null, closeDropdown = true) { /* ... as before ... */ },
+            setTheme(themeName, event = null, closeDropdown = true) { // THEME SELECTOR FUNCTION
+                document.documentElement.setAttribute('data-theme', themeName);
+                localStorage.setItem('theme', themeName);
+                if (closeDropdown && event && event.target) {
+                    const anchorElement = event.target;
+                    const dropdownRoot = anchorElement.closest('.dropdown');
+                    const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]');
+                    setTimeout(() => {
+                        if (document.activeElement && dropdownRoot && dropdownRoot.contains(document.activeElement)) {
+                            if (typeof document.activeElement.blur === 'function') document.activeElement.blur();
+                        }
+                        if (dropdownTriggerLabel && typeof dropdownTriggerLabel.blur === 'function') dropdownTriggerLabel.blur();
+                    }, 0);
+                }
+            },
             changeView(viewName) { this.currentView = viewName; this.isDrawerOpen = false; },
             logout() {
-                this.showGameMessage("Logging out...", "info");
-                if (this.socket) this.socket.close();
-                localStorage.removeItem('playerName'); localStorage.removeItem('roomId'); // Clear credentials
-                localStorage.removeItem('playerTicket'); // Old mock ticket
+                this.showGameMessage("Logging out...", "info", 1500);
+                if (this.socket && this.socket.readyState === WebSocket.OPEN) { this.socket.close(); }
+                localStorage.removeItem('playerName');
+                localStorage.removeItem('roomId');
+                // localStorage.removeItem('playerTicket'); // Old, not used for init anymore
                 setTimeout(() => { window.location.href = 'player_join.html'; }, 1000);
             },
             showGameMessage(text, type = 'info', duration = 3000) {
