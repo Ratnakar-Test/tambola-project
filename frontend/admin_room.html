@@ -226,26 +226,50 @@
                         </table>
                     </div>
                 </div>
-                <div x-show="currentView === 'prizeClaims'" x-transition>
+             <div x-show="currentView === 'prizeClaims'" x-transition>
                     <h2 class="text-2xl font-bold mb-4">Pending Prize Claims (<span x-text="pendingPrizeClaims.length"></span>)</h2>
-                    <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow pending-list">
-                         <template x-if="pendingPrizeClaims.length === 0"><p class="text-center italic">No pending prize claims.</p></template>
-                        <template x-for="claim in pendingPrizeClaims" :key="claim.claimId">
-                             <div class="p-2 border-b">
-                                <div>Player: <strong x-text="claim.playerName"></strong> (ID: <span x-text="claim.playerId.substring(0,6)" class="text-xs"></span>)</div>
-                                <div>Prize: <strong x-text="claim.prizeName"></strong> (Rule: <span x-text="claim.prizeRuleId" class="text-xs"></span>)</div>
-                                <div class="text-xs">Ticket ID: <span x-text="claim.ticketId.substring(0,10)"></span></div>
-                                <div class="text-sm">Server Validation:
-                                    <span x-text="claim.serverValidationResult ? 'Valid' : 'Invalid (Verify Manually)'"
-                                          :class="{'text-success font-semibold': claim.serverValidationResult, 'text-warning font-semibold': !claim.serverValidationResult}">
-                                    </span>
-                                </div>
-                                <div class="flex gap-2 mt-1">
-                                    <button class="btn btn-xs btn-success" @click="approvePrizeClaim(claim)">Approve</button>
-                                    <button class="btn btn-xs btn-error" @click="rejectPrizeClaim(claim, 'Did not meet criteria')">Reject</button>
-                                </div>
-                            </div>
-                        </template>
+                    <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow"> {/* Removed pending-list class here */}
+                        <table class="table table-zebra w-full table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Player</th>
+                                    <th>Prize Claimed</th>
+                                    <th>Ticket ID</th>
+                                    <th class="text-center">Server Valid?</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-if="pendingPrizeClaims.length === 0">
+                                    <tr><td colspan="5" class="text-center italic py-4">No pending prize claims.</td></tr>
+                                </template>
+                                <template x-for="claim in pendingPrizeClaims" :key="claim.claimId">
+                                    <tr>
+                                        <td>
+                                            <div class="font-bold" x-text="claim.playerName"></div>
+                                            <div class="text-xs opacity-70" x-text="'ID: ' + claim.playerId.substring(0,6)"></div>
+                                        </td>
+                                        <td>
+                                            <div x-text="claim.prizeName"></div>
+                                            <div class="text-xs opacity-70" x-text="'Rule: ' + claim.prizeRuleId"></div>
+                                        </td>
+                                        <td class="text-xs" x-text="claim.ticketId.substring(0,10) + '...'"></td>
+                                        <td class="text-center">
+                                            <span class="badge badge-sm"
+                                                  :class="{'badge-success': claim.serverValidationResult, 'badge-warning': !claim.serverValidationResult}"
+                                                  x-text="claim.serverValidationResult ? 'Yes' : 'No (Verify)'">
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <div class="flex gap-2 justify-center">
+                                                <button class="btn btn-xs btn-success" @click="approvePrizeClaim(claim)">Approve</button>
+                                                <button class="btn btn-xs btn-error" @click="rejectPrizeClaim(claim, 'Did not meet criteria')">Reject</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
