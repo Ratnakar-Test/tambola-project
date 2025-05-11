@@ -192,18 +192,38 @@
                     </div>
                 </div>
 
-                <div x-show="currentView === 'ticketRequests'" x-transition>
+              <div x-show="currentView === 'ticketRequests'" x-transition>
                     <h2 class="text-2xl font-bold mb-4">Pending Ticket Requests (<span x-text="pendingTicketRequests.length"></span>)</h2>
-                    <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow pending-list">
-                        <template x-if="pendingTicketRequests.length === 0"><p class="text-center italic">No pending ticket requests.</p></template>
-                        <template x-for="request in pendingTicketRequests" :key="request.playerId"> <div class="p-2 border-b flex justify-between items-center">
-                                <div>Player: <strong x-text="request.playerName"></strong> (Current Tickets: <span x-text="request.currentTickets"></span>)</div>
-                                <div class="flex gap-2">
-                                    <button class="btn btn-xs btn-success" @click="approveTicketRequest(request.playerId)">Approve</button>
-                                    <button class="btn btn-xs btn-error" @click="rejectTicketRequest(request.playerId, 'Admin rejected')">Reject</button>
-                                </div>
-                            </div>
-                        </template>
+                    <div class="overflow-x-auto bg-base-100 p-4 rounded-lg shadow"> {/* Removed pending-list class here, table handles scroll if needed */}
+                        <table class="table table-zebra w-full table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Player Name</th>
+                                    <th class="text-center">Current Tickets</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-if="pendingTicketRequests.length === 0">
+                                    <tr><td colspan="3" class="text-center italic py-4">No pending ticket requests.</td></tr>
+                                </template>
+                                <template x-for="request in pendingTicketRequests" :key="request.playerId">
+                                    <tr>
+                                        <td>
+                                            <div class="font-bold" x-text="request.playerName"></div>
+                                            <div class="text-xs opacity-70" x-text="'ID: ' + request.playerId.substring(0,6)"></div>
+                                        </td>
+                                        <td class="text-center" x-text="request.currentTickets"></td>
+                                        <td class="text-center">
+                                            <div class="flex gap-2 justify-center">
+                                                <button class="btn btn-xs btn-success" @click="approveTicketRequest(request.playerId)">Approve</button>
+                                                <button class="btn btn-xs btn-error" @click="rejectTicketRequest(request.playerId, 'Admin rejected')">Reject</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
