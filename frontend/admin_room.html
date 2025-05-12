@@ -214,12 +214,12 @@
                                             <div class="text-xs opacity-70" x-text="'ID: ' + request.playerId.substring(0,6)"></div>
                                         </td>
                                         <td class="text-center" x-text="request.currentTickets"></td>
-                                      <td class="text-center">
-                                        <div class="flex flex-col sm:flex-row gap-1 justify-center items-center">
-                                            <button class="btn btn-xs btn-success w-full sm:w-auto" @click="approvePrizeClaim(claim)">Approve</button>
-                                            <button class="btn btn-xs btn-error w-full sm:w-auto mt-1 sm:mt-0" @click="rejectPrizeClaim(claim, 'Did not meet criteria')">Reject</button>
-                                        </div>
-                                    </td>
+                                     <td class="text-center">
+                                            <div class="flex flex-col sm:flex-row gap-1 justify-center items-center">
+                                                <button class="btn btn-xs btn-success w-full sm:w-auto" @click="approveTicketRequest(request.playerId)">Approve</button>
+                                                <button class="btn btn-xs btn-error w-full sm:w-auto mt-1 sm:mt-0" @click="rejectTicketRequest(request.playerId, 'Admin rejected')">Reject</button>
+                                            </div>
+                                        </td>
                                         </td>
                                     </tr>
                                 </template>
