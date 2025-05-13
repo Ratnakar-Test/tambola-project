@@ -88,8 +88,6 @@
                     <a class="btn btn-ghost normal-case text-lg sm:text-xl">Welcome, <span x-text="playerName || 'Player'"></span>!</a>
                 </div>
                 <div class="flex-none">
-                    
-
                     <div class="dropdown dropdown-end ml-2">
                         <label tabindex="0" class="btn btn-ghost btn-circle indicator">
                             <i class="fas fa-bell text-xl"></i>
@@ -255,7 +253,12 @@
                                         <td x-text="claim.prizeName"></td>
                                         <td>
                                             <span class="badge"
-                                                  :class="{'badge-success': claim.status === 'approved', 'badge-error': claim.status === 'rejected', 'badge-warning': claim.status === 'pending_admin_approval' || claim.status === 'pending'}"
+                                                  :class="{
+                                                    'badge-success': claim.status === 'approved',
+                                                    'badge-error': claim.status === 'rejected',
+                                                    'badge-warning': claim.status === 'pending_admin_approval' || claim.status === 'pending_submission',
+                                                    'badge-info': claim.status === 'pending' /* Generic pending */
+                                                  }"
                                                   x-text="claim.status.replace(/_/g, ' ')">
                                             </span>
                                         </td>
@@ -321,8 +324,6 @@
                 <input type="checkbox" class="toggle toggle-primary" x-model="autoMarkNumbers" @change="toggleAutoMarkBehavior()" />
             </label>
         </div>
-
-        
     </div>
 
     <dialog id="claim_prize_modal" class="modal" x-ref="claimModal">
@@ -360,7 +361,6 @@
          <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
 
-
     <script>
     function playerGame() {
         return {
@@ -379,7 +379,7 @@
             themes: [
                 "light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter"
             ],
-            notifications: [], // For new notification system
+            notifications: [],
 
             // Game Data
             tickets: [],
@@ -391,7 +391,7 @@
             // Room & Game Info from Server
             otherPlayers: [],
             gameRules: [],
-            myClaims: [],
+            myClaims: [], // Each object: { claimId (can be temp client ID then server ID), prizeName, status, reason, isOptimistic (optional) }
             myPrizes: [],
 
             // UI Interaction State
@@ -440,7 +440,7 @@
                 });
             },
 
-            connectWebSocket() { /* ... WebSocket connection logic as before ... */
+            connectWebSocket() {
                 this.gameStatus = 'connecting';
                 const socketURL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
                     ? `ws://${window.location.hostname}:3000`
@@ -475,34 +475,60 @@
                     case 'RULES_UPDATED': this.gameRules = payload.rules || []; this.updateAvailablePrizes(); this.showGameMessage("Game rules updated.", "info"); break;
                     case 'TICKET_APPROVED':
                         this.tickets.push(payload.ticket); this.waitingForTicketApproval = false;
-                        this.addNotification('Ticket Update', 'Your new ticket was approved!', 'home', payload.ticket.id); // NOTIFICATION
+                        this.addNotification('Ticket Update', 'Your new ticket was approved!', 'home', payload.ticket.id);
                         this.showGameMessage("New ticket added!", "success", 3000); this.triggerConfetti();
-                        if (this.tickets.length === 1) this.selectedTicketIdForClaim = this.tickets[0].id;
+                        if (this.tickets.length === 1 && !this.selectedTicketIdForClaim) this.selectedTicketIdForClaim = this.tickets[0].id;
                         break;
                     case 'TICKET_REJECTED':
                         this.waitingForTicketApproval = false;
-                        this.addNotification('Ticket Update', `Ticket request rejected: ${payload.reason || 'No reason'}`, 'home'); // NOTIFICATION
+                        this.addNotification('Ticket Update', `Ticket request rejected: ${payload.reason || 'No reason'}`, 'home');
                         this.showGameMessage(`Ticket request rejected. ${payload.reason || ''}`, "warning", 4000);
                         break;
-                    case 'CLAIM_STATUS_UPDATE':
-                        const claimIndex = this.myClaims.findIndex(c => c.claimId === payload.claimId);
+                    case 'PLAYER_CLAIM_SUBMITTED': // Server acknowledges claim and provides its official ID + echoes client's temp ID
+                        const tempClaimIndex = this.myClaims.findIndex(c => c.claimId === payload.clientTempClaimId && c.isOptimistic === true);
+                        if (tempClaimIndex !== -1) {
+                            this.myClaims[tempClaimIndex].claimId = payload.claimId; // Update to server's authoritative ID
+                            this.myClaims[tempClaimIndex].status = payload.status;   // e.g., 'pending_admin_approval'
+                            delete this.myClaims[tempClaimIndex].isOptimistic;     // No longer just optimistic
+                        } else {
+                            // Fallback: If no optimistic claim was found (e.g., page refresh), and this new server ID isn't present, add it.
+                            if (!this.myClaims.find(c => c.claimId === payload.claimId)) {
+                                this.myClaims.push({
+                                    claimId: payload.claimId,
+                                    prizeName: payload.prizeName,
+                                    status: payload.status, // Should be 'pending_admin_approval' from server
+                                    reason: ''
+                                });
+                            }
+                        }
+                        this.showGameMessage(`Your claim for ${payload.prizeName} is submitted for admin review.`, "info");
+                        break;
+                    case 'CLAIM_STATUS_UPDATE': // Admin has approved or rejected the claim
+                        const claimToUpdateIndex = this.myClaims.findIndex(c => c.claimId === payload.claimId); // Match by server's authoritative ID
                         let notifyMsg = '', notifyType = 'Prize Update', notifyTarget = 'myClaims';
-                        if (claimIndex !== -1) {
-                            this.myClaims[claimIndex].status = payload.status; this.myClaims[claimIndex].reason = payload.reason || '';
-                            const prizeName = this.myClaims[claimIndex].prizeName;
+                        if (claimToUpdateIndex !== -1) {
+                            const updatedClaim = this.myClaims[claimToUpdateIndex];
+                            updatedClaim.status = payload.status;
+                            updatedClaim.reason = payload.reason || '';
+
                             if (payload.status === 'approved') {
-                                if (!this.myPrizes.some(p => p.id === 'prize_' + payload.claimId)) { this.myPrizes.push({ id: 'prize_' + payload.claimId, prizeName: prizeName, coins: payload.coinsAwarded }); this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));}
-                                notifyMsg = `Your claim for ${prizeName} was APPROVED!`; notifyTarget = 'myPrizes';
+                                if (!this.myPrizes.some(p => p.id === 'prize_' + payload.claimId)) {
+                                    this.myPrizes.push({ id: 'prize_' + payload.claimId, prizeName: updatedClaim.prizeName, coins: payload.coinsAwarded });
+                                    this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));
+                                }
+                                notifyMsg = `Your claim for ${updatedClaim.prizeName} was APPROVED!`; notifyTarget = 'myPrizes';
                                 this.showGameMessage(notifyMsg + ` +${payload.coinsAwarded.toFixed(2)}`, "success", 5000); this.triggerConfetti();
-                            } else {
-                                notifyMsg = `Your claim for ${prizeName} was REJECTED.`;
+                            } else { // Rejected
+                                notifyMsg = `Your claim for ${updatedClaim.prizeName} was REJECTED.`;
                                 this.showGameMessage(notifyMsg + ` ${payload.reason || ''}`, "error", 5000);
                             }
-                            this.addNotification(notifyType, notifyMsg, notifyTarget, payload.claimId); // NOTIFICATION
-                        } else if (payload.status === 'approved') { // If claim was somehow not in local list but server approved
-                             if (!this.myPrizes.some(p => p.id === 'prize_' + payload.claimId)) { this.myPrizes.push({ id: 'prize_' + payload.claimId, prizeName: payload.prizeName, coins: payload.coinsAwarded }); this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));}
-                             this.addNotification('Prize Won!', `${payload.prizeName} prize APPROVED!`, 'myPrizes', payload.claimId); // NOTIFICATION
-                             this.showGameMessage(`${payload.prizeName} prize APPROVED! +${payload.coinsAwarded.toFixed(2)}`, "success", 5000);
+                            this.addNotification(notifyType, notifyMsg, notifyTarget, payload.claimId);
+                        } else if (payload.status === 'approved' && !this.myPrizes.some(p => p.id === 'prize_' + payload.claimId)) {
+                            // If claim wasn't in local list (e.g. refresh) but got approved by server
+                            this.myPrizes.push({ id: 'prize_' + payload.claimId, prizeName: payload.prizeName, coins: payload.coinsAwarded });
+                            this.coinsWon = parseFloat((this.coinsWon + payload.coinsAwarded).toFixed(2));
+                            this.addNotification('Prize Won!', `${payload.prizeName || 'A prize'} was APPROVED!`, 'myPrizes', payload.claimId);
+                            this.showGameMessage(`${payload.prizeName || 'A prize'} was APPROVED! +${payload.coinsAwarded.toFixed(2)}`, "success", 5000);
                         }
                         this.updateAvailablePrizes();
                         break;
@@ -513,7 +539,7 @@
                         this.tickets.forEach(t => t.marked = []); this.myClaims = []; this.myPrizes = []; this.coinsWon = 0;
                         this.gameRules = payload.rules || []; this.adminName = payload.adminName || this.adminName; this.adminNameInPlayerList = this.adminName;
                         this.showGameMessage(`Game started by ${this.adminName}! Good luck!`, "success", 5000);
-                        this.addNotification('Game Event', 'A new game has started!', 'home'); // NOTIFICATION
+                        this.addNotification('Game Event', 'A new game has started!', 'home');
                         this.updateAvailablePrizes(); this.updateCanClaimPrizeStatus();
                         break;
                     case 'GAME_PAUSED': case 'GAME_RESUMED': this.gameStatus = payload.status; this.showGameMessage(`Game is now ${payload.status}.`, "info"); break;
@@ -523,19 +549,11 @@
                         if(this.calledNumbersHistory.length > 0) this.latestCalledNumber = this.calledNumbersHistory[this.calledNumbersHistory.length - 1];
                         const endMsg = type === 'GAME_STOPPED' ? "Game has been stopped." : "All numbers called! Game Over!";
                         this.showGameMessage(endMsg, "info", null);
-                        this.addNotification('Game Event', endMsg, 'home'); // NOTIFICATION
+                        this.addNotification('Game Event', endMsg, 'home');
                         this.updateCanClaimPrizeStatus();
                         break;
                     case 'WINNER_ANNOUNCEMENT':
                         this.showGameMessage(`${payload.playerName} won ${payload.prizeName} (+${payload.coins.toFixed(2)})!`, 'info', 7000);
-                        // Optional: Add to player's notifications if it's not their own win (already handled by CLAIM_STATUS_UPDATE)
-                        // if (payload.playerId !== this.playerId) {
-                        //    this.addNotification('Winner Announced', `${payload.playerName} won ${payload.prizeName}.`, 'players');
-                        // }
-                        break;
-                    case 'PLAYER_CLAIM_SUBMITTED':
-                        if (!this.myClaims.find(c => c.claimId === payload.claimId)) { this.myClaims.push({claimId: payload.claimId, prizeName: payload.prizeName, status: payload.status, reason: ''});}
-                        this.showGameMessage(`Your claim for ${payload.prizeName} sent to admin.`, "info");
                         break;
                     case 'ERROR': this.showGameMessage(`Server Error: ${payload.message}`, 'error', null); break;
                     case 'INFO': this.showGameMessage(`Server Info: ${payload.message}`, 'info'); break;
@@ -562,41 +580,80 @@
                 else if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
             },
 
-            // Game Actions & UI Logic (mostly as before)
-            markNumberOnTickets(numberToMark) { /* ... as before ... */ this.tickets.forEach(ticket => { let numExists = false; for (const row of ticket.numbers) { if (row.includes(numberToMark)) { numExists = true; break; } } if (numExists && !ticket.marked.includes(numberToMark)) { ticket.marked.push(numberToMark); } }); },
-            manualMarkNumber(ticketId, number) { /* ... as before ... */ if (number === null || this.gameStatus !== 'running') return; if (this.autoMarkNumbers) { this.showGameMessage("Auto-mark is ON.", "info"); return; } const ticket = this.tickets.find(t => t.id === ticketId); if (ticket) { if (this.calledNumbersHistory.includes(number)) { const index = ticket.marked.indexOf(number); if (index > -1) ticket.marked.splice(index, 1); else { ticket.marked.push(number); this.triggerConfetti(); } } else { this.showGameMessage(`Num ${number} not called! Boogie!`, "error"); const boogieCellId = ticketId + '-' + number; this.tempBoogieCells.push(boogieCellId); setTimeout(() => { this.tempBoogieCells = this.tempBoogieCells.filter(id => id !== boogieCellId); }, 1000); } } },
-            toggleAutoMarkBehavior() { /* ... as before ... */ if (this.autoMarkNumbers) { this.showGameMessage("Auto-marking ENABLED.", "info"); this.calledNumbersHistory.forEach(calledNum => this.markNumberOnTickets(calledNum)); } else { this.showGameMessage("Auto-marking DISABLED.", "warning"); } },
-            requestNewTicket() { /* ... as before ... */ if (this.socket && this.socket.readyState === WebSocket.OPEN) { this.socket.send(JSON.stringify({ type: 'PLAYER_REQUEST_TICKET', payload: { playerId: this.playerId } })); this.waitingForTicketApproval = true; this.showGameMessage("Requesting ticket...", "info"); } else { this.showGameMessage("Not connected.", "error"); } },
-            openClaimModal() { /* ... as before ... */ if (this.tickets.length === 0) { this.showGameMessage("No tickets to claim on.", "warning"); return; } if (!this.selectedTicketIdForClaim && this.tickets.length > 0) this.selectedTicketIdForClaim = this.tickets[0].id; this.updateAvailablePrizes(); if (this.$refs.claimModal) this.$refs.claimModal.showModal(); },
-            updateAvailablePrizes() { /* ... as before ... */ this.availablePrizesToClaim = this.gameRules.filter(rule => { if (!rule.isActive) return false; const hasWon = this.myPrizes.some(p => p.prizeName === rule.name); const hasApprovedClaim = this.myClaims.some(c => c.prizeName === rule.name && c.status === 'approved'); return !hasWon && !hasApprovedClaim; }); },
-            prizeAlreadyClaimedOrWon(prizeRuleId) { /* ... as before ... */ const rule = this.gameRules.find(r => r.id === prizeRuleId); if(!rule) return false; return this.myPrizes.some(prize => prize.prizeName === rule.name) || this.myClaims.some(claim => claim.prizeName === rule.name && claim.status === 'approved'); },
-            submitPrizeClaim(prizeRuleId) { /* ... as before ... */ if (!this.selectedTicketIdForClaim) {this.showGameMessage("Select a ticket.", "warning"); return;} const rule = this.gameRules.find(r => r.id === prizeRuleId); if (rule && this.socket && this.socket.readyState === WebSocket.OPEN) { const clientTempClaimId = 'claim_' + this.playerId + '_' + prizeRuleId + '_' + Date.now(); if (!this.myClaims.find(c => c.prizeName === rule.name && (c.status === 'pending_admin_approval' || c.status === 'approved'))) { this.myClaims.push({claimId: clientTempClaimId, prizeName: rule.name, status: 'pending_admin_approval'});} this.socket.send(JSON.stringify({ type: 'PLAYER_CLAIM_PRIZE', payload: { prizeRuleId: prizeRuleId, ticketId: this.selectedTicketIdForClaim }})); if (this.$refs.claimModal) this.$refs.claimModal.close(); } else if (!rule) {this.showGameMessage("Rule not found.", "error");} else {this.showGameMessage("Not connected.", "error");} },
-            updateCanClaimPrizeStatus() { /* ... as before ... */ this.canClaimPrize = this.gameStatus === 'running' && this.gameRules.some(rule => rule.isActive) && this.tickets.length > 0; },
-            triggerConfetti() { /* ... as before ... */ if (typeof confetti === 'function') confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } }); },
-            setTheme(themeName, event = null, closeDropdown = true) { /* ... as before ... */ document.documentElement.setAttribute('data-theme', themeName); localStorage.setItem('theme', themeName); if (closeDropdown && event && event.target) { const anchorElement = event.target; const dropdownRoot = anchorElement.closest('.dropdown'); const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]'); setTimeout(() => { if (document.activeElement && dropdownRoot && dropdownRoot.contains(document.activeElement)) { if (typeof document.activeElement.blur === 'function') document.activeElement.blur(); } if (dropdownTriggerLabel && typeof dropdownTriggerLabel.blur === 'function') dropdownTriggerLabel.blur(); }, 0);}},
+            // Game Actions & UI Logic
+            markNumberOnTickets(numberToMark) { this.tickets.forEach(ticket => { let numExists = false; for (const row of ticket.numbers) { if (row.includes(numberToMark)) { numExists = true; break; } } if (numExists && !ticket.marked.includes(numberToMark)) { ticket.marked.push(numberToMark); } }); },
+            manualMarkNumber(ticketId, number) { if (number === null || this.gameStatus !== 'running') return; if (this.autoMarkNumbers) { this.showGameMessage("Auto-mark is ON.", "info"); return; } const ticket = this.tickets.find(t => t.id === ticketId); if (ticket) { if (this.calledNumbersHistory.includes(number)) { const index = ticket.marked.indexOf(number); if (index > -1) ticket.marked.splice(index, 1); else { ticket.marked.push(number); this.triggerConfetti(); } } else { this.showGameMessage(`Num ${number} not called! Boogie!`, "error"); const boogieCellId = ticketId + '-' + number; this.tempBoogieCells.push(boogieCellId); setTimeout(() => { this.tempBoogieCells = this.tempBoogieCells.filter(id => id !== boogieCellId); }, 1000); } } },
+            toggleAutoMarkBehavior() { if (this.autoMarkNumbers) { this.showGameMessage("Auto-marking ENABLED.", "info"); this.calledNumbersHistory.forEach(calledNum => this.markNumberOnTickets(calledNum)); } else { this.showGameMessage("Auto-marking DISABLED.", "warning"); } },
+            requestNewTicket() { if (this.socket && this.socket.readyState === WebSocket.OPEN) { this.socket.send(JSON.stringify({ type: 'PLAYER_REQUEST_TICKET', payload: { playerId: this.playerId } })); this.waitingForTicketApproval = true; this.showGameMessage("Requesting ticket...", "info"); } else { this.showGameMessage("Not connected.", "error"); } },
+            openClaimModal() { if (this.tickets.length === 0) { this.showGameMessage("No tickets to claim on.", "warning"); return; } if (!this.selectedTicketIdForClaim && this.tickets.length > 0) this.selectedTicketIdForClaim = this.tickets[0].id; this.updateAvailablePrizes(); if (this.$refs.claimModal) this.$refs.claimModal.showModal(); },
+            updateAvailablePrizes() { this.availablePrizesToClaim = this.gameRules.filter(rule => { if (!rule.isActive) return false; const hasWon = this.myPrizes.some(p => p.prizeName === rule.name); const hasApprovedClaim = this.myClaims.some(c => c.prizeName === rule.name && c.status === 'approved'); return !hasWon && !hasApprovedClaim; }); },
+            prizeAlreadyClaimedOrWon(prizeRuleId) { const rule = this.gameRules.find(r => r.id === prizeRuleId); if(!rule) return false; return this.myPrizes.some(prize => prize.prizeName === rule.name) || this.myClaims.some(claim => claim.prizeName === rule.name && claim.status === 'approved'); },
+
+            submitPrizeClaim(prizeRuleId) {
+                if (!this.selectedTicketIdForClaim) { this.showGameMessage("Please select a ticket to claim on.", "warning"); return; }
+                const rule = this.gameRules.find(r => r.id === prizeRuleId);
+                if (rule) {
+                    if (this.myClaims.some(c => c.prizeName === rule.name && (c.status === 'pending_admin_approval' || c.status === 'approved' || c.status === 'pending_submission'))) {
+                        this.showGameMessage(`A claim for ${rule.name} is already submitted or processed.`, "info");
+                        if (this.$refs.claimModal) this.$refs.claimModal.close();
+                        return;
+                    }
+
+                    const clientTempClaimId = `client_${this.playerId}_${prizeRuleId}_${Date.now()}`;
+
+                    this.myClaims.push({
+                        claimId: clientTempClaimId,
+                        prizeName: rule.name,
+                        status: 'pending_submission', // Client is about to submit
+                        reason: '',
+                        isOptimistic: true // Mark as client-side optimistic entry
+                    });
+
+                    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                        this.socket.send(JSON.stringify({
+                            type: 'PLAYER_CLAIM_PRIZE',
+                            payload: {
+                                prizeRuleId: prizeRuleId,
+                                ticketId: this.selectedTicketIdForClaim,
+                                clientTempClaimId: clientTempClaimId // Send client's temp ID
+                            }
+                        }));
+                         // Message display will be handled by PLAYER_CLAIM_SUBMITTED from server
+                    } else {
+                        this.showGameMessage("Not connected. Claim not sent.", "error");
+                        this.myClaims = this.myClaims.filter(c => c.claimId !== clientTempClaimId); // Remove optimistic if send fails
+                    }
+                    if (this.$refs.claimModal) this.$refs.claimModal.close();
+                } else {
+                    this.showGameMessage("Selected prize rule not found.", "error");
+                }
+            },
+
+            updateCanClaimPrizeStatus() { this.canClaimPrize = this.gameStatus === 'running' && this.gameRules.some(rule => rule.isActive) && this.tickets.length > 0; },
+            triggerConfetti() { if (typeof confetti === 'function') confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } }); },
+            setTheme(themeName, event = null, closeDropdown = true) { document.documentElement.setAttribute('data-theme', themeName); localStorage.setItem('theme', themeName); if (closeDropdown && event && event.target) { const anchorElement = event.target; const dropdownRoot = anchorElement.closest('.dropdown'); const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]'); setTimeout(() => { if (document.activeElement && dropdownRoot && dropdownRoot.contains(document.activeElement)) { if (typeof document.activeElement.blur === 'function') document.activeElement.blur(); } if (dropdownTriggerLabel && typeof dropdownTriggerLabel.blur === 'function') dropdownTriggerLabel.blur(); }, 0);}},
             changeView(viewName) { this.currentView = viewName; this.isDrawerOpen = false; },
-            logout() { /* ... as before ... */ this.showGameMessage("Logging out...", "info", 1500); if (this.socket && this.socket.readyState === WebSocket.OPEN) { this.socket.close(); } localStorage.removeItem('playerName'); localStorage.removeItem('roomId'); setTimeout(() => { window.location.href = 'player_join.html'; }, 1000); },
-            showGameMessage(text, type = 'info', duration = 3000) { /* ... as before ... */ this.gameMessage = text; this.gameMessageType = type; if (this.gameMessageTimeout) clearTimeout(this.gameMessageTimeout); if (duration !== null) { this.gameMessageTimeout = setTimeout(() => { this.gameMessage = ''; }, duration); }}
+            logout() { this.showGameMessage("Logging out...", "info", 1500); if (this.socket && this.socket.readyState === WebSocket.OPEN) { this.socket.close(); } localStorage.removeItem('playerName'); localStorage.removeItem('roomId'); setTimeout(() => { window.location.href = 'player_join.html'; }, 1000); },
+            showGameMessage(text, type = 'info', duration = 3000) { this.gameMessage = text; this.gameMessageType = type; if (this.gameMessageTimeout) clearTimeout(this.gameMessageTimeout); if (duration !== null) { this.gameMessageTimeout = setTimeout(() => { this.gameMessage = ''; }, duration); }}
         }
     }
     </script>
 
     <div
-    x-show="gameStatus !== 'connecting' && gameStatus !== 'error' && gameStatus !== 'disconnected'"
-    x-transition:enter="transition ease-out duration-300"
-    x-transition:enter-start="opacity-0 transform translate-y-2"
-    x-transition:enter-end="opacity-100 transform translate-y-0"
-    x-transition:leave="transition ease-in duration-200"
-    x-transition:leave-start="opacity-100 transform translate-y-0"
-    x-transition:leave-end="opacity-0 transform translate-y-2"
-    class="fixed top-20 right-4 z-[60]"
->
-    <span class="badge badge-lg badge-info gap-2 shadow-md p-4">
-        <i class="fas fa-coins"></i>
-        <span x-text="coinsWon.toFixed(2)"></span>
-    </span>
-</div>
+        x-show="gameStatus !== 'connecting' && gameStatus !== 'error' && gameStatus !== 'disconnected'"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0 transform translate-y-2"
+        x-transition:enter-end="opacity-100 transform translate-y-0"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100 transform translate-y-0"
+        x-transition:leave-end="opacity-0 transform translate-y-2"
+        class="fixed top-20 right-4 z-[60]"
+    >
+        <span class="badge badge-lg badge-info gap-2 shadow-md p-3">
+            <i class="fas fa-coins"></i>
+            <span x-text="coinsWon.toFixed(2)"></span>
+        </span>
+    </div>
 
-</body> ```
 </body>
 </html>
