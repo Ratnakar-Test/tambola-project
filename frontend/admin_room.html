@@ -308,7 +308,7 @@
                                 <div x-show="rule.isActive" class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
                                     <div class="form-control">
                                         <label class="label pb-1"><span class="label-text">Base Weight (%)</span></label>
-                                        <input type="number" class="input input-sm input-bordered" :value="rule.baseWeight.toFixed(2)" @input="handleBaseWeightInput(rule.id, $event.target.value)" min="0" max="100" step="0.01" :disabled="gameStatus === 'running' || gameStatus === 'paused'">
+                                        <input type="number" class="input input-sm input-bordered" :value="rule.baseWeight ? rule.baseWeight.toFixed(2) : '0.00'" @input="handleBaseWeightInput(rule.id, $event.target.value)" min="0" max="100" step="0.01" :disabled="gameStatus === 'running' || gameStatus === 'paused'">
                                     </div>
                                     <div class="form-control">
                                         <label class="label pb-1"><span class="label-text">Max Prizes Allowed</span></label>
@@ -319,7 +319,7 @@
                                         <span class="input input-sm input-bordered flex items-center bg-base-200" x-text="rule.coinsPerPrize > 0 ? rule.coinsPerPrize.toFixed(2) : '0.00'"></span>
                                     </div>
                                 </div>
-                                <div x-show="rule.isActive" class="mt-2 text-sm">Allocated Prize Pool Share: <span class="font-semibold" x-text="rule.baseWeight.toFixed(2) + '%'"></span></div>
+                                <div x-show="rule.isActive" class="mt-2 text-sm">Allocated Prize Pool Share: <span class="font-semibold" x-text="rule.baseWeight ? rule.baseWeight.toFixed(2) + '%' : '0.00%'"></span></div>
                             </div>
                         </div>
                     </template>
@@ -467,7 +467,7 @@
             themes: [
                 "light", "dark", "cupcake", "bumblebee", "emerald", "corporate", "synthwave", "retro", "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid", "lemonade", "night", "coffee", "winter"
             ],
-            notifications: [], // For new notification system
+            notifications: [],
 
             // Game State Properties
             numbers: Array.from({ length: 90 }, (_, i) => ({ number: i + 1, called: false })),
@@ -516,7 +516,19 @@
                     return;
                 }
                 this.initializeClientStateForNewGame();
-                this.gameRules.forEach(rule => { if (rule.originalWeight === undefined) rule.originalWeight = rule.baseWeight; });
+
+                this.gameRules.forEach(rule => {
+                    if (rule.originalWeight === undefined) {
+                        rule.originalWeight = rule.baseWeight !== undefined ? rule.baseWeight : (rule.isActive ? 10 : 0);
+                    }
+                    if (rule.baseWeight === undefined) { // Ensure baseWeight also has a default
+                         rule.baseWeight = (rule.isActive ? 10 :0);
+                    }
+                    rule.isActive = !!rule.isActive;
+                    rule.maxPrizes = parseInt(rule.maxPrizes) || 1;
+                    rule.coinsPerPrize = parseFloat(rule.coinsPerPrize) || 0;
+                });
+
                 this.normalizeActiveRuleWeights();
                 this.updateRuleCalculations();
                 this.connectAdminWebSocket();
@@ -530,10 +542,9 @@
                 this.pendingPrizeClaims = [];
                 this.pendingTicketRequests = [];
                 this.gameSummaryData = {};
-                // this.notifications = []; // Optionally clear notifications on new game or manage their lifecycle
             },
 
-            connectAdminWebSocket() { /* ... WebSocket connection logic as before ... */
+            connectAdminWebSocket() {
                 this.gameStatus = 'connecting';
                 const socketURL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
                     ? `ws://${window.location.hostname}:3000`
@@ -551,62 +562,46 @@
 
             handleWebSocketMessage(message) {
                 const { type, payload } = message;
-                console.log('Admin received WS:', type, payload); // Debug
+                console.log('Admin received WS:', type, payload);
                 switch (type) {
-                    // Inside your adminRoom() function, within the handleWebSocketMessage(message) method:
+                    case 'ROOM_JOIN_SUCCESS':
+                        this.showGameMessage(`Connected to Room: ${payload.roomId} as Admin: ${payload.adminName}`, 'success');
+                        this.gameStatus = payload.gameStatus || 'idle';
+                        this.players = payload.players || [];
+                        this.calledNumbersHistory = payload.calledNumbers || [];
 
-case 'ROOM_JOIN_SUCCESS':
-    this.showGameMessage(`Connected to Room: ${payload.roomId} as Admin: ${payload.adminName}`, 'success');
-    this.gameStatus = payload.gameStatus || 'idle';
-    this.players = payload.players || [];
-    this.calledNumbersHistory = payload.calledNumbers || [];
+                        if (payload.calledNumbers && payload.calledNumbers.length > 0) {
+                            this.latestCalledNumber = payload.calledNumbers[payload.calledNumbers.length - 1];
+                            payload.calledNumbers.forEach(num => { const nObj = this.numbers.find(n => n.number === num); if (nObj) nObj.called = true; });
+                        } else {
+                            this.numbers = Array.from({ length: 90 }, (_, i) => ({ number: i + 1, called: false }));
+                            this.latestCalledNumber = null;
+                        }
 
-    if (payload.calledNumbers && payload.calledNumbers.length > 0) {
-        this.latestCalledNumber = payload.calledNumbers[payload.calledNumbers.length - 1];
-        payload.calledNumbers.forEach(num => {
-            const numObjBoard = this.numbers.find(n => n.number === num);
-            if (numObjBoard) numObjBoard.called = true;
-        });
-    } else {
-        // If no numbers called (e.g. new game or admin rejoining before start),
-        // ensure board is reset but don't clear rules that might have been set by default or manually.
-        // this.initializeClientStateForNewGame(); // This was too broad, let's be more specific.
-        this.numbers = Array.from({ length: 90 }, (_, i) => ({ number: i + 1, called: false }));
-        this.latestCalledNumber = null;
-        // Keep existing winners, pending requests, etc. unless server payload indicates otherwise
-    }
+                        if (payload.rules && payload.rules.length > 0) {
+                            this.gameRules = payload.rules.map(rule => ({
+                                ...rule,
+                                isActive: !!rule.isActive,
+                                originalWeight: rule.originalWeight !== undefined ? rule.originalWeight : (rule.baseWeight !== undefined ? rule.baseWeight : (!!rule.isActive ? 10 : 0)),
+                                baseWeight: rule.baseWeight !== undefined ? rule.baseWeight : (!!rule.isActive ? 10 : 0),
+                                maxPrizes: parseInt(rule.maxPrizes) || 1,
+                                coinsPerPrize: parseFloat(rule.coinsPerPrize) || 0
+                            }));
+                        } else {
+                            this.gameRules.forEach(rule => {
+                                if (rule.originalWeight === undefined) {
+                                    rule.originalWeight = rule.baseWeight !== undefined ? rule.baseWeight : (rule.isActive ? 10 : 0);
+                                }
+                            });
+                        }
+                        this.normalizeActiveRuleWeights(); // Critical call after rules are set
 
-    // Rules handling:
-    // If server sends rules, use them. Otherwise, the existing client-side defaults (from init) will be used.
-    if (payload.rules && payload.rules.length > 0) {
-        this.gameRules = payload.rules.map(rule => ({
-            ...rule,
-            isActive: !!rule.isActive, // Ensure boolean
-            originalWeight: rule.originalWeight !== undefined ? rule.originalWeight : (rule.baseWeight !== undefined ? rule.baseWeight : 10), // Ensure originalWeight has a sensible default
-            maxPrizes: parseInt(rule.maxPrizes) || 1,
-            coinsPerPrize: parseFloat(rule.coinsPerPrize) || 0
-        }));
-    } else {
-        // If server sends no rules, ensure originalWeight is set on current/default rules
-        this.gameRules.forEach(rule => {
-            if (rule.originalWeight === undefined) {
-                rule.originalWeight = rule.baseWeight !== undefined ? rule.baseWeight : (rule.isActive ? 10 : 0);
-            }
-        });
-    }
+                        this.totalMoneyCollected = payload.totalMoneyCollected !== undefined ? parseFloat(payload.totalMoneyCollected) : this.totalMoneyCollected;
+                        this.callingMode = payload.callingMode || this.callingMode;
+                        if (payload.winners) this.winners = payload.winners;
 
-    // Critical: Always re-normalize weights and update calculations after rules are finalized and money collected is known.
-    this.normalizeActiveRuleWeights();
-
-    this.totalMoneyCollected = payload.totalMoneyCollected !== undefined ? parseFloat(payload.totalMoneyCollected) : this.totalMoneyCollected;
-    this.callingMode = payload.callingMode || this.callingMode; // Sync calling mode
-    // Sync winners if payload contains it, otherwise keep client's list (e.g. if admin briefly disconnects/reconnects)
-    if (payload.winners) {
-        this.winners = payload.winners;
-    }
-
-    this.updateRuleCalculations(); // This now uses the correctly normalized weights and latest totalMoneyCollected
-    break;
+                        this.updateRuleCalculations(); // Critical call after normalization and money collected
+                        break;
                     case 'NUMBER_CALLED':
                         this.latestCalledNumber = payload.number;
                         this.calledNumbersHistory = payload.calledNumbersHistory;
@@ -616,7 +611,14 @@ case 'ROOM_JOIN_SUCCESS':
                         this.gameStatus = 'running'; this.initializeClientStateForNewGame();
                         this.gameRules = payload.rules || this.gameRules; this.callingMode = payload.callingMode || this.callingMode;
                         this.totalMoneyCollected = payload.totalMoneyCollected !== undefined ? payload.totalMoneyCollected : this.totalMoneyCollected;
-                        this.updateRuleCalculations();
+                         // Ensure rules from payload are properly initialized for calculation
+                        this.gameRules.forEach(rule => {
+                            if (rule.originalWeight === undefined) rule.originalWeight = rule.baseWeight !== undefined ? rule.baseWeight : (rule.isActive ? 10 : 0);
+                            rule.isActive = !!rule.isActive;
+                            rule.maxPrizes = parseInt(rule.maxPrizes) || 1;
+                        });
+                        this.normalizeActiveRuleWeights(); // Re-normalize with potentially new rules
+                        this.updateRuleCalculations(); // Recalculate prizes
                         this.showGameMessage(`Game started! Mode: ${this.callingMode}.`, "success");
                         break;
                     case 'GAME_PAUSED': case 'GAME_RESUMED': case 'GAME_STOPPED':
@@ -630,20 +632,20 @@ case 'ROOM_JOIN_SUCCESS':
                     case 'PLAYER_LIST_UPDATE': this.players = payload.players; break;
                     case 'ADMIN_TICKET_REQUEST_RECEIVED':
                         if (!this.pendingTicketRequests.find(req => req.playerId === payload.playerId)) this.pendingTicketRequests.push(payload);
-                        this.addNotification('Ticket Request', `From: ${payload.playerName}`, 'ticketRequests', payload.playerId); // NOTIFICATION ADDED
+                        this.addNotification('Ticket Request', `From: ${payload.playerName}`, 'ticketRequests', payload.playerId);
                         this.showGameMessage(`Ticket request from ${payload.playerName}.`, 'info', 5000);
                         break;
                     case 'ADMIN_PRIZE_CLAIM_RECEIVED':
                         if (!this.pendingPrizeClaims.find(claim => claim.claimId === payload.claimId)) this.pendingPrizeClaims.push(payload);
-                        this.addNotification('Prize Claim', `From: ${payload.playerName} for ${payload.prizeName}`, 'prizeClaims', payload.claimId); // NOTIFICATION ADDED
+                        this.addNotification('Prize Claim', `From: ${payload.playerName} for ${payload.prizeName}`, 'prizeClaims', payload.claimId);
                         this.showGameMessage(`Prize claim from ${payload.playerName}.`, 'info', 5000);
                         break;
-                    case 'WINNER_ANNOUNCEMENT': // This is when admin approves a prize successfully
+                    case 'WINNER_ANNOUNCEMENT':
                         if (!this.winners.find(w => w.claimId === payload.claimId)) {
                              this.winners.push({ claimId: payload.claimId, playerId: payload.playerId, playerName: payload.playerName, prizeName: payload.prizeName, prizeRuleId: payload.prizeRuleId, coins: payload.coins, timestamp: new Date().toISOString() });
                         }
                         this.pendingPrizeClaims = this.pendingPrizeClaims.filter(c => c.claimId !== payload.claimId);
-                        this.addNotification('Winner Processed', `${payload.playerName} won ${payload.prizeName}`, 'winners', payload.claimId); // NOTIFICATION ADDED
+                        this.addNotification('Winner Processed', `${payload.playerName} won ${payload.prizeName}`, 'winners', payload.claimId);
                         break;
                     case 'RULES_SAVE_CONFIRMED': this.showGameMessage(payload.message || "Rules updated on server.", "success"); break;
                     case 'ADMIN_ACTION_SUCCESS': this.showGameMessage(payload.message, 'success'); break;
@@ -657,42 +659,182 @@ case 'ROOM_JOIN_SUCCESS':
             // Notification System Methods
             addNotification(type, message, targetView, relatedId = null) {
                 const newNotification = { id: Date.now() + Math.random(), type, message, targetView, timestamp: Date.now(), relatedId };
-                this.notifications.unshift(newNotification); // Add to beginning
-                if (this.notifications.length > 10) this.notifications.pop(); // Limit to 10 notifications
+                this.notifications.unshift(newNotification);
+                if (this.notifications.length > 10) this.notifications.pop();
             },
             handleNotificationClick(notification) {
                 this.changeView(notification.targetView);
-                this.notifications = this.notifications.filter(n => n.id !== notification.id); // Remove clicked notification
-                const activeDropdown = document.querySelector('.dropdown.dropdown-end.ml-2 details summary, .dropdown.dropdown-end.ml-2 > label[tabindex="0"]'); // Attempt to find active dropdown trigger
+                this.notifications = this.notifications.filter(n => n.id !== notification.id);
+                const activeDropdown = document.querySelector('.dropdown.dropdown-end.ml-2 label[tabindex="0"]');
                 if(activeDropdown && typeof activeDropdown.blur === 'function') activeDropdown.blur();
                 else if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
             },
             clearAllNotifications() {
                 this.notifications = [];
-                const activeDropdown = document.querySelector('.dropdown.dropdown-end.ml-2 details summary, .dropdown.dropdown-end.ml-2 > label[tabindex="0"]');
+                const activeDropdown = document.querySelector('.dropdown.dropdown-end.ml-2 label[tabindex="0"]');
                 if(activeDropdown && typeof activeDropdown.blur === 'function') activeDropdown.blur();
                  else if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
             },
 
-            // Game Control, Approval, Rules, and UI Utility functions (mostly as before)
-            startGame() { /* ... as before ... */ if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_START_GAME', payload: { rulesConfig: this.gameRules, totalMoneyCollected: this.totalMoneyCollected, callingMode: this.callingMode, autoCallInterval: this.autoCallInterval }})); else this.showGameMessage("WS not connected.", "error"); },
-            callNextNumber() { /* ... as before ... */ if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_CALL_NUMBER' })); else this.showGameMessage("WS not connected.", "error"); },
-            pauseGame() { /* ... as before ... */ if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_PAUSE_GAME' })); else this.showGameMessage("WS not connected.", "error"); },
-            resumeGame() { /* ... as before ... */ if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_RESUME_GAME' })); else this.showGameMessage("WS not connected.", "error"); },
-            stopGame() { /* ... as before ... */ if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_STOP_GAME' })); else this.showGameMessage("WS not connected.", "error"); },
+            // Game Control, Approval, Rules, and UI Utility functions
+            startGame() {
+                if (this.gameStatus === 'running' || this.gameStatus === 'paused') { this.showGameMessage("Game already in progress.", "warning"); return; }
+                const activeRules = this.gameRules.filter(rule => rule.isActive);
+                if (activeRules.length === 0) { this.showGameMessage("Select at least one rule.", "error"); this.currentView = 'rules'; return; }
+                if (this.totalMoneyCollected === null || this.totalMoneyCollected < 0) { this.showGameMessage("Enter valid total money (can be 0).", "error"); this.currentView = 'rules'; return; }
+                if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_START_GAME', payload: { rulesConfig: this.gameRules, totalMoneyCollected: this.totalMoneyCollected, callingMode: this.callingMode, autoCallInterval: this.autoCallInterval }})); else this.showGameMessage("WS not connected.", "error");
+            },
+            callNextNumber() {
+                if (this.gameStatus !== 'running' || this.callingMode !== 'manual') { this.showGameMessage("Not in manual running mode.", "warning"); return; }
+                if (this.calledNumbersHistory.length >= 90) { this.showGameMessage("All numbers called.", "info"); return; }
+                if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_CALL_NUMBER' })); else this.showGameMessage("WS not connected.", "error");
+            },
+            pauseGame() {
+                if (this.callingMode !== 'auto' || this.gameStatus !== 'running') { this.showGameMessage("Can only pause auto mode.", "warning"); return; }
+                if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_PAUSE_GAME' })); else this.showGameMessage("WS not connected.", "error");
+            },
+            resumeGame() {
+                if (this.callingMode !== 'auto' || this.gameStatus !== 'paused') { this.showGameMessage("Can only resume auto paused game.", "warning"); return; }
+                if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_RESUME_GAME' })); else this.showGameMessage("WS not connected.", "error");
+            },
+            stopGame() {
+                if (this.gameStatus === 'idle' || this.gameStatus === 'stopped' || this.gameStatus === 'connecting') { this.showGameMessage("Game not active or already stopped.", "warning"); return; }
+                if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_STOP_GAME' })); else this.showGameMessage("WS not connected.", "error");
+            },
             approveTicketRequest(playerId) { if (this.socket && this.socket.readyState === WebSocket.OPEN) { this.socket.send(JSON.stringify({ type: 'ADMIN_APPROVE_TICKET_REQUEST', payload: { targetPlayerId: playerId }})); this.pendingTicketRequests = this.pendingTicketRequests.filter(r => r.playerId !== playerId); this.showGameMessage('Approval sent.', 'info', 2000); } else this.showGameMessage("WS not connected.", "error"); },
             rejectTicketRequest(playerId, reason) { if (this.socket && this.socket.readyState === WebSocket.OPEN) { this.socket.send(JSON.stringify({ type: 'ADMIN_REJECT_TICKET_REQUEST', payload: { targetPlayerId: playerId, reason: reason }})); this.pendingTicketRequests = this.pendingTicketRequests.filter(r => r.playerId !== playerId); this.showGameMessage('Rejection sent.', 'info', 2000); } else this.showGameMessage("WS not connected.", "error"); },
             approvePrizeClaim(claim) { if (this.socket && this.socket.readyState === WebSocket.OPEN) { this.socket.send(JSON.stringify({ type: 'ADMIN_APPROVE_PRIZE_CLAIM', payload: { claimId: claim.claimId, targetPlayerId: claim.playerId, prizeName: claim.prizeName, prizeRuleId: claim.prizeRuleId }})); this.pendingPrizeClaims = this.pendingPrizeClaims.filter(c => c.claimId !== claim.claimId); this.showGameMessage('Approval sent.', 'info', 2000); } else this.showGameMessage("WS not connected.", "error"); },
             rejectPrizeClaim(claim, reason) { if (this.socket && this.socket.readyState === WebSocket.OPEN) { this.socket.send(JSON.stringify({ type: 'ADMIN_REJECT_PRIZE_CLAIM', payload: { claimId: claim.claimId, targetPlayerId: claim.playerId, prizeName: claim.prizeName, reason: reason }})); this.pendingPrizeClaims = this.pendingPrizeClaims.filter(c => c.claimId !== claim.claimId); this.showGameMessage('Rejection sent.', 'info', 2000); } else this.showGameMessage("WS not connected.", "error"); },
-            handleActivationToggle(ruleId) { /* ... as before ... */ },
-            handleBaseWeightInput(ruleId, inputValue) { /* ... as before ... */ },
-            normalizeActiveRuleWeights(editedRuleId = null, newWeightForEditedRule = null) { /* ... as before ... */ },
-            updateRuleCalculations() { /* ... as before ... */ },
-            saveRulesConfiguration() { /* ... as before ... */ if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_UPDATE_RULES', payload: { rules: this.gameRules, financials: { totalMoneyCollected: this.totalMoneyCollected }}})); else this.showGameMessage("WS not connected.", "error"); },
-            setTheme(themeName, event = null, closeDropdown = true) { /* ... as before ... */ document.documentElement.setAttribute('data-theme', themeName); localStorage.setItem('theme', themeName); if (closeDropdown && event && event.target) { const anchorElement = event.target; const dropdownRoot = anchorElement.closest('.dropdown'); const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]'); setTimeout(() => { if (document.activeElement && dropdownRoot && dropdownRoot.contains(document.activeElement)) { if (typeof document.activeElement.blur === 'function') document.activeElement.blur(); } if (dropdownTriggerLabel && typeof dropdownTriggerLabel.blur === 'function') dropdownTriggerLabel.blur(); }, 0);}},
+
+            handleActivationToggle(ruleId) {
+                if (this.gameStatus === 'running' || this.gameStatus === 'paused') {
+                    this.showGameMessage("Cannot change rules while game is active.", "warning");
+                    // Revert toggle if needed (Alpine might have already updated model, so find and flip back)
+                    this.$nextTick(() => {
+                        const rule = this.gameRules.find(r => r.id === ruleId);
+                        if (rule) rule.isActive = !rule.isActive;
+                    });
+                    return;
+                }
+                const rule = this.gameRules.find(r => r.id === ruleId);
+                if(rule && !rule.isActive) { // If rule was just deactivated
+                     rule.baseWeight = rule.originalWeight !== undefined ? rule.originalWeight : 0;
+                } else if (rule && rule.isActive && rule.originalWeight === undefined) { // If just activated and no original weight
+                    rule.originalWeight = rule.baseWeight; // Store current base as original
+                }
+                this.normalizeActiveRuleWeights();
+                this.updateRuleCalculations();
+            },
+            handleBaseWeightInput(ruleId, inputValue) {
+                if (this.gameStatus === 'running' || this.gameStatus === 'paused') {
+                    this.showGameMessage("Cannot change rules while game is active.", "warning"); return;
+                }
+                const rule = this.gameRules.find(r => r.id === ruleId && r.isActive);
+                if (rule) {
+                    let newWeight = parseFloat(inputValue);
+                    if(isNaN(newWeight) || newWeight < 0) newWeight = 0;
+                    if(newWeight > 100) newWeight = 100;
+                    rule.originalWeight = newWeight; // User's desired weight becomes the new original for proportion
+                    this.normalizeActiveRuleWeights(ruleId, newWeight);
+                    this.updateRuleCalculations();
+                }
+            },
+            normalizeActiveRuleWeights(editedRuleId = null, newWeightForEditedRule = null) {
+                let activeRules = this.gameRules.filter(r => r.isActive);
+                if (activeRules.length === 0) {
+                    this.totalSelectedWeight = 0;
+                    this.gameRules.forEach(r => { r.baseWeight = r.originalWeight || 0; r.coinsPerPrize = 0;}); // Reset baseWeight to original or 0
+                    // No need to call updateRuleCalculations from here, caller should do it.
+                    return;
+                }
+
+                if (editedRuleId && newWeightForEditedRule !== null) {
+                    const editedRule = activeRules.find(r => r.id === editedRuleId);
+                    if (editedRule) {
+                        editedRule.baseWeight = Math.max(0, Math.min(100, newWeightForEditedRule)); // User-set weight for this rule
+                        const sumOfOtherOriginalWeights = activeRules.reduce((sum, r) => r.id !== editedRuleId ? sum + (r.originalWeight || 0) : sum, 0);
+                        const remainingPercentage = 100 - editedRule.baseWeight;
+
+                        if (activeRules.length > 1) {
+                            activeRules.forEach(r => {
+                                if (r.id !== editedRuleId) {
+                                    if (sumOfOtherOriginalWeights > 0) {
+                                        r.baseWeight = ((r.originalWeight || 0) / sumOfOtherOriginalWeights) * remainingPercentage;
+                                    } else { // If other original weights are 0, distribute remaining equally
+                                        r.baseWeight = remainingPercentage / (activeRules.length - 1);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                } else { // General normalization (on activation/deactivation or init)
+                    let sumOfActiveOriginalWeights = activeRules.reduce((sum, r) => sum + (r.originalWeight || 0), 0);
+                    if (sumOfActiveOriginalWeights > 0) {
+                        activeRules.forEach(r => r.baseWeight = ((r.originalWeight || 0) / sumOfActiveOriginalWeights) * 100);
+                    } else { // All active original weights are 0, distribute 100% equally
+                        activeRules.forEach(r => r.baseWeight = 100 / activeRules.length);
+                    }
+                }
+
+                // Ensure sum of baseWeights for active rules is exactly 100
+                let currentSum = activeRules.reduce((sum, r) => sum + (r.baseWeight || 0), 0);
+                if (activeRules.length > 0 && Math.abs(currentSum - 100) > 0.001) {
+                    const correctionFactor = 100 / currentSum;
+                    activeRules.forEach(r => { r.baseWeight = (r.baseWeight || 0) * correctionFactor; });
+                }
+                // Clamp and fix precision for all rules, inactive ones keep original/zero baseWeight
+                this.gameRules.forEach(r => {
+                    if (r.isActive) {
+                        r.baseWeight = parseFloat(Math.max(0, Math.min(100, (r.baseWeight || 0))).toFixed(4));
+                    } else {
+                        r.baseWeight = r.originalWeight || 0; // Or simply 0 for inactive if preferred
+                    }
+                });
+                this.totalSelectedWeight = 100; // If activeRules.length > 0, we've normalized them to sum to 100
+            },
+
+            updateRuleCalculations() {
+                const currentTotalMoneyCollected = parseFloat(this.totalMoneyCollected) || 0;
+                let calculatedTotalPrizeValue = 0;
+                this.gameRules.forEach(rule => {
+                    if (rule.isActive) {
+                        // Base weight is now a percentage of 100 for active rules
+                        const moneyAllocatedToRule = ((rule.baseWeight || 0) / 100) * currentTotalMoneyCollected;
+                        const maxPrizes = parseInt(rule.maxPrizes) || 1;
+                        rule.coinsPerPrize = maxPrizes > 0 ? (moneyAllocatedToRule / maxPrizes) : 0;
+                        calculatedTotalPrizeValue += moneyAllocatedToRule; // Sum of monetary values allocated
+                    } else {
+                        rule.coinsPerPrize = 0;
+                    }
+                });
+                this.totalPotentialPrizeValue = calculatedTotalPrizeValue;
+            },
+
+            saveRulesConfiguration() {
+                if (this.gameStatus === 'running' || this.gameStatus === 'paused') { this.showGameMessage("Cannot save rules while game is active.", "warning"); return; }
+                // Ensure normalization one last time before saving
+                this.normalizeActiveRuleWeights();
+                this.updateRuleCalculations();
+                if (this.socket && this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'ADMIN_UPDATE_RULES', payload: { rules: this.gameRules, financials: { totalMoneyCollected: this.totalMoneyCollected }}})); else this.showGameMessage("WS not connected.", "error");
+            },
+
+            setTheme(themeName, event = null, closeDropdown = true) { document.documentElement.setAttribute('data-theme', themeName); localStorage.setItem('theme', themeName); if (closeDropdown && event && event.target) { const anchorElement = event.target; const dropdownRoot = anchorElement.closest('.dropdown'); const dropdownTriggerLabel = dropdownRoot?.querySelector('label[tabindex="0"]'); setTimeout(() => { if (document.activeElement && dropdownRoot && dropdownRoot.contains(document.activeElement)) { if (typeof document.activeElement.blur === 'function') document.activeElement.blur(); } if (dropdownTriggerLabel && typeof dropdownTriggerLabel.blur === 'function') dropdownTriggerLabel.blur(); }, 0);}},
             changeView(viewName) { this.currentView = viewName; this.isDrawerOpen = false; if (viewName === 'qrCode' && this.roomId && this.roomId !== 'N/A') { this.$nextTick(() => this.generateQRCode()); } },
             showGameMessage(text, type = 'info', duration = 3000) { this.gameMessage = text; this.gameMessageType = type; if (this.gameMessageTimeout) clearTimeout(this.gameMessageTimeout); if (duration !== null) { this.gameMessageTimeout = setTimeout(() => { this.gameMessage = ''; }, duration);}},
-            generateQRCode() { /* ... as before ... */ }
+            generateQRCode() {
+                const qrCanvas = document.getElementById('qrcodeCanvas');
+                if (!qrCanvas) return;
+                qrCanvas.innerHTML = '';
+                if (!this.roomId || this.roomId === 'N/A') { qrCanvas.innerHTML = '<p class="text-error">Room ID not set.</p>'; return; }
+                const playerJoinUrl = `${window.location.origin}/player_join.html?roomId=${encodeURIComponent(this.roomId)}`;
+                try {
+                    const qr = qrcode(0, 'M');
+                    qr.addData(playerJoinUrl);
+                    qr.make();
+                    qrCanvas.innerHTML = qr.createImgTag(6, 8);
+                    if(qrCanvas.firstChild) { qrCanvas.firstChild.style.width = '100%'; qrCanvas.firstChild.style.maxWidth = '256px'; qrCanvas.firstChild.style.height = 'auto';}
+                } catch (e) { console.error("QR Code generation error:", e); qrCanvas.innerHTML = '<p class="text-error">Error generating QR code.</p>'; }
+            }
         }
     }
     </script>
