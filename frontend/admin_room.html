@@ -553,21 +553,60 @@
                 const { type, payload } = message;
                 console.log('Admin received WS:', type, payload); // Debug
                 switch (type) {
-                    case 'ROOM_JOINED_SUCCESS':
-                        this.showGameMessage(`Connected to Room: ${payload.roomId} as Admin: ${payload.adminName}`, 'success');
-                        this.gameStatus = payload.gameStatus || 'idle';
-                        this.players = payload.players || [];
-                        this.calledNumbersHistory = payload.calledNumbers || [];
-                        if (payload.calledNumbers && payload.calledNumbers.length > 0) {
-                            this.latestCalledNumber = payload.calledNumbers[payload.calledNumbers.length - 1];
-                            payload.calledNumbers.forEach(num => { const nObj = this.numbers.find(n => n.number === num); if (nObj) nObj.called = true; });
-                        } else { this.initializeClientStateForNewGame(); }
-                        if(payload.rules && payload.rules.length > 0) this.gameRules = payload.rules; else this.normalizeActiveRuleWeights();
-                        this.totalMoneyCollected = payload.totalMoneyCollected !== undefined ? payload.totalMoneyCollected : this.totalMoneyCollected;
-                        this.callingMode = payload.callingMode || this.callingMode;
-                        this.winners = payload.winners || [];
-                        this.updateRuleCalculations();
-                        break;
+                    // Inside your adminRoom() function, within the handleWebSocketMessage(message) method:
+
+case 'ROOM_JOIN_SUCCESS':
+    this.showGameMessage(`Connected to Room: ${payload.roomId} as Admin: ${payload.adminName}`, 'success');
+    this.gameStatus = payload.gameStatus || 'idle';
+    this.players = payload.players || [];
+    this.calledNumbersHistory = payload.calledNumbers || [];
+
+    if (payload.calledNumbers && payload.calledNumbers.length > 0) {
+        this.latestCalledNumber = payload.calledNumbers[payload.calledNumbers.length - 1];
+        payload.calledNumbers.forEach(num => {
+            const numObjBoard = this.numbers.find(n => n.number === num);
+            if (numObjBoard) numObjBoard.called = true;
+        });
+    } else {
+        // If no numbers called (e.g. new game or admin rejoining before start),
+        // ensure board is reset but don't clear rules that might have been set by default or manually.
+        // this.initializeClientStateForNewGame(); // This was too broad, let's be more specific.
+        this.numbers = Array.from({ length: 90 }, (_, i) => ({ number: i + 1, called: false }));
+        this.latestCalledNumber = null;
+        // Keep existing winners, pending requests, etc. unless server payload indicates otherwise
+    }
+
+    // Rules handling:
+    // If server sends rules, use them. Otherwise, the existing client-side defaults (from init) will be used.
+    if (payload.rules && payload.rules.length > 0) {
+        this.gameRules = payload.rules.map(rule => ({
+            ...rule,
+            isActive: !!rule.isActive, // Ensure boolean
+            originalWeight: rule.originalWeight !== undefined ? rule.originalWeight : (rule.baseWeight !== undefined ? rule.baseWeight : 10), // Ensure originalWeight has a sensible default
+            maxPrizes: parseInt(rule.maxPrizes) || 1,
+            coinsPerPrize: parseFloat(rule.coinsPerPrize) || 0
+        }));
+    } else {
+        // If server sends no rules, ensure originalWeight is set on current/default rules
+        this.gameRules.forEach(rule => {
+            if (rule.originalWeight === undefined) {
+                rule.originalWeight = rule.baseWeight !== undefined ? rule.baseWeight : (rule.isActive ? 10 : 0);
+            }
+        });
+    }
+
+    // Critical: Always re-normalize weights and update calculations after rules are finalized and money collected is known.
+    this.normalizeActiveRuleWeights();
+
+    this.totalMoneyCollected = payload.totalMoneyCollected !== undefined ? parseFloat(payload.totalMoneyCollected) : this.totalMoneyCollected;
+    this.callingMode = payload.callingMode || this.callingMode; // Sync calling mode
+    // Sync winners if payload contains it, otherwise keep client's list (e.g. if admin briefly disconnects/reconnects)
+    if (payload.winners) {
+        this.winners = payload.winners;
+    }
+
+    this.updateRuleCalculations(); // This now uses the correctly normalized weights and latest totalMoneyCollected
+    break;
                     case 'NUMBER_CALLED':
                         this.latestCalledNumber = payload.number;
                         this.calledNumbersHistory = payload.calledNumbersHistory;
