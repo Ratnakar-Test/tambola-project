@@ -214,7 +214,7 @@ function validatePrizeClaim(ticketNumbers, calledNumbers, prizeRuleName) {
             if (topRowActual.length > 1) cornerNumbers.push(topRowActual[topRowActual.length -1]); // Last actual number
             if (bottomRowActual.length > 0) cornerNumbers.push(bottomRowActual[0]);
             if (bottomRowActual.length > 1) cornerNumbers.push(bottomRowActual[bottomRowActual.length-1]); // Last actual number
-            
+
             const uniqueCornerNumbers = [...new Set(cornerNumbers)]; // Ensure unique numbers if e.g. only one number in row
             return uniqueCornerNumbers.length >= 2 && allNumbersAreCalled(uniqueCornerNumbers, calledNumbers); // Need at least 2 distinct corners
         }
@@ -331,6 +331,7 @@ wss.on('connection', (ws) => {
                     rules: rooms[roomId].rules, // Send current rules
                     totalMoneyCollected: rooms[roomId].totalMoneyCollected,
                     calledNumbers: rooms[roomId].numbersCalled,
+                    callingMode: rooms[roomId].callingMode, // Send calling mode
                     // any other relevant details for admin rejoining
                 };
                 sendMessageToClient(ws, { type: 'ROOM_JOINED_SUCCESS', payload: roomDetailsPayload });
@@ -355,7 +356,7 @@ wss.on('connection', (ws) => {
                      if(existingPlayer){
                         existingPlayer.ws = ws;
                         playerConnections.set(ws, { roomId, playerId: existingPlayer.id, type: 'player', ws });
-                        sendMessageToClient(ws, {type: 'INFO', payload: { message: 'Rejoined successfully.'}});
+                        // sendMessageToClient(ws, {type: 'INFO', payload: { message: 'Rejoined successfully.'}}); // This could be part of PLAYER_JOIN_SUCCESS
                         // Send them current game state
                          sendMessageToClient(ws, {
                             type: 'PLAYER_JOIN_SUCCESS', // Resend join success to resync client
@@ -475,7 +476,7 @@ wss.on('connection', (ws) => {
                 }
                 break;
             }
-            
+
             case 'ADMIN_PAUSE_GAME': {
                 if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
                 const room = rooms[connectionInfo.roomId];
@@ -508,7 +509,7 @@ wss.on('connection', (ws) => {
                 }
                 break;
             }
-            
+
             case 'ADMIN_STOP_GAME': {
                 if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
                 const room = rooms[connectionInfo.roomId];
@@ -528,13 +529,13 @@ wss.on('connection', (ws) => {
                 break;
             }
 
-            case 'ADMIN_UPDATE_RULES': { // This implies rules can be changed mid-game, which might be complex. Usually set before start.
+            case 'ADMIN_UPDATE_RULES': {
                 if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
                 const room = rooms[connectionInfo.roomId];
                 if (room && payload.rules && payload.financials) {
                     room.rules = payload.rules;
                     room.totalMoneyCollected = parseFloat(payload.financials.totalMoneyCollected);
-                    
+
                     // Broadcast updated rules to players
                     broadcastToRoom(connectionInfo.roomId, { type: 'RULES_UPDATED', payload: { rules: room.rules.filter(r => r.isActive), totalMoneyCollected: room.totalMoneyCollected } }, ws); // Exclude admin who sent it
                     sendMessageToClient(ws, { type: 'RULES_SAVE_CONFIRMED', payload: {message: "Rules and financials updated on server."} });
@@ -542,7 +543,7 @@ wss.on('connection', (ws) => {
                 }
                 break;
             }
-            
+
             case 'ADMIN_APPROVE_TICKET_REQUEST': {
                 if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
                 const { targetPlayerId } = payload; // Admin client sends targetPlayerId
@@ -583,7 +584,7 @@ wss.on('connection', (ws) => {
 
             case 'ADMIN_APPROVE_PRIZE_CLAIM': {
                 if (!connectionInfo || connectionInfo.type !== 'admin' || !rooms[connectionInfo.roomId] || rooms[connectionInfo.roomId].admin.id !== connectionInfo.playerId) return;
-                const { claimId, targetPlayerId, prizeName, prizeRuleId } = payload; // Admin client sends these after reviewing
+                const { claimId, targetPlayerId, prizeName, prizeRuleId } = payload;
                 const room = rooms[connectionInfo.roomId];
                 const player = room?.players.find(p => p.id === targetPlayerId);
                 const ruleInfo = room?.rules.find(r => r.id === prizeRuleId && r.isActive);
@@ -597,29 +598,26 @@ wss.on('connection', (ws) => {
                      return sendMessageToClient(ws, {type: 'ADMIN_ACTION_FAIL', payload: {message: `Max winners already reached for '${prizeName}'.`}});
                 }
 
-
                 const coinsAwarded = parseFloat(ruleInfo.coinsPerPrize) || 0;
                 player.coins = parseFloat(((player.coins || 0) + coinsAwarded).toFixed(2));
 
-                // Store winner info
                 room.winners.push({
-                    claimId, // Use the claimId that was part of the approval request
+                    claimId,
                     playerId: player.id,
                     playerName: player.name,
-                    prizeName, // Use prizeName from payload for consistency
-                    prizeRuleId, // Store the rule ID
+                    prizeName,
+                    prizeRuleId,
                     coins: coinsAwarded,
                     timestamp: new Date().toISOString()
                 });
 
-                if (player.ws) { // If player is connected
+                if (player.ws) {
                     sendMessageToClient(player.ws, {
                         type: 'CLAIM_STATUS_UPDATE',
                         payload: { claimId, prizeName, status: 'approved', coinsAwarded, totalCoins: player.coins }
                     });
                 }
-                // Announce winner to the room
-                broadcastToRoom(connectionInfo.roomId, { type: 'WINNER_ANNOUNCEMENT', payload: { playerName: player.name, prizeName, coins: coinsAwarded } });
+                broadcastToRoom(connectionInfo.roomId, { type: 'WINNER_ANNOUNCEMENT', payload: { playerId: player.id, playerName: player.name, prizeName, prizeRuleId, coins: coinsAwarded, claimId: claimId } });
                 sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Prize '${prizeName}' approved for ${player.name}. Coins: ${coinsAwarded.toFixed(2)}` } });
                 break;
             }
@@ -630,7 +628,7 @@ wss.on('connection', (ws) => {
                 const room = rooms[connectionInfo.roomId];
                 const player = room?.players.find(p => p.id === targetPlayerId);
 
-                if (room && player && player.ws) { // If player is connected
+                if (room && player && player.ws) {
                     sendMessageToClient(player.ws, {
                         type: 'CLAIM_STATUS_UPDATE',
                         payload: { claimId, prizeName, status: 'rejected', reason: reason || "Claim did not meet criteria." }
@@ -639,7 +637,6 @@ wss.on('connection', (ws) => {
                 sendMessageToClient(ws, { type: 'ADMIN_ACTION_SUCCESS', payload: { message: `Prize claim for '${prizeName}' by ${player ? player.name : targetPlayerId} rejected.` } });
                 break;
             }
-
 
             // --- Player Actions ---
             case 'PLAYER_REQUEST_TICKET': {
@@ -666,7 +663,9 @@ wss.on('connection', (ws) => {
 
             case 'PLAYER_CLAIM_PRIZE': {
                 if (!connectionInfo || connectionInfo.type !== 'player') return;
-                const { prizeRuleId, ticketId } = payload; // Player client sends prizeRuleId and relevant ticketId
+                // **MODIFICATION START for duplicate claim fix**
+                const { prizeRuleId, ticketId, clientTempClaimId } = payload; // Expect clientTempClaimId
+                // **MODIFICATION END**
                 const room = rooms[connectionInfo.roomId];
                 const player = room?.players.find(p => p.id === connectionInfo.playerId);
                 const ruleToClaim = room?.rules?.find(r => r.id === prizeRuleId && r.isActive);
@@ -679,26 +678,23 @@ wss.on('connection', (ws) => {
                     return sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Game is not currently running.' } });
                 }
 
-                // Server-side check for maxPrizes limit before forwarding to admin
                 const winnersForThisRule = room.winners.filter(w => w.prizeRuleId === prizeRuleId).length;
                 if (winnersForThisRule >= (ruleToClaim.maxPrizes || 1)) {
                      return sendMessageToClient(ws, {type: 'ERROR', payload: {message: `Max winners already reached for '${ruleToClaim.name}'.`}});
                 }
-                 // Prevent duplicate claims if already won this specific rule instance
                 const alreadyWonThisRuleByPlayer = room.winners.some(w => w.playerId === player.id && w.prizeRuleId === prizeRuleId);
                 if (alreadyWonThisRuleByPlayer) {
                     return sendMessageToClient(ws, {type: 'ERROR', payload: {message: `You have already won or claimed '${ruleToClaim.name}'.`}});
                 }
 
-
                 const isValidClaimByServer = validatePrizeClaim(ticketForClaim.numbers, room.numbersCalled, ruleToClaim.name);
-                const claimId = generateUniqueId(); // Server generates the authoritative claimId
+                const serverGeneratedClaimId = generateUniqueId(); // Server's authoritative ID
 
                 if (room.admin && room.admin.ws && room.admin.ws.readyState === WebSocket.OPEN) {
                     sendMessageToClient(room.admin.ws, {
                         type: 'ADMIN_PRIZE_CLAIM_RECEIVED',
                         payload: {
-                            claimId, // Server-generated claimId
+                            claimId: serverGeneratedClaimId,
                             playerId: player.id,
                             playerName: player.name,
                             prizeName: ruleToClaim.name,
@@ -708,7 +704,17 @@ wss.on('connection', (ws) => {
                             serverValidationResult: isValidClaimByServer
                         }
                     });
-                    sendMessageToClient(ws, { type: 'PLAYER_CLAIM_SUBMITTED', payload: { claimId, prizeName: ruleToClaim.name, status: 'pending_admin_approval' } });
+                    // **MODIFICATION START for duplicate claim fix**
+                    sendMessageToClient(ws, {
+                        type: 'PLAYER_CLAIM_SUBMITTED',
+                        payload: {
+                            claimId: serverGeneratedClaimId,      // Server's authoritative ID
+                            clientTempClaimId: clientTempClaimId, // Echo back client's temporary ID
+                            prizeName: ruleToClaim.name,
+                            status: 'pending_admin_approval'      // Status after server acknowledgment
+                        }
+                    });
+                    // **MODIFICATION END**
                 } else {
                     sendMessageToClient(ws, { type: 'ERROR', payload: { message: 'Admin not available to verify claim.' } });
                 }
@@ -716,10 +722,7 @@ wss.on('connection', (ws) => {
             }
 
             case 'PLAYER_MARK_NUMBER': {
-                // This is mostly for client-side logic, server doesn't need to act on manual marks unless for boogie validation.
-                // For now, just log it.
                 if (!connectionInfo || connectionInfo.type !== 'player') return;
-                // console.log(`Player ${connectionInfo.playerId} in room ${connectionInfo.roomId} client-side mark:`, payload);
                 break;
             }
 
@@ -729,7 +732,6 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        // console.log(`Client ${ws.id} disconnected`);
         console.log(`Client disconnected`);
         const connectionInfo = playerConnections.get(ws);
         if (connectionInfo) {
@@ -738,11 +740,9 @@ wss.on('connection', (ws) => {
             if (room) {
                 if (type === 'admin' && room.admin && room.admin.id === playerId) {
                     console.log(`Admin ${room.admin.name} disconnected from room ${roomId}.`);
-                    room.admin.ws = null; // Mark admin as disconnected
-                    if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId); // Stop auto-calls if admin leaves
+                    room.admin.ws = null;
+                    if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
                     broadcastToRoom(roomId, { type: 'ADMIN_STATUS_UPDATE', payload: { adminName: room.admin.name, isConnected: false } });
-                    // Consider pausing the game if admin disconnects and game was running
-                    // if (room.gameStatus === 'running') room.gameStatus = 'paused'; // Or some other state
                 } else if (type === 'player') {
                     const playerIndex = room.players.findIndex(p => p.id === playerId);
                     if (playerIndex > -1) {
@@ -752,8 +752,6 @@ wss.on('connection', (ws) => {
                         console.log(`Player ${playerName} (ID: ${playerId}) disconnected from room ${roomId}`);
                     }
                 }
-
-                // Optional: Cleanup room if admin is gone AND no players are left
                 if (room.players.length === 0 && (!room.admin || !room.admin.ws)) {
                     console.log(`Room ${roomId} is empty and admin disconnected, cleaning up.`);
                     if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
@@ -766,7 +764,6 @@ wss.on('connection', (ws) => {
 
     ws.on('error', (error) => {
         console.error('WebSocket error with client:', error);
-        // Clean up connection if it was tracked
         const connectionInfo = playerConnections.get(ws);
         if (connectionInfo) playerConnections.delete(ws);
     });
@@ -779,13 +776,12 @@ function callNextNumberForRoom(roomId) {
         const randomIndex = Math.floor(Math.random() * room.availableNumbers.length);
         const calledNumber = room.availableNumbers.splice(randomIndex, 1)[0];
         room.numbersCalled.push(calledNumber);
-        // room.numbersCalled.sort((a, b) => a - b); // Optional: keep history sorted
 
         broadcastToRoom(roomId, {
             type: 'NUMBER_CALLED',
             payload: {
                 number: calledNumber,
-                calledNumbersHistory: [...room.numbersCalled], // Send a copy
+                calledNumbersHistory: [...room.numbersCalled],
                 remainingCount: room.availableNumbers.length
             }
         });
@@ -793,10 +789,9 @@ function callNextNumberForRoom(roomId) {
 
         if (room.availableNumbers.length === 0) {
             if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
-            room.gameStatus = 'stopped'; // Or a specific "all_numbers_called" status
+            room.gameStatus = 'stopped';
             broadcastToRoom(roomId, { type: 'GAME_OVER_ALL_NUMBERS_CALLED', payload: { finalCalledNumbers: [...room.numbersCalled] } });
             console.log(`All numbers called in room ${roomId}. Game over.`);
-            // Optionally, prepare and broadcast a game summary
             const gameSummary = {
                 totalNumbersCalled: room.numbersCalled.length,
                 winners: room.winners,
@@ -805,7 +800,6 @@ function callNextNumberForRoom(roomId) {
             broadcastToRoom(roomId, { type: 'GAME_SUMMARY_BROADCAST', payload: gameSummary });
         }
     } else if (room && room.availableNumbers.length === 0 && room.gameStatus === 'running') {
-        // This case should ideally be caught by the check above, but as a fallback:
         if (room.autoCallTimerId) clearTimeout(room.autoCallTimerId);
         room.gameStatus = 'stopped';
         broadcastToRoom(roomId, { type: 'GAME_OVER_ALL_NUMBERS_CALLED', payload: { finalCalledNumbers: [...room.numbersCalled] } });
@@ -817,9 +811,9 @@ function callNextNumberForRoom(roomId) {
 // --- Basic HTTP Routes (Mostly for health checks/debug) ---
 app.get('/', (req, res) => res.send('Tambola Game Backend is running! Access the game through the HTML files.'));
 
-app.get('/health', (req, res) => res.status(200).json({ status: 'UP', timestamp: new Date().toISOString(), version: '1.1.0' }));
+app.get('/health', (req, res) => res.status(200).json({ status: 'UP', timestamp: new Date().toISOString(), version: '1.2.0' })); // Incremented version
 
-app.get('/debug/rooms', (req, res) => { // For admin/debug purposes
+app.get('/debug/rooms', (req, res) => {
     const simplifiedRooms = {};
     for (const roomId in rooms) {
         simplifiedRooms[roomId] = {
@@ -839,10 +833,7 @@ app.get('/debug/rooms', (req, res) => { // For admin/debug purposes
     res.json(simplifiedRooms);
 });
 
-// Example: To serve your HTML files (admin_join.html, player_join.html etc.)
-// Create a 'public' folder, put your HTML files there, and uncomment the next line:
-// app.use(express.static('public'));
-// Then you can access them via http://localhost:3000/admin_join.html etc.
+// app.use(express.static('public')); // Uncomment if you want to serve HTML files from a 'public' directory
 
 server.listen(PORT, () => {
     console.log(`HTTP and WebSocket server listening on ws://localhost:${PORT}`);
@@ -859,7 +850,6 @@ process.on('SIGINT', () => {
     }
     server.close(() => {
         console.log('Server shut down gracefully.');
-        // Clear timers and states
         for (const roomId in rooms) {
             if (rooms[roomId].autoCallTimerId) {
                 clearTimeout(rooms[roomId].autoCallTimerId);
